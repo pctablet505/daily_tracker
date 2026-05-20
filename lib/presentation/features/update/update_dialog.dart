@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import '../../../core/constants/app_constants.dart';
 
 class UpdateInfo {
@@ -243,11 +245,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
     if (path == null || !mounted) return;
 
-    // For now, show success - actual install would use apk_installer
-    // but we need to handle platform channel issues carefully
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Downloaded to $path. Install manually for now.')),
+    // Launch system installer using Android Intent
+    final intent = AndroidIntent(
+      action: 'action_view',
+      data: 'file://$path',
+      type: 'application/vnd.android.package-archive',
+      flags: [Flag.FLAG_GRANT_READ_URI_PERMISSION, Flag.FLAG_ACTIVITY_NEW_TASK],
     );
+    await intent.launch();
     Navigator.pop(context);
   }
 }

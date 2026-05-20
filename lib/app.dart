@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/theme_provider.dart';
+import 'presentation/providers/update_provider.dart';
+import 'presentation/features/update/update_dialog.dart';
 import 'presentation/router/app_router.dart';
 
 class DailyTrackerApp extends ConsumerStatefulWidget {
@@ -42,6 +44,16 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
     }
 
     final themeState = ref.watch(themeProvider);
+    final updateAsync = ref.watch(updateCheckProvider);
+
+    // Handle update check result
+    updateAsync.whenData((update) {
+      if (update != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          UpdateDialog.show(context, update);
+        });
+      }
+    });
 
     return MaterialApp.router(
       title: 'Daily Tracker',
