@@ -420,100 +420,86 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     final colorScheme = theme.colorScheme;
     final task = widget.task;
 
-    return Dismissible(
-      key: Key(task.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Icon(Icons.delete_outline, color: colorScheme.onErrorContainer),
-      ),
-      onDismissed: (_) => _deleteTask(),
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: InkWell(
-          onTap: () => _openTaskDetail(),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (task.taskType == 'checklist')
-                      Checkbox(
-                        value: task.isCompleted,
-                        onChanged: (_) => _toggleChecklist(),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                      )
-                    else
-                      _buildTypeIcon(colorScheme),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            task.title,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
-                                  color: widget.isCompleted
-                                      ? colorScheme.onSurfaceVariant
-                                      : colorScheme.onSurface,
-                                ),
-                          ),
-                          if (task.category != null)
-                            Chip(
-                              label: Text(
-                                task.category!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                      fontSize: 11,
-                                      color: task.category == 'Don\'t'
-                                          ? colorScheme.onErrorContainer
-                                          : colorScheme.onSecondaryContainer,
-                                    ),
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => _openTaskDetail(),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (task.taskType == 'checklist')
+                    Checkbox(
+                      value: task.isCompleted,
+                      onChanged: (_) => _toggleChecklist(),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    )
+                  else
+                    _buildTypeIcon(colorScheme),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                                color: widget.isCompleted
+                                    ? colorScheme.onSurfaceVariant
+                                    : colorScheme.onSurface,
                               ),
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              backgroundColor: task.category == 'Don\'t'
-                                  ? colorScheme.errorContainer
-                                  : colorScheme.secondaryContainer,
-                              side: BorderSide.none,
+                        ),
+                        if (task.category != null)
+                          Chip(
+                            label: Text(
+                              task.category!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                    fontSize: 11,
+                                    color: task.category == 'Don\'t'
+                                        ? colorScheme.onErrorContainer
+                                        : colorScheme.onSecondaryContainer,
+                                  ),
                             ),
-                        ],
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            backgroundColor: task.category == 'Don\'t'
+                                ? colorScheme.errorContainer
+                                : colorScheme.secondaryContainer,
+                            side: BorderSide.none,
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (task.priority > 0)
+                    Container(
+                      width: 4,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _priorityColor(task.priority, colorScheme),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    if (task.priority > 0)
-                      Container(
-                        width: 4,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _priorityColor(task.priority, colorScheme),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                  ],
-                ),
-
-                // Show input fields for non-checklist pending tasks
-                if (!widget.isCompleted && task.taskType != 'checklist') ...[
-                  const SizedBox(height: 8),
-                  _buildTaskInput(colorScheme),
                 ],
+              ),
 
-                // Show saved data for completed non-checklist tasks
-                if (widget.isCompleted && task.taskType != 'checklist') ...[
-                  const SizedBox(height: 8),
-                  _buildCompletedData(colorScheme),
-                ],
+              // Show input fields for non-checklist pending tasks
+              if (!widget.isCompleted && task.taskType != 'checklist') ...[
+                const SizedBox(height: 8),
+                _buildTaskInput(colorScheme),
               ],
-            ),
+
+              // Show saved data for completed non-checklist tasks
+              if (widget.isCompleted && task.taskType != 'checklist') ...[
+                const SizedBox(height: 8),
+                _buildCompletedData(colorScheme),
+              ],
+            ],
           ),
         ),
       ),
@@ -541,7 +527,9 @@ class _TaskCardState extends ConsumerState<TaskCard> {
             Expanded(
               child: TextField(
                 controller: _valueController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _saveAndComplete(),
                 decoration: InputDecoration(
                   hintText: 'Enter value',
                   suffixText: task.description?.isNotEmpty == true ? task.description : null,
@@ -562,6 +550,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
             TextField(
               controller: _commentController,
               maxLines: 2,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _saveAndComplete(),
               decoration: InputDecoration(
                 hintText: 'Add notes / comment...',
                 isDense: true,
@@ -711,6 +701,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
       }
 
       final actions = ref.read(taskActionsProvider);
+      // saveTaskLog auto-updates task completion when log.isCompleted=true
+      // and date is today, so we do NOT call toggleCompletion separately.
       await actions.saveTaskLog(TaskLogModel(
         id: IdGenerator.generate(),
         taskId: task.id,
@@ -722,8 +714,6 @@ class _TaskCardState extends ConsumerState<TaskCard> {
         createdAt: today,
         updatedAt: today,
       ));
-
-      await actions.toggleCompletion(task);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -732,11 +722,6 @@ class _TaskCardState extends ConsumerState<TaskCard> {
   Future<void> _toggleChecklist() async {
     final actions = ref.read(taskActionsProvider);
     await actions.toggleCompletion(widget.task);
-  }
-
-  Future<void> _deleteTask() async {
-    final actions = ref.read(taskActionsProvider);
-    await actions.deleteTask(widget.task.id);
   }
 
   void _openTaskDetail() {

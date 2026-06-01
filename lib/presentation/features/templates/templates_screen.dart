@@ -226,6 +226,7 @@ class TemplatesScreen extends ConsumerWidget {
       for (final task in template.dos) {
         final created = await actions.createTask(
           title: task.title,
+          description: task.unit,
           category: 'Do',
           taskType: task.taskType,
         );
@@ -234,6 +235,7 @@ class TemplatesScreen extends ConsumerWidget {
       for (final task in template.donts) {
         final created = await actions.createTask(
           title: task.title,
+          description: task.unit,
           category: 'Don\'t',
           taskType: task.taskType,
         );
