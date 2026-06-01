@@ -17,9 +17,21 @@ class ReminderService {
     }
 
     var reminderTime = task.reminderTime!;
-    if (reminderTime.isBefore(DateTime.now())) {
-      await cancelTaskReminder(task.id);
-      return;
+    final now = DateTime.now();
+    if (reminderTime.isBefore(now)) {
+      if (task.isRecurring && task.recurrenceRule == 'daily') {
+        // Reschedule for next occurrence (tomorrow at same time)
+        reminderTime = DateTime(
+          now.year, now.month, now.day,
+          reminderTime.hour, reminderTime.minute, reminderTime.second,
+        );
+        if (!reminderTime.isAfter(now)) {
+          reminderTime = reminderTime.add(const Duration(days: 1));
+        }
+      } else {
+        await cancelTaskReminder(task.id);
+        return;
+      }
     }
 
     // Adjust for quiet hours

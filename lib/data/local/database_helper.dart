@@ -113,7 +113,7 @@ class DatabaseHelper {
 
   Future<String> insertTask(TaskModel task) async {
     final db = await database;
-    final id = await db.insert('tasks', task.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    final id = await db.insert('tasks', task.toMap(), conflictAlgorithm: ConflictAlgorithm.abort);
     if (id <= 0) {
       throw Exception('Failed to insert task: ${task.title}');
     }
@@ -208,12 +208,15 @@ class DatabaseHelper {
 
   Future<int> toggleTaskCompletion(String id, bool completed) async {
     final db = await database;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
     final result = await db.update(
       'tasks',
       {
         'isCompleted': completed ? 1 : 0,
-        'completedAt': completed ? DateTime.now().toIso8601String() : null,
-        'updatedAt': DateTime.now().toIso8601String(),
+        'completedAt': completed ? now.toIso8601String() : null,
+        'updatedAt': now.toIso8601String(),
         'syncStatus': 'pending',
       },
       where: 'id = ?',
@@ -221,14 +224,12 @@ class DatabaseHelper {
     );
 
     // Sync completion to today's task log
-    final today = DateTime.now();
-    final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     final existing = await getTaskLog(id, dateStr);
     if (existing != null) {
       await updateTaskLog(existing.copyWith(
         isCompleted: completed,
-        completedAt: completed ? today : null,
-        updatedAt: today,
+        completedAt: completed ? now : null,
+        updatedAt: now,
       ));
     } else {
       await insertTaskLog(TaskLogModel(
@@ -236,22 +237,24 @@ class DatabaseHelper {
         taskId: id,
         date: dateStr,
         isCompleted: completed,
-        completedAt: completed ? today : null,
-        createdAt: today,
-        updatedAt: today,
+        completedAt: completed ? now : null,
+        createdAt: now,
+        updatedAt: now,
       ));
     }
 
-    await _updateDailyCompletion();
+    await _updateDailyCompletion(dateStr);
     return result;
   }
 
-  Future<void> _updateDailyCompletion() async {
+  Future<void> _updateDailyCompletion(String dateStr) async {
     final db = await database;
-    final today = DateTime.now();
-    final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-    final start = DateTime(today.year, today.month, today.day).toIso8601String();
-    final end = DateTime(today.year, today.month, today.day, 23, 59, 59).toIso8601String();
+    final parts = dateStr.split('-').map(int.parse).toList();
+    final year = parts[0];
+    final month = parts[1];
+    final day = parts[2];
+    final start = DateTime(year, month, day).toIso8601String();
+    final end = DateTime(year, month, day, 23, 59, 59).toIso8601String();
 
     // Count tasks that existed before end of today (created today or earlier) and not deleted
     final totalResult = await db.rawQuery(
@@ -364,7 +367,7 @@ class DatabaseHelper {
 
     for (final row in completions) {
       final date = DateTime.parse(row['date'] as String).dateOnly;
-      final rate = row['completionRate'] as double;
+      final rate = (row['completionRate'] as num).toDouble();
 
       if (!checkedToday) {
         if (date.isAtSameMomentAs(currentDate) || date.isAtSameMomentAs(currentDate.subtract(const Duration(days: 1)))) {
@@ -417,7 +420,7 @@ class DatabaseHelper {
 
     for (final row in completions) {
       final date = DateTime.parse(row['date'] as String).dateOnly;
-      final rate = row['completionRate'] as double;
+      final rate = (row['completionRate'] as num).toDouble();
 
       if (rate >= 0.5) {
         if (previousDate == null || date.difference(previousDate).inDays == 1) {
@@ -447,12 +450,12 @@ class DatabaseHelper {
 
     final completedMap = {
       for (var row in completedResult)
-        (row['category'] ?? 'Other') as String: (row['completed'] as int?) ?? 0
+        (row['category'] ?? 'Other') as String: (row['completed'] as num?)?.toInt() ?? 0
     };
 
     return tasksResult.map((row) {
       final category = (row['category'] ?? 'Other') as String;
-      final total = (row['total'] as int?) ?? 0;
+      final total = (row['total'] as num?)?.toInt() ?? 0;
       final completed = completedMap[category] ?? 0;
       return CategoryStat(category: category, total: total, completed: completed);
     }).toList();
@@ -462,7 +465,7 @@ class DatabaseHelper {
 
   Future<String> insertTaskLog(TaskLogModel log) async {
     final db = await database;
-    await db.insert('task_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('task_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.abort);
     return log.id;
   }
 

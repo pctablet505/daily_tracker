@@ -160,63 +160,9 @@ class TemplatesScreen extends ConsumerWidget {
     final allTasks = [...template.dos, ...template.donts];
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Apply "${template.name}"?'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (template.description != null) ...[
-                  Text(
-                    template.description!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                Text('This will add ${allTasks.length} tasks to your today list:'),
-                const SizedBox(height: 12),
-                if (template.dos.isNotEmpty) ...[
-                  Text(
-                    'DOs:',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  ...template.dos.map((task) => _buildTaskPreview(context, task, Icons.check_circle_outline)),
-                  const SizedBox(height: 12),
-                ],
-                if (template.donts.isNotEmpty) ...[
-                  Text(
-                    'DON\'Ts:',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  ...template.donts.map((task) => _buildTaskPreview(context, task, Icons.block)),
-                ],
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Apply'),
-          ),
-        ],
+      builder: (dialogContext) => _TemplateApplyDialog(
+        template: template,
+        allTasks: allTasks,
       ),
     );
 
@@ -259,6 +205,14 @@ class TemplatesScreen extends ConsumerWidget {
           );
         }
       } catch (e) {
+        // Rollback: delete any tasks that were successfully created before the failure
+        for (final id in createdIds) {
+          try {
+            await actions.deleteTask(id);
+          } catch (_) {
+            // Best-effort cleanup
+          }
+        }
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to apply template: $e')),
@@ -266,6 +220,78 @@ class TemplatesScreen extends ConsumerWidget {
         }
       }
     }
+  }
+}
+
+class _TemplateApplyDialog extends StatelessWidget {
+  final _TaskTemplate template;
+  final List<_TemplateTask> allTasks;
+
+  const _TemplateApplyDialog({
+    required this.template,
+    required this.allTasks,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Apply "${template.name}"?'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (template.description != null) ...[
+                Text(
+                  template.description!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text('This will add ${allTasks.length} tasks to your today list:'),
+              const SizedBox(height: 12),
+              if (template.dos.isNotEmpty) ...[
+                Text(
+                  'DOs:',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ...template.dos.map((task) => _buildTaskPreview(context, task, Icons.check_circle_outline)),
+                const SizedBox(height: 12),
+              ],
+              if (template.donts.isNotEmpty) ...[
+                Text(
+                  'DON\'Ts:',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ...template.donts.map((task) => _buildTaskPreview(context, task, Icons.block)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Apply'),
+        ),
+      ],
+    );
   }
 
   Widget _buildTaskPreview(BuildContext context, _TemplateTask task, IconData icon) {

@@ -31,7 +31,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final tasksAsync = ref.watch(tasksForDateProvider(_selectedDay ?? DateTime.now()));
+    final tasksAsync = ref.watch(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),

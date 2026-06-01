@@ -257,7 +257,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               itemCount: activeLogs.length,
               itemBuilder: (context, index) {
                 final log = activeLogs[index];
-                final task = taskMap[log.taskId]!;
+                final task = taskMap[log.taskId];
+                if (task == null) {
+                  // Task was deleted but log remains — skip orphaned log
+                  return const SizedBox.shrink();
+                }
                 final taskTitle = task.title;
                 final category = task.category ?? 'Other';
 

@@ -639,7 +639,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
   Widget _buildCompletedData(ColorScheme colorScheme) {
     return Consumer(
       builder: (context, ref, child) {
-        final today = DateTime.now();
+        final today = DateTime.now().dateOnly;
         final logAsync = ref.watch(taskLogProvider(TaskLogParam(widget.task.id, today)));
 
         return logAsync.when(
@@ -726,8 +726,10 @@ class _TaskCardState extends ConsumerState<TaskCard> {
       }
 
       final actions = ref.read(taskActionsProvider);
-      // saveTaskLog auto-updates task completion when log.isCompleted=true
-      // and date is today, so we do NOT call toggleCompletion separately.
+      // Mark task as completed first (creates today's log), then update log with data
+      if (!task.isCompleted) {
+        await actions.toggleCompletion(task);
+      }
       await actions.saveTaskLog(TaskLogModel(
         id: IdGenerator.generate(),
         taskId: task.id,

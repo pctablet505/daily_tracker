@@ -1,11 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:daily_tracker/services/notification/quiet_hours_service.dart';
 import 'package:daily_tracker/core/utils/crypto_utils.dart';
 import 'package:daily_tracker/core/utils/id_generator.dart';
 import 'package:daily_tracker/core/extensions/date_extensions.dart';
 
 void main() {
-  group('QuietHoursService Adversarial Tests', () {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const channel = MethodChannel('plugins.flutter.io/shared_preferences');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (call) async {
+    if (call.method == 'getAll') return <String, dynamic>{};
+    if (call.method == 'setString') return true;
+    return null;
+  });
+  group('QuietHoursService Tests', () {
     final service = QuietHoursService();
 
     // Helper to set quiet hours in SharedPreferences
@@ -30,7 +40,7 @@ void main() {
     });
   });
 
-  group('CryptoUtils Adversarial Tests', () {
+  group('CryptoUtils Tests', () {
     test('hashPin with empty string', () {
       final hash = CryptoUtils.hashPin('');
       expect(hash.length, equals(64));
@@ -73,7 +83,7 @@ void main() {
     });
   });
 
-  group('IdGenerator Adversarial Tests', () {
+  group('IdGenerator Tests', () {
     test('generates unique IDs', () {
       final ids = <String>{};
       for (int i = 0; i < 1000; i++) {
@@ -94,7 +104,7 @@ void main() {
     });
   });
 
-  group('DateTimeExtensions Adversarial Tests', () {
+  group('DateTimeExtensions Tests', () {
     test('dateOnly strips all time components', () {
       final dt = DateTime(2024, 6, 15, 23, 59, 59, 999, 999);
       final result = dt.dateOnly;
@@ -110,11 +120,9 @@ void main() {
       expect(justBeforeMidnight.isToday, isFalse);
     });
 
-    test('isYesterday at year boundary', () {
-      final jan1 = DateTime(2025, 1, 1);
-      final dec31 = DateTime(2024, 12, 31);
-      // These are pure dates, time doesn't matter for isYesterday
-      expect(dec31.isYesterday, isTrue);
+    test('isYesterday relative to today', () {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1)).dateOnly;
+      expect(yesterday.isYesterday, isTrue);
     });
 
     test('isSameDay with different times on same day', () {

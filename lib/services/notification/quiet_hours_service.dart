@@ -9,8 +9,9 @@ class QuietHoursService {
 
     if (startStr == null || endStr == null) return false;
 
-    final startParts = startStr.split(':').map(int.parse).toList();
-    final endParts = endStr.split(':').map(int.parse).toList();
+    final startParts = _parseTimeParts(startStr);
+    final endParts = _parseTimeParts(endStr);
+    if (startParts == null || endParts == null) return false;
 
     final startMinutes = startParts[0] * 60 + startParts[1];
     final endMinutes = endParts[0] * 60 + endParts[1];
@@ -32,7 +33,8 @@ class QuietHoursService {
     final endStr = prefs.getString(AppConstants.prefQuietHoursEnd);
     if (endStr == null) return scheduledTime;
 
-    final endParts = endStr.split(':').map(int.parse).toList();
+    final endParts = _parseTimeParts(endStr);
+    if (endParts == null) return scheduledTime;
 
     // Preserve seconds/milliseconds from original scheduled time
     var adjusted = DateTime(
@@ -52,5 +54,19 @@ class QuietHoursService {
     }
 
     return adjusted;
+  }
+
+  /// Parses 'HH:MM' format safely. Returns null if malformed.
+  List<int>? _parseTimeParts(String timeStr) {
+    try {
+      final parts = timeStr.split(':');
+      if (parts.length != 2) return null;
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+      if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+      return [hour, minute];
+    } catch (_) {
+      return null;
+    }
   }
 }

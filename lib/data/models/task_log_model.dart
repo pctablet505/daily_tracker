@@ -77,7 +77,7 @@ class TaskLogModel extends Equatable {
       mediaPath: map['mediaPath'] as String?,
       createdAt: DateTime.parse(map['createdAt'] as String),
       updatedAt: DateTime.parse(map['updatedAt'] as String),
-      syncStatus: map['syncStatus'] as String? ?? 'synced',
+      syncStatus: map['syncStatus'] as String? ?? 'pending',
     );
   }
 

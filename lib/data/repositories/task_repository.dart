@@ -125,15 +125,6 @@ class TaskRepository {
     } else {
       await _db.insertTaskLog(log);
     }
-    
-    // Auto-update task completion if this log is for today
-    final todayStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
-    if (log.date == todayStr) {
-      final task = await _db.getTask(log.taskId);
-      if (task != null && task.isCompleted != log.isCompleted) {
-        await _db.toggleTaskCompletion(log.taskId, log.isCompleted);
-      }
-    }
   }
 
   Future<List<TaskLogModel>> getAllTaskLogs() => _db.getAllTaskLogs();

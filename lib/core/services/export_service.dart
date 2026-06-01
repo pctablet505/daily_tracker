@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../data/local/database_helper.dart';
@@ -81,46 +80,58 @@ class ExportService {
   }
 
   Future<bool> importFromJson(String jsonString) async {
-    try {
-      final data = jsonDecode(jsonString) as Map<String, dynamic>;
-      final version = data['version'] as int? ?? 1;
+    final data = jsonDecode(jsonString) as Map<String, dynamic>;
+    final version = data['version'] as int? ?? 1;
 
-      if (version != 1 && version != 2) {
-        throw UnsupportedError('Unsupported backup version: $version');
-      }
-
-      final tasksData = data['tasks'] as List<dynamic>? ?? [];
-      final completionsData = data['completions'] as List<dynamic>? ?? [];
-      final taskLogsData = data['taskLogs'] as List<dynamic>? ?? [];
-
-      // Wipe existing data before import to prevent duplicates
-      await _db.wipeAllData();
-
-      for (final taskJson in tasksData) {
-        final task = TaskModel.fromMap(taskJson as Map<String, dynamic>);
-        if (task.id.isNotEmpty && task.title.isNotEmpty) {
-          await _db.insertTask(task);
-        }
-      }
-
-      for (final completionJson in completionsData) {
-        final completion = DailyCompletionModel.fromMap(completionJson as Map<String, dynamic>);
-        if (completion.id.isNotEmpty) {
-          await _db.upsertDailyCompletion(completion);
-        }
-      }
-
-      for (final logJson in taskLogsData) {
-        final log = TaskLogModel.fromMap(logJson as Map<String, dynamic>);
-        if (log.id.isNotEmpty && log.taskId.isNotEmpty) {
-          await _db.insertTaskLog(log);
-        }
-      }
-
-      return true;
-    } catch (e) {
-      debugPrint('Import failed: $e');
-      return false;
+    if (version != 1 && version != 2) {
+      throw UnsupportedError('Unsupported backup version: $version');
     }
+
+    final tasksData = data['tasks'] as List<dynamic>? ?? [];
+    final completionsData = data['completions'] as List<dynamic>? ?? [];
+    final taskLogsData = data['taskLogs'] as List<dynamic>? ?? [];
+
+    // Validate ALL data BEFORE touching the database to ensure atomicity
+    final tasks = <TaskModel>[];
+    for (final taskJson in tasksData) {
+      final task = TaskModel.fromMap(taskJson as Map<String, dynamic>);
+      if (task.id.isEmpty || task.title.isEmpty) {
+        throw FormatException('Invalid task: empty id or title');
+      }
+      tasks.add(task);
+    }
+
+    final completions = <DailyCompletionModel>[];
+    for (final completionJson in completionsData) {
+      final completion = DailyCompletionModel.fromMap(completionJson as Map<String, dynamic>);
+      if (completion.id.isEmpty) {
+        throw FormatException('Invalid completion: empty id');
+      }
+      completions.add(completion);
+    }
+
+    final logs = <TaskLogModel>[];
+    for (final logJson in taskLogsData) {
+      final log = TaskLogModel.fromMap(logJson as Map<String, dynamic>);
+      if (log.id.isEmpty || log.taskId.isEmpty) {
+        throw FormatException('Invalid task log: empty id or taskId');
+      }
+      logs.add(log);
+    }
+
+    // Atomic import: wipe only after validation, then insert everything
+    await _db.wipeAllData();
+
+    for (final task in tasks) {
+      await _db.insertTask(task);
+    }
+    for (final completion in completions) {
+      await _db.upsertDailyCompletion(completion);
+    }
+    for (final log in logs) {
+      await _db.insertTaskLog(log);
+    }
+
+    return true;
   }
 }

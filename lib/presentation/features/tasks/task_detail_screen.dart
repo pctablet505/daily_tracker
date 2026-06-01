@@ -475,21 +475,22 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       } else {
         final repository = ref.read(taskRepositoryProvider);
         final existing = await repository.getTask(widget.taskId);
-        if (existing != null) {
-          await actions.updateTask(
-            existing,
-            title: _titleController.text.trim(),
-            description: _descriptionController.text.trim().isEmpty
-                ? null
-                : _descriptionController.text.trim(),
-            reminderTime: _reminderTime,
-            isRecurring: _isRecurring,
-            recurrenceRule: _isRecurring ? 'daily' : null,
-            category: _category,
-            taskType: _taskType,
-            priority: _priority,
-          );
+        if (existing == null) {
+          throw StateError('Task no longer exists. It may have been deleted.');
         }
+        await actions.updateTask(
+          existing,
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          reminderTime: _reminderTime,
+          isRecurring: _isRecurring,
+          recurrenceRule: _isRecurring ? 'daily' : null,
+          category: _category,
+          taskType: _taskType,
+          priority: _priority,
+        );
       }
 
       // Save today's log

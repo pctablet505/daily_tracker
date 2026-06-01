@@ -117,7 +117,7 @@ class TaskModel extends Equatable {
           : null,
       isDeleted: (map['isDeleted'] as int? ?? 0) == 1,
       version: map['version'] as int? ?? 1,
-      syncStatus: map['syncStatus'] as String? ?? 'synced',
+      syncStatus: map['syncStatus'] as String? ?? 'pending',
     );
   }
 

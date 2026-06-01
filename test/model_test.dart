@@ -4,7 +4,7 @@ import 'package:daily_tracker/data/models/task_log_model.dart';
 import 'package:daily_tracker/data/models/daily_completion_model.dart';
 
 void main() {
-  group('TaskModel Adversarial Tests', () {
+  group('TaskModel Tests', () {
     test('toMap/fromMap roundtrip preserves all fields', () {
       final original = TaskModel(
         id: 'test-id-123',
@@ -128,7 +128,7 @@ void main() {
     });
   });
 
-  group('TaskLogModel Adversarial Tests', () {
+  group('TaskLogModel Tests', () {
     test('roundtrip with all fields including mediaPath', () {
       final original = TaskLogModel(
         id: 'log-1',
@@ -187,7 +187,7 @@ void main() {
     });
   });
 
-  group('DailyCompletionModel Adversarial Tests', () {
+  group('DailyCompletionModel Tests', () {
     test('roundtrip with edge case values', () {
       final original = DailyCompletionModel(
         id: '2024-06-15',
