@@ -1,8 +1,8 @@
-import 'dart:convert';
 import '../../core/utils/id_generator.dart';
+import '../../core/extensions/date_extensions.dart';
 import '../local/database_helper.dart';
 import '../models/task_model.dart';
-import '../models/sync_queue_model.dart';
+import '../models/task_log_model.dart';
 
 class TaskRepository {
   final DatabaseHelper _db;
@@ -16,6 +16,7 @@ class TaskRepository {
     bool isRecurring = false,
     String? recurrenceRule,
     String? category,
+    String? taskType,
     int priority = 0,
   }) async {
     final now = DateTime.now();
@@ -29,12 +30,12 @@ class TaskRepository {
       isRecurring: isRecurring,
       recurrenceRule: recurrenceRule,
       category: category,
+      taskType: taskType ?? 'checklist',
       priority: priority,
       syncStatus: 'pending',
     );
 
     await _db.insertTask(task);
-    await _addToSyncQueue('create', task);
     return task;
   }
 
@@ -45,6 +46,7 @@ class TaskRepository {
     bool? isRecurring,
     String? recurrenceRule,
     String? category,
+    String? taskType,
     int? priority,
   }) async {
     final updated = task.copyWith(
@@ -54,37 +56,23 @@ class TaskRepository {
       isRecurring: isRecurring,
       recurrenceRule: recurrenceRule,
       category: category,
+      taskType: taskType,
       priority: priority,
       updatedAt: DateTime.now(),
       syncStatus: 'pending',
     );
 
     await _db.updateTask(updated);
-    await _addToSyncQueue('update', updated);
     return updated;
   }
 
   Future<void> deleteTask(String id) async {
     await _db.deleteTask(id);
-    await _addToSyncQueue('delete', TaskModel(
-      id: id,
-      title: '',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      syncStatus: 'pending',
-    ));
   }
 
   Future<void> toggleTaskCompletion(TaskModel task) async {
     final newStatus = !task.isCompleted;
     await _db.toggleTaskCompletion(task.id, newStatus);
-    final updated = task.copyWith(
-      isCompleted: newStatus,
-      completedAt: newStatus ? DateTime.now() : null,
-      updatedAt: DateTime.now(),
-      syncStatus: 'pending',
-    );
-    await _addToSyncQueue('update', updated);
   }
 
   Future<TaskModel?> getTask(String id) => _db.getTask(id);
@@ -100,18 +88,6 @@ class TaskRepository {
   Future<List<TaskModel>> getTasksWithReminders() => _db.getTasksWithReminders();
 
   Future<List<TaskModel>> getRecurringTasks() => _db.getRecurringTasks();
-
-  Future<void> _addToSyncQueue(String operation, TaskModel task) async {
-    final queueItem = SyncQueueModel(
-      id: IdGenerator.generate(),
-      entityType: 'task',
-      entityId: task.id,
-      operation: operation,
-      payload: jsonEncode(task.toMap()),
-      createdAt: DateTime.now(),
-    );
-    await _db.addToSyncQueue(queueItem);
-  }
 
   // Recurring tasks reset
   Future<void> resetRecurringTasksForNewDay() async {
@@ -129,11 +105,38 @@ class TaskRepository {
             syncStatus: 'pending',
           );
           await _db.updateTask(resetTask);
-          await _addToSyncQueue('update', resetTask);
         }
       }
     }
   }
+
+  // Task Logs
+  Future<TaskLogModel?> getTaskLog(String taskId, DateTime date) {
+    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    return _db.getTaskLog(taskId, dateStr);
+  }
+
+  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) => _db.getTaskLogsForTask(taskId);
+
+  Future<void> saveTaskLog(TaskLogModel log) async {
+    final existing = await _db.getTaskLog(log.taskId, log.date);
+    if (existing != null) {
+      await _db.updateTaskLog(log.copyWith(id: existing.id, updatedAt: DateTime.now()));
+    } else {
+      await _db.insertTaskLog(log);
+    }
+    
+    // Auto-update task completion if this log is for today
+    final todayStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+    if (log.date == todayStr) {
+      final task = await _db.getTask(log.taskId);
+      if (task != null && task.isCompleted != log.isCompleted) {
+        await _db.toggleTaskCompletion(log.taskId, log.isCompleted);
+      }
+    }
+  }
+
+  Future<List<TaskLogModel>> getAllTaskLogs() => _db.getAllTaskLogs();
 }
 
 

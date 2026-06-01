@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/update_provider.dart';
 import 'presentation/features/update/update_dialog.dart';
+import 'presentation/features/lock/app_lock_screen.dart';
 import 'presentation/router/app_router.dart';
 
 class DailyTrackerApp extends ConsumerStatefulWidget {
@@ -17,23 +18,34 @@ class DailyTrackerApp extends ConsumerStatefulWidget {
 
 class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
   bool? _hasSeenOnboarding;
+  bool _isLocked = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkOnboarding();
+    _initialize();
   }
 
-  Future<void> _checkOnboarding() async {
+  Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
+    final hasSeenOnboarding = prefs.getBool(AppConstants.prefFirstLaunch) ?? false;
+    final appLockEnabled = prefs.getBool(AppConstants.prefAppLockEnabled) ?? false;
+
     setState(() {
-      _hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+      _hasSeenOnboarding = hasSeenOnboarding;
+      _isLocked = appLockEnabled;
+      _isLoading = false;
     });
+  }
+
+  void _onUnlock() {
+    setState(() => _isLocked = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_hasSeenOnboarding == null) {
+    if (_isLoading || _hasSeenOnboarding == null) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme(null),
@@ -45,6 +57,16 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
 
     final themeState = ref.watch(themeProvider);
     final updateAsync = ref.watch(updateCheckProvider);
+
+    if (_isLocked) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme(null),
+        darkTheme: AppTheme.darkTheme(null),
+        themeMode: themeState.themeMode,
+        home: AppLockScreen(onUnlock: _onUnlock),
+      );
+    }
 
     // Handle update check result
     updateAsync.whenData((update) {

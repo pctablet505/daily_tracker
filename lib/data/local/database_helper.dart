@@ -3,8 +3,10 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/task_model.dart';
+import '../models/task_log_model.dart';
+import '../../core/utils/id_generator.dart';
+import '../../core/extensions/date_extensions.dart';
 import '../models/daily_completion_model.dart';
-import '../models/sync_queue_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -24,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -43,6 +45,7 @@ class DatabaseHelper {
         isRecurring INTEGER NOT NULL DEFAULT 0,
         recurrenceRule TEXT,
         category TEXT,
+        taskType TEXT DEFAULT 'checklist',
         priority INTEGER NOT NULL DEFAULT 0,
         completedAt TEXT,
         isDeleted INTEGER NOT NULL DEFAULT 0,
@@ -63,26 +66,47 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE sync_queue (
+      CREATE TABLE IF NOT EXISTS task_logs (
         id TEXT PRIMARY KEY,
-        entityType TEXT NOT NULL,
-        entityId TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        payload TEXT NOT NULL,
+        taskId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        isCompleted INTEGER NOT NULL DEFAULT 0,
+        completedAt TEXT,
+        comment TEXT,
+        mediaPath TEXT,
         createdAt TEXT NOT NULL,
-        retryCount INTEGER NOT NULL DEFAULT 0,
-        isProcessed INTEGER NOT NULL DEFAULT 0
+        updatedAt TEXT NOT NULL,
+        syncStatus TEXT NOT NULL DEFAULT 'pending'
       )
     ''');
 
     await db.execute('CREATE INDEX idx_tasks_date ON tasks(createdAt)');
     await db.execute('CREATE INDEX idx_tasks_completed ON tasks(isCompleted)');
     await db.execute('CREATE INDEX idx_tasks_deleted ON tasks(isDeleted)');
-    await db.execute('CREATE INDEX idx_sync_queue_processed ON sync_queue(isProcessed)');
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_task_logs_task_date ON task_logs(taskId, date)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle migrations here
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS task_logs (
+          id TEXT PRIMARY KEY,
+          taskId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          isCompleted INTEGER NOT NULL DEFAULT 0,
+          completedAt TEXT,
+          comment TEXT,
+          mediaPath TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          syncStatus TEXT NOT NULL DEFAULT 'pending'
+        )
+      ''');
+      await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_task_logs_task_date ON task_logs(taskId, date)');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE tasks ADD COLUMN taskType TEXT DEFAULT \'checklist\'');
+    }
   }
 
   // ==================== TASKS ====================
@@ -193,6 +217,29 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+
+    // Sync completion to today's task log
+    final today = DateTime.now();
+    final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final existing = await getTaskLog(id, dateStr);
+    if (existing != null) {
+      await updateTaskLog(existing.copyWith(
+        isCompleted: completed,
+        completedAt: completed ? today : null,
+        updatedAt: today,
+      ));
+    } else {
+      await insertTaskLog(TaskLogModel(
+        id: IdGenerator.generate(),
+        taskId: id,
+        date: dateStr,
+        isCompleted: completed,
+        completedAt: completed ? today : null,
+        createdAt: today,
+        updatedAt: today,
+      ));
+    }
+
     await _updateDailyCompletion();
     return result;
   }
@@ -204,8 +251,7 @@ class DatabaseHelper {
     final end = DateTime(today.year, today.month, today.day, 23, 59, 59).toIso8601String();
 
     final totalResult = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM tasks WHERE createdAt >= ? AND createdAt <= ? AND isDeleted = 0',
-      [start, end],
+      'SELECT COUNT(*) as count FROM tasks WHERE isDeleted = 0',
     );
     final completedResult = await db.rawQuery(
       'SELECT COUNT(*) as count FROM tasks WHERE isCompleted = 1 AND completedAt >= ? AND completedAt <= ? AND isDeleted = 0',
@@ -273,47 +319,6 @@ class DatabaseHelper {
       orderBy: 'date ASC',
     );
     return maps.map((m) => DailyCompletionModel.fromMap(m)).toList();
-  }
-
-  // ==================== SYNC QUEUE ====================
-
-  Future<void> addToSyncQueue(SyncQueueModel item) async {
-    final db = await database;
-    await db.insert('sync_queue', item.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  Future<List<SyncQueueModel>> getPendingSyncItems({int limit = 50}) async {
-    final db = await database;
-    final maps = await db.query(
-      'sync_queue',
-      where: 'isProcessed = 0 AND retryCount < 5',
-      orderBy: 'createdAt ASC',
-      limit: limit,
-    );
-    return maps.map((m) => SyncQueueModel.fromMap(m)).toList();
-  }
-
-  Future<void> markSyncItemProcessed(String id) async {
-    final db = await database;
-    await db.update(
-      'sync_queue',
-      {'isProcessed': 1},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> incrementRetryCount(String id) async {
-    final db = await database;
-    await db.rawUpdate(
-      'UPDATE sync_queue SET retryCount = retryCount + 1 WHERE id = ?',
-      [id],
-    );
-  }
-
-  Future<void> clearProcessedSyncItems() async {
-    final db = await database;
-    await db.delete('sync_queue', where: 'isProcessed = 1');
   }
 
   // ==================== ANALYTICS ====================
@@ -394,6 +399,118 @@ class DatabaseHelper {
     return (result.first['avg'] as double?) ?? 0.0;
   }
 
+  Future<int> getBestStreakCount() async {
+    final db = await database;
+    final completions = await db.rawQuery(
+      'SELECT date, completionRate FROM daily_completions ORDER BY date ASC'
+    );
+    if (completions.isEmpty) return 0;
+
+    int bestStreak = 0;
+    int currentStreak = 0;
+    DateTime? previousDate;
+
+    for (final row in completions) {
+      final date = DateTime.parse(row['date'] as String).dateOnly;
+      final rate = row['completionRate'] as double;
+
+      if (rate >= 0.5) {
+        if (previousDate == null || date.difference(previousDate).inDays == 1) {
+          currentStreak++;
+        } else {
+          currentStreak = 1;
+        }
+        if (currentStreak > bestStreak) {
+          bestStreak = currentStreak;
+        }
+      } else {
+        currentStreak = 0;
+      }
+      previousDate = date;
+    }
+    return bestStreak;
+  }
+
+  Future<List<CategoryStat>> getCategoryStats() async {
+    final db = await database;
+    final tasksResult = await db.rawQuery(
+      'SELECT category, COUNT(*) as total FROM tasks WHERE isDeleted = 0 GROUP BY category'
+    );
+    final completedResult = await db.rawQuery(
+      "SELECT category, COUNT(*) as completed FROM tasks WHERE isCompleted = 1 AND isDeleted = 0 GROUP BY category"
+    );
+
+    final completedMap = {
+      for (var row in completedResult)
+        (row['category'] ?? 'Other') as String: (row['completed'] as int?) ?? 0
+    };
+
+    return tasksResult.map((row) {
+      final category = (row['category'] ?? 'Other') as String;
+      final total = (row['total'] as int?) ?? 0;
+      final completed = completedMap[category] ?? 0;
+      return CategoryStat(category: category, total: total, completed: completed);
+    }).toList();
+  }
+
+  // ==================== TASK LOGS ====================
+
+  Future<String> insertTaskLog(TaskLogModel log) async {
+    final db = await database;
+    await db.insert('task_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    return log.id;
+  }
+
+  Future<int> updateTaskLog(TaskLogModel log) async {
+    final db = await database;
+    return await db.update(
+      'task_logs',
+      log.toMap(),
+      where: 'id = ?',
+      whereArgs: [log.id],
+    );
+  }
+
+  Future<TaskLogModel?> getTaskLog(String taskId, String date) async {
+    final db = await database;
+    final maps = await db.query(
+      'task_logs',
+      where: 'taskId = ? AND date = ?',
+      whereArgs: [taskId, date],
+    );
+    if (maps.isEmpty) return null;
+    return TaskLogModel.fromMap(maps.first);
+  }
+
+  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) async {
+    final db = await database;
+    final maps = await db.query(
+      'task_logs',
+      where: 'taskId = ?',
+      orderBy: 'date DESC',
+    );
+    return maps.map((m) => TaskLogModel.fromMap(m)).toList();
+  }
+
+  Future<List<TaskLogModel>> getTaskLogsForDate(String date) async {
+    final db = await database;
+    final maps = await db.query(
+      'task_logs',
+      where: 'date = ?',
+      orderBy: 'createdAt ASC',
+    );
+    return maps.map((m) => TaskLogModel.fromMap(m)).toList();
+  }
+
+  Future<List<TaskLogModel>> getAllTaskLogs() async {
+    final db = await database;
+    final maps = await db.query(
+      'task_logs',
+      orderBy: 'date DESC',
+    );
+    return maps.map((m) => TaskLogModel.fromMap(m)).toList();
+  }
+
   Future<void> close() async {
     final db = await database;
     await db.close();
@@ -401,6 +518,12 @@ class DatabaseHelper {
   }
 }
 
-extension DateTimeExtension on DateTime {
-  DateTime get dateOnly => DateTime(year, month, day);
+class CategoryStat {
+  final String category;
+  final int total;
+  final int completed;
+
+  CategoryStat({required this.category, required this.total, required this.completed});
+
+  double get completionRate => total > 0 ? completed / total : 0.0;
 }

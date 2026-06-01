@@ -9,7 +9,6 @@ import '../features/settings/settings_screen.dart';
 import '../features/tasks/task_detail_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
-final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
   static GoRouter router(bool hasSeenOnboarding) {
@@ -71,10 +70,25 @@ class AppRouter {
         GoRoute(
           path: '/task/:id',
           parentNavigatorKey: _rootNavigatorKey,
-          builder: (context, state) {
+          pageBuilder: (context, state) {
             final taskId = state.pathParameters['id']!;
             final isNew = state.uri.queryParameters['new'] == 'true';
-            return TaskDetailScreen(taskId: taskId, isNew: isNew);
+            return CustomTransitionPage(
+              key: state.pageKey,
+              child: TaskDetailScreen(taskId: taskId, isNew: isNew),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 1),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutExpo,
+                  )),
+                  child: child,
+                );
+              },
+            );
           },
         ),
       ],

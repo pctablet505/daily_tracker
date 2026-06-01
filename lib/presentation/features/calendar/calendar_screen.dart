@@ -23,6 +23,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     _selectedDay = _focusedDay;
   }
 
+  Future<void> _onRefresh() async {
+    ref.invalidate(tasksForDateProvider(_selectedDay ?? DateTime.now()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -76,64 +80,77 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ),
           const Divider(),
           Expanded(
-            child: tasksAsync.when(
-              data: (tasks) {
-                if (tasks.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.event_available_outlined,
-                          size: 48,
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No tasks for ${_selectedDay?.formattedDate ?? 'today'}',
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
+            child: RefreshIndicator(
+              onRefresh: _onRefresh,
+              child: tasksAsync.when(
+                data: (tasks) {
+                  if (tasks.isEmpty) {
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.event_available_outlined,
+                                    size: 48,
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No tasks for ${_selectedDay?.formattedDate ?? 'today'}',
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
                               ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: tasks.length,
-                  itemBuilder: (context, index) {
-                    final task = tasks[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: task.isCompleted,
-                          onChanged: (value) async {
-                            final actions = ref.read(taskActionsProvider);
-                            await actions.toggleCompletion(task);
-                          },
-                        ),
-                        title: Text(
-                          task.title,
-                          style: TextStyle(
-                            decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                            color: task.isCompleted
-                                ? colorScheme.onSurfaceVariant
-                                : colorScheme.onSurface,
+                            ),
                           ),
-                        ),
-                        subtitle: task.reminderTime != null
-                            ? Text(task.reminderTime!.formattedTime)
-                            : null,
-                        trailing: _priorityDot(task.priority, colorScheme),
-                      ),
+                        );
+                      },
                     );
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('Error: $error')),
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = tasks[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: task.isCompleted,
+                            onChanged: (value) async {
+                              final actions = ref.read(taskActionsProvider);
+                              await actions.toggleCompletion(task);
+                            },
+                          ),
+                          title: Text(
+                            task.title,
+                            style: TextStyle(
+                              decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                              color: task.isCompleted
+                                  ? colorScheme.onSurfaceVariant
+                                  : colorScheme.onSurface,
+                            ),
+                          ),
+                          subtitle: task.reminderTime != null
+                              ? Text(task.reminderTime!.formattedTime)
+                              : null,
+                          trailing: _priorityDot(task.priority, colorScheme),
+                        ),
+                      );
+                    },
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => Center(child: Text('Error: $error')),
+              ),
             ),
           ),
         ],

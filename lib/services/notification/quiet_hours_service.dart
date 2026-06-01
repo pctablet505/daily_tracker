@@ -1,0 +1,53 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/constants/app_constants.dart';
+
+class QuietHoursService {
+  Future<bool> isInQuietHours(DateTime time) async {
+    final prefs = await SharedPreferences.getInstance();
+    final startStr = prefs.getString(AppConstants.prefQuietHoursStart);
+    final endStr = prefs.getString(AppConstants.prefQuietHoursEnd);
+
+    if (startStr == null || endStr == null) return false;
+
+    final startParts = startStr.split(':').map(int.parse).toList();
+    final endParts = endStr.split(':').map(int.parse).toList();
+
+    final startMinutes = startParts[0] * 60 + startParts[1];
+    final endMinutes = endParts[0] * 60 + endParts[1];
+    final timeMinutes = time.hour * 60 + time.minute;
+
+    if (startMinutes <= endMinutes) {
+      // Same day range (e.g., 22:00 - 07:00 would be cross-day)
+      return timeMinutes >= startMinutes && timeMinutes < endMinutes;
+    } else {
+      // Cross-day range (e.g., 22:00 - 07:00)
+      return timeMinutes >= startMinutes || timeMinutes < endMinutes;
+    }
+  }
+
+  Future<DateTime> adjustForQuietHours(DateTime scheduledTime) async {
+    if (!await isInQuietHours(scheduledTime)) return scheduledTime;
+
+    final prefs = await SharedPreferences.getInstance();
+    final endStr = prefs.getString(AppConstants.prefQuietHoursEnd);
+    if (endStr == null) return scheduledTime;
+
+    final endParts = endStr.split(':').map(int.parse).toList();
+
+    // Schedule for the next day at the end of quiet hours
+    var adjusted = DateTime(
+      scheduledTime.year,
+      scheduledTime.month,
+      scheduledTime.day,
+      endParts[0],
+      endParts[1],
+    );
+
+    // If quiet hours end is before or at the same time as scheduled, move to next day
+    if (!adjusted.isAfter(scheduledTime)) {
+      adjusted = adjusted.add(const Duration(days: 1));
+    }
+
+    return adjusted;
+  }
+}

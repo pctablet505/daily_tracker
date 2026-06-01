@@ -1,10 +1,20 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/services/dependency_injection.dart';
 import '../../../core/services/export_service.dart';
 import '../../../data/local/database_helper.dart';
+import '../../../services/sync/sync_service.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/task_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../../presentation/features/update/update_dialog.dart';
+import '../../../presentation/features/lock/pin_setup_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -52,19 +62,45 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('App Lock'),
             subtitle: const Text('Require PIN to open app'),
             value: settings.appLockEnabled,
-            onChanged: settingsNotifier.setAppLockEnabled,
+            onChanged: (value) async {
+              if (value) {
+                // Enabling — show PIN setup
+                final success = await PinSetupDialog.show(context);
+                if (success) {
+                  settingsNotifier.setAppLockEnabled(true);
+                }
+              } else {
+                // Disabling — clear PIN
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove(AppConstants.prefAppLockPin);
+                await prefs.setBool(AppConstants.prefBiometricEnabled, false);
+                settingsNotifier.setAppLockEnabled(false);
+                settingsNotifier.setBiometricEnabled(false);
+              }
+            },
           ),
-          SwitchListTile(
-            secondary: const Icon(Icons.fingerprint),
-            title: const Text('Biometric Unlock'),
-            subtitle: const Text('Use fingerprint or face recognition'),
-            value: settings.biometricEnabled,
-            onChanged: settings.biometricEnabled
-                ? settingsNotifier.setBiometricEnabled
-                : null,
+          FutureBuilder<bool>(
+            future: _canUseBiometric(),
+            builder: (context, snapshot) {
+              final canUseBiometric = snapshot.data ?? false;
+              return SwitchListTile(
+                secondary: const Icon(Icons.fingerprint),
+                title: const Text('Biometric Unlock'),
+                subtitle: Text(
+                  canUseBiometric
+                      ? 'Use fingerprint or face recognition'
+                      : 'Not available on this device',
+                ),
+                value: settings.biometricEnabled,
+                onChanged: settings.appLockEnabled && canUseBiometric
+                    ? settingsNotifier.setBiometricEnabled
+                    : null,
+              );
+            },
           ),
           const Divider(),
           _buildSectionHeader(context, 'Data & Sync'),
+          _buildSyncStatusTile(context, ref),
           SwitchListTile(
             secondary: const Icon(Icons.sync_outlined),
             title: const Text('Auto Sync'),
@@ -84,11 +120,7 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Manual Sync'),
             subtitle: const Text('Sync now with Google Drive'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Sync requires Google Sign-In')),
-              );
-            },
+            onTap: () => _showSyncDialog(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.download_outlined),
@@ -96,6 +128,13 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Export as JSON or CSV'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showExportDialog(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload_outlined),
+            title: const Text('Import Data'),
+            subtitle: const Text('Restore from JSON backup'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _importData(context),
           ),
           const Divider(),
           _buildSectionHeader(context, 'Updates'),
@@ -110,11 +149,7 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.system_update),
             title: const Text('Check for Updates'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Update check will be available in the next phase')),
-              );
-            },
+            onTap: () => _checkForUpdates(context, ref),
           ),
           const Divider(),
           _buildSectionHeader(context, 'About'),
@@ -127,6 +162,13 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<bool> _canUseBiometric() async {
+    final localAuth = LocalAuthentication();
+    final canCheck = await localAuth.canCheckBiometrics;
+    final isSupported = await localAuth.isDeviceSupported();
+    return canCheck && isSupported;
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
@@ -213,6 +255,93 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _checkForUpdates(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Checking for updates...'), duration: Duration(seconds: 2)),
+    );
+
+    final service = UpdateService();
+    final update = await service.checkForUpdate();
+
+    if (!context.mounted) return;
+
+    if (update != null) {
+      await UpdateDialog.show(context, update);
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('You are on the latest version')),
+      );
+    }
+  }
+
+  Future<void> _importData(BuildContext context) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      if (file.path == null) return;
+
+      final jsonString = await File(file.path!).readAsString();
+      final exportService = ExportService(getIt<DatabaseHelper>());
+      final success = await exportService.importFromJson(jsonString);
+
+      if (!context.mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Data imported successfully')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import failed. Invalid backup file.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import error: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildSyncStatusTile(BuildContext context, WidgetRef ref) {
+    final authAsync = ref.watch(authStatusProvider);
+    final isSignedIn = authAsync.valueOrNull ?? false;
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(
+        isSignedIn ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+        color: isSignedIn ? colorScheme.primary : colorScheme.onSurfaceVariant,
+      ),
+      title: const Text('Google Drive'),
+      subtitle: Text(
+        isSignedIn ? 'Signed in' : 'Not signed in',
+        style: TextStyle(
+          color: isSignedIn ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showSyncDialog(context, ref),
+    );
+  }
+
+  void _showSyncDialog(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => const _SyncBottomSheet(),
+    ).whenComplete(() {
+      ref.invalidate(authStatusProvider);
+    });
+  }
+
   void _showExportDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -244,6 +373,320 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _SyncBottomSheet extends ConsumerStatefulWidget {
+  const _SyncBottomSheet();
+
+  @override
+  ConsumerState<_SyncBottomSheet> createState() => _SyncBottomSheetState();
+}
+
+class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
+  bool _isLoading = false;
+  String? _lastSyncTime;
+  bool _isSignedIn = false;
+  String? _userEmail;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastSyncTime();
+    _loadAuthState();
+  }
+
+  Future<void> _loadLastSyncTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastSync = prefs.getString(AppConstants.prefLastSyncTime);
+    if (mounted) {
+      setState(() => _lastSyncTime = lastSync);
+    }
+  }
+
+  Future<void> _loadAuthState() async {
+    final syncService = getIt<SyncService>();
+    final signedIn = await syncService.isSignedIn();
+    String? email;
+    if (signedIn) {
+      final user = syncService.currentUser ?? await syncService.signInSilently();
+      email = user?.email;
+    }
+    if (mounted) {
+      setState(() {
+        _isSignedIn = signedIn;
+        _userEmail = email;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Google Drive Sync',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            if (_isSignedIn && _userEmail != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Signed in as: $_userEmail',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (_lastSyncTime != null) ...[
+              Text(
+                'Last sync: ${_lastSyncTime!.substring(0, 16).replaceFirst('T', ' ')}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            FilledButton.icon(
+              onPressed: _isLoading ? null : _performSync,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.upload),
+              label: Text(_isLoading ? 'Syncing...' : 'Upload Sync Data'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _isLoading ? null : _restoreBackup,
+              icon: const Icon(Icons.download),
+              label: const Text('Restore from Google Drive'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (!_isSignedIn) ...[
+              OutlinedButton.icon(
+                onPressed: _isLoading ? null : _signIn,
+                icon: const Icon(Icons.login),
+                label: const Text('Sign in to Google'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+              ),
+            ] else ...[
+              TextButton.icon(
+                onPressed: _isLoading ? null : _signOut,
+                icon: const Icon(Icons.logout, size: 18),
+                label: const Text('Sign out'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _performSync() async {
+    setState(() => _isLoading = true);
+    try {
+      final syncService = getIt<SyncService>();
+      final isSignedIn = await syncService.isSignedIn();
+      if (!isSignedIn) {
+        final account = await syncService.signIn();
+        if (account == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Google Sign-In cancelled')),
+            );
+          }
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _isSignedIn = true;
+            _userEmail = account.email;
+          });
+        }
+      }
+
+      final db = getIt<DatabaseHelper>();
+
+      // Pre-check connectivity so we can show a helpful message when Wi-Fi Only blocks sync
+      final shouldSync = await syncService.shouldSync();
+      if (!shouldSync) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sync skipped: Wi-Fi Only is enabled. Connect to Wi-Fi or disable Wi-Fi Only Sync in Settings.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      final success = await syncService.uploadBackup(db);
+
+      if (!mounted) return;
+      if (success) {
+        await _loadLastSyncTime();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sync completed successfully')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sync failed. Check your Google Sign-In or network connection.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sync error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    setState(() => _isLoading = true);
+    try {
+      final syncService = getIt<SyncService>();
+      final isSignedIn = await syncService.isSignedIn();
+      if (!isSignedIn) {
+        final account = await syncService.signIn();
+        if (account == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Google Sign-In cancelled')),
+            );
+          }
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _isSignedIn = true;
+            _userEmail = account.email;
+          });
+        }
+      }
+
+      final backupData = await syncService.downloadBackup();
+      if (!mounted) return;
+
+      if (backupData == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No backup found on Google Drive')),
+        );
+        return;
+      }
+
+      final db = getIt<DatabaseHelper>();
+      final exportService = ExportService(db);
+      final jsonString = jsonEncode(backupData);
+      final success = await exportService.importFromJson(jsonString);
+
+      if (!mounted) return;
+      if (success) {
+        // Refresh all providers to reload the UI with the restored data
+        ref.read(taskActionsProvider).refreshAllTaskProviders();
+        ref.invalidate(allTaskLogsProvider);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup restored successfully')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to restore backup')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final syncService = getIt<SyncService>();
+      final account = await syncService.signIn();
+      if (!mounted) return;
+      if (account != null) {
+        setState(() {
+          _isSignedIn = true;
+          _userEmail = account.email;
+        });
+        ref.invalidate(authStatusProvider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Signed in as ${account.email}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sign-In cancelled')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign-In error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    setState(() => _isLoading = true);
+    try {
+      final syncService = getIt<SyncService>();
+      await syncService.signOut();
+      if (!mounted) return;
+      setState(() {
+        _isSignedIn = false;
+        _userEmail = null;
+      });
+      ref.invalidate(authStatusProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Signed out')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign-Out error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }
 

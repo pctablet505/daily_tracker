@@ -6,8 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart';
+import 'package:open_filex/open_filex.dart';
 import '../../../core/constants/app_constants.dart';
 
 class UpdateInfo {
@@ -47,8 +46,7 @@ class UpdateService {
 
       final assets = (response.data['assets'] as List);
       final apkAsset = assets.firstWhere(
-        (a) => (a['name'] as String).startsWith(AppConstants.apkAssetPrefix) &&
-            (a['name'] as String).endsWith('.apk'),
+        (a) => (a['name'] as String).toLowerCase().endsWith('.apk'),
         orElse: () => null,
       );
 
@@ -92,6 +90,7 @@ class UpdateService {
   Future<String?> downloadApk(
     String url, {
     required void Function(int received, int total) onProgress,
+    int? expectedSize,
     CancelToken? cancelToken,
   }) async {
     try {
@@ -103,6 +102,20 @@ class UpdateService {
         cancelToken: cancelToken,
         onReceiveProgress: onProgress,
       );
+
+      // Verify file size if expected size is known
+      if (expectedSize != null) {
+        final file = File(filePath);
+        if (await file.exists()) {
+          final actualSize = await file.length();
+          if (actualSize != expectedSize) {
+            debugPrint('APK size mismatch: expected $expectedSize, got $actualSize');
+            await file.delete();
+            return null;
+          }
+        }
+      }
+
       return filePath;
     } catch (e) {
       debugPrint('Download failed: $e');
@@ -240,19 +253,20 @@ class _UpdateDialogState extends State<UpdateDialog> {
           setState(() => _progress = received / total);
         }
       },
+      expectedSize: widget.updateInfo.fileSize,
       cancelToken: _cancelToken,
     );
 
     if (path == null || !mounted) return;
 
-    // Launch system installer using Android Intent
-    final intent = AndroidIntent(
-      action: 'action_view',
-      data: 'file://$path',
-      type: 'application/vnd.android.package-archive',
-      flags: [Flag.FLAG_GRANT_READ_URI_PERMISSION, Flag.FLAG_ACTIVITY_NEW_TASK],
-    );
-    await intent.launch();
-    Navigator.pop(context);
+    // Launch system installer using OpenFilex (handles FileProvider content URI on Android 10+)
+    final result = await OpenFilex.open(path);
+    if (result.type != ResultType.done && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open installer: ${result.message}')),
+      );
+      return;
+    }
+    if (mounted) Navigator.pop(context);
   }
 }

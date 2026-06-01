@@ -14,6 +14,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
   int _currentPage = 0;
 
+  @override
+  void initState() {
+    super.initState();
+  }
+
   final List<_OnboardingPage> _pages = const [
     _OnboardingPage(
       icon: Icons.check_circle_outline,

@@ -7,10 +7,10 @@ class AppConstants {
   // GitHub Update Config
   static const String githubOwner = 'pctablet505';
   static const String githubRepo = 'daily_tracker';
-  static const String apkAssetPrefix = 'app-github';
+  static const String apkAssetPrefix = 'daily_tracker';
 
   // Sync
-  static const String syncFileName = 'daily_tracker_backup.enc';
+  static const String syncFileName = 'daily_tracker_backup.json';
   static const String syncManifestName = 'manifest.json';
 
   // Preferences Keys
@@ -36,6 +36,20 @@ class AppConstants {
   // Notification Channels
   static const String channelTaskReminders = 'task_reminders';
   static const String channelDailySummary = 'daily_summary';
+
+  // Categories
+  static const List<String> categories = [
+    'Do',
+    'Don\'t',
+    'Personal',
+    'Work',
+    'Health',
+    'Finance',
+    'Learning',
+    'Social',
+    'Home',
+    'Other',
+  ];
 
   // Default Values
   static const int defaultReminderIdStart = 1000;

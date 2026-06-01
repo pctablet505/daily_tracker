@@ -1,9 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/dependency_injection.dart';
+import '../../services/sync/sync_service.dart';
 
 final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
   return SettingsNotifier();
+});
+
+final authStatusProvider = FutureProvider<bool>((ref) async {
+  return getIt<SyncService>().isSignedIn();
 });
 
 class SettingsState {

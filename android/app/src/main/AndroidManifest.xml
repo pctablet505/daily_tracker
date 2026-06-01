@@ -22,6 +22,9 @@
     <!-- Install APK updates (GitHub releases) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Camera for progress photos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <application
         android:label="Daily Tracker"
         android:name="${applicationName}"

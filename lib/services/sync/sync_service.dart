@@ -35,12 +35,32 @@ class SyncService {
     await _googleSignIn.signOut();
   }
 
-  Future<drive.DriveApi?> _getDriveApi() async {
-    final user = _googleSignIn.currentUser;
-    if (user == null) return null;
+  Future<GoogleSignInAccount?> signInSilently() async {
+    try {
+      return await _googleSignIn.signInSilently();
+    } catch (e) {
+      debugPrint('Google Sign-In silent error: $e');
+      return null;
+    }
+  }
 
+  Future<drive.DriveApi> _getDriveApi() async {
+    var user = _googleSignIn.currentUser;
+    if (user == null) {
+      debugPrint('_getDriveApi: currentUser is null, attempting signInSilently...');
+      user = await _googleSignIn.signInSilently();
+    }
+    debugPrint('_getDriveApi: currentUser is ${user == null ? "NULL" : "NOT NULL (email: ${user.email})"}');
+    if (user == null) {
+      throw Exception('Not signed in to Google. Please sign in again.');
+    }
+
+    debugPrint('_getDriveApi: calling authenticatedClient()...');
     final authClient = await _googleSignIn.authenticatedClient();
-    if (authClient == null) return null;
+    debugPrint('_getDriveApi: authClient is ${authClient == null ? "NULL" : "NOT NULL"}');
+    if (authClient == null) {
+      throw Exception('Google Drive authentication failed. Please sign in again.');
+    }
 
     return drive.DriveApi(authClient);
   }
@@ -48,56 +68,77 @@ class SyncService {
   Future<bool> shouldSync() async {
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(AppConstants.prefWifiOnlySync) ?? true;
+    debugPrint('shouldSync: wifiOnly preference = $wifiOnly');
 
     if (wifiOnly) {
       final result = await Connectivity().checkConnectivity();
+      debugPrint('shouldSync: ConnectivityResult from plugin = $result');
       return result == ConnectivityResult.wifi;
     }
     return true;
   }
 
   Future<bool> uploadBackup(DatabaseHelper db) async {
-    if (!await shouldSync()) return false;
+    debugPrint('uploadBackup: checking shouldSync...');
+    final syncCheck = await shouldSync();
+    debugPrint('uploadBackup: shouldSync result = $syncCheck');
+    if (!syncCheck) return false;
 
-    final driveApi = await _getDriveApi();
-    if (driveApi == null) return false;
+    debugPrint('uploadBackup: getting DriveApi...');
+    late final drive.DriveApi driveApi;
+    try {
+      driveApi = await _getDriveApi();
+    } catch (e) {
+      debugPrint('uploadBackup: DriveApi auth failed: $e');
+      return false;
+    }
+    debugPrint('uploadBackup: driveApi obtained successfully');
 
     try {
-      // Get all tasks and serialize
+      debugPrint('uploadBackup: gathering database tasks...');
       final tasks = await db.getAllActiveTasks();
       final completions = await db.getDailyCompletionsRange(
         DateTime.now().subtract(const Duration(days: 365)),
         DateTime.now(),
       );
+      final taskLogs = await db.getAllTaskLogs();
 
       final backupData = {
-        'version': 1,
+        'version': 2,
         'exportedAt': DateTime.now().toIso8601String(),
         'tasks': tasks.map((t) => t.toMap()).toList(),
         'completions': completions.map((c) => c.toMap()).toList(),
+        'taskLogs': taskLogs.map((l) => l.toMap()).toList(),
       };
 
       final jsonString = jsonEncode(backupData);
       final bytes = utf8.encode(jsonString);
 
+      debugPrint('uploadBackup: checking existing backup files on Google Drive...');
       // Check if backup file already exists
       final existingFiles = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: "name='${AppConstants.syncFileName}'",
       );
+      debugPrint('uploadBackup: found ${existingFiles.files?.length ?? 0} existing backup files');
 
       final media = drive.Media(Stream.fromIterable([bytes]), bytes.length);
-      final file = drive.File()
-        ..name = AppConstants.syncFileName
-        ..parents = ['appDataFolder'];
 
       if (existingFiles.files != null && existingFiles.files!.isNotEmpty) {
-        // Update existing file
+        // Update existing file — do NOT set parents in update requests
         final fileId = existingFiles.files!.first.id!;
+        final file = drive.File()..name = AppConstants.syncFileName;
+        debugPrint('uploadBackup: updating existing file $fileId on Google Drive...');
         await driveApi.files.update(file, fileId, uploadMedia: media);
+        debugPrint('uploadBackup: update successful');
       } else {
         // Create new file
+        final file = drive.File()
+          ..name = AppConstants.syncFileName
+          ..parents = ['appDataFolder'];
+        debugPrint('uploadBackup: creating new backup file on Google Drive...');
         await driveApi.files.create(file, uploadMedia: media);
+        debugPrint('uploadBackup: creation successful');
       }
 
       // Update last sync time
@@ -114,8 +155,13 @@ class SyncService {
   Future<Map<String, dynamic>?> downloadBackup() async {
     if (!await shouldSync()) return null;
 
-    final driveApi = await _getDriveApi();
-    if (driveApi == null) return null;
+    late final drive.DriveApi driveApi;
+    try {
+      driveApi = await _getDriveApi();
+    } catch (e) {
+      debugPrint('downloadBackup: DriveApi auth failed: $e');
+      return null;
+    }
 
     try {
       final existingFiles = await driveApi.files.list(

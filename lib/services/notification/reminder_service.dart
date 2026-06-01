@@ -1,5 +1,6 @@
 import '../../data/models/task_model.dart';
 import 'notification_service.dart';
+import 'quiet_hours_service.dart';
 
 class ReminderService {
   static final ReminderService _instance = ReminderService._internal();
@@ -7,6 +8,7 @@ class ReminderService {
   ReminderService._internal();
 
   final NotificationService _notifications = NotificationService();
+  final QuietHoursService _quietHours = QuietHoursService();
 
   Future<void> scheduleTaskReminder(TaskModel task) async {
     if (task.reminderTime == null || task.isCompleted || task.isDeleted) {
@@ -14,11 +16,14 @@ class ReminderService {
       return;
     }
 
-    final reminderTime = task.reminderTime!;
+    var reminderTime = task.reminderTime!;
     if (reminderTime.isBefore(DateTime.now())) {
       await cancelTaskReminder(task.id);
       return;
     }
+
+    // Adjust for quiet hours
+    reminderTime = await _quietHours.adjustForQuietHours(reminderTime);
 
     final notificationId = _generateNotificationId(task.id);
 
@@ -43,7 +48,11 @@ class ReminderService {
   }
 
   int _generateNotificationId(String taskId) {
-    // Generate a stable integer hash from the task ID
-    return taskId.hashCode.abs() % 2147483647;
+    // Generate a stable, platform-independent integer hash from the task ID
+    int hash = 0;
+    for (int i = 0; i < taskId.length; i++) {
+      hash = (31 * hash + taskId.codeUnitAt(i)) & 0x7FFFFFFF;
+    }
+    return hash;
   }
 }

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'dart:io';
 import '../../../core/services/dependency_injection.dart';
 import '../../../data/local/database_helper.dart';
 import '../../../data/models/daily_completion_model.dart';
+import '../../providers/task_provider.dart';
+import '../../widgets/common/section_title.dart';
+import '../../widgets/common/stat_card.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
@@ -14,11 +18,15 @@ class AnalyticsScreen extends ConsumerStatefulWidget {
 
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   int _streak = 0;
+  int _bestStreak = 0;
   int _totalTasks = 0;
   int _completedTasks = 0;
   double _avgRate = 0.0;
   bool _isLoading = true;
   List<DailyStat> _weeklyStats = [];
+  List<CategoryStat> _categoryStats = [];
+  int _todayTotal = 0;
+  int _todayCompleted = 0;
 
   @override
   void initState() {
@@ -29,9 +37,16 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   Future<void> _loadStats() async {
     final db = getIt<DatabaseHelper>();
     final streak = await db.getStreakCount();
+    final bestStreak = await db.getBestStreakCount();
     final total = await db.getTotalTasksCount();
     final completed = await db.getCompletedTasksCount();
     final avg = await db.getAverageCompletionRate();
+    final categoryStats = await db.getCategoryStats();
+
+    // Get today's completion
+    final todayCompletion = await db.getDailyCompletion(DateTime.now());
+    final todayTotal = todayCompletion?.totalTasks ?? 0;
+    final todayCompleted = todayCompletion?.completedTasks ?? 0;
 
     // Get last 7 days of completion data
     final now = DateTime.now();
@@ -61,10 +76,14 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     if (mounted) {
       setState(() {
         _streak = streak;
+        _bestStreak = bestStreak;
         _totalTasks = total;
         _completedTasks = completed;
         _avgRate = avg;
         _weeklyStats = stats;
+        _categoryStats = categoryStats;
+        _todayTotal = todayTotal;
+        _todayCompleted = todayCompleted;
         _isLoading = false;
       });
     }
@@ -80,19 +99,23 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _loadStats,
+              onRefresh: () async {
+                await _loadStats();
+                ref.invalidate(allTasksProvider);
+                ref.invalidate(allTaskLogsProvider);
+              },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildSectionTitle('Overview'),
+                    const SectionTitle('Overview'),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _StatCard(
+                          child: StatCard(
                             icon: Icons.local_fire_department,
                             iconColor: Colors.orange,
                             value: '$_streak',
@@ -101,16 +124,16 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _StatCard(
-                            icon: Icons.check_circle,
-                            iconColor: colorScheme.primary,
-                            value: '$_completedTasks',
-                            label: 'Completed',
+                          child: StatCard(
+                            icon: Icons.emoji_events,
+                            iconColor: Colors.amber,
+                            value: '$_bestStreak',
+                            label: 'Best Streak',
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _StatCard(
+                          child: StatCard(
                             icon: Icons.trending_up,
                             iconColor: colorScheme.tertiary,
                             value: '${(_avgRate * 100).toInt()}%',
@@ -119,20 +142,60 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: StatCard(
+                            icon: Icons.check_circle,
+                            iconColor: colorScheme.primary,
+                            value: '$_completedTasks',
+                            label: 'Total Completed',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: StatCard(
+                            icon: Icons.task_alt,
+                            iconColor: colorScheme.secondary,
+                            value: '$_totalTasks',
+                            label: 'Active Tasks',
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 24),
-                    _buildSectionTitle('Weekly Progress'),
+                    const SectionTitle('Weekly Progress'),
                     const SizedBox(height: 12),
                     SizedBox(
                       height: 200,
                       child: _buildWeeklyChart(colorScheme),
                     ),
                     const SizedBox(height: 24),
-                    _buildSectionTitle('Completion Distribution'),
+                    const SectionTitle('Today\'s Completion'),
                     const SizedBox(height: 12),
                     SizedBox(
                       height: 200,
                       child: _buildPieChart(colorScheme),
                     ),
+                    const SizedBox(height: 24),
+                    const SectionTitle('Category Breakdown'),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: _categoryStats.isEmpty ? 60 : _categoryStats.length * 56.0,
+                      child: _categoryStats.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No category data yet',
+                                style: TextStyle(color: colorScheme.onSurfaceVariant),
+                              ),
+                            )
+                          : _buildCategoryChart(colorScheme),
+                    ),
+                    const SizedBox(height: 24),
+                    const SectionTitle('Activity History Log'),
+                    const SizedBox(height: 12),
+                    _buildActivityHistoryFeed(context),
                   ],
                 ),
               ),
@@ -140,12 +203,143 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+  Widget _buildActivityHistoryFeed(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final tasksAsync = ref.watch(allTasksProvider);
+    final logsAsync = ref.watch(allTaskLogsProvider);
+
+    return tasksAsync.when(
+      data: (tasks) {
+        final taskMap = {for (var t in tasks) t.id: t};
+
+        return logsAsync.when(
+          data: (logs) {
+            // Filter logs to only show active log points
+            final activeLogs = logs.where((l) {
+              final taskExists = taskMap.containsKey(l.taskId);
+              final hasData = l.isCompleted ||
+                  (l.comment != null && l.comment!.isNotEmpty) ||
+                  (l.mediaPath != null && l.mediaPath!.isNotEmpty);
+              return taskExists && hasData;
+            }).toList();
+
+            if (activeLogs.isEmpty) {
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.history_toggle_off,
+                          size: 48,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No tracking history logged yet',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: activeLogs.length,
+              itemBuilder: (context, index) {
+                final log = activeLogs[index];
+                final task = taskMap[log.taskId]!;
+                final taskTitle = task.title;
+                final category = task.category ?? 'Other';
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              log.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                              color: log.isCompleted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                taskTitle,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                category,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 10,
+                                      color: colorScheme.onSecondaryContainer,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          log.date,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                        if (log.comment != null && log.comment!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            log.comment!,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                        if (log.mediaPath != null && log.mediaPath!.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(log.mediaPath!),
+                              height: 160,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => Center(child: Text('Error loading logs: $err')),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, _) => Center(child: Text('Error loading tasks: $err')),
     );
   }
 
@@ -213,13 +407,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   Widget _buildPieChart(ColorScheme scheme) {
-    final remaining = _totalTasks - _completedTasks;
-    final completed = _completedTasks;
+    final remaining = _todayTotal - _todayCompleted;
+    final completed = _todayCompleted;
 
-    if (_totalTasks == 0) {
+    if (_todayTotal == 0) {
       return Center(
         child: Text(
-          'No tasks yet',
+          'No tasks for today yet',
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
       );
@@ -256,50 +450,53 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       ),
     );
   }
-}
 
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String value;
-  final String label;
-
-  const _StatCard({
-    required this.icon,
-    required this.iconColor,
-    required this.value,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(icon, color: iconColor, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
+  Widget _buildCategoryChart(ColorScheme scheme) {
+    return ListView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _categoryStats.length,
+      itemBuilder: (context, index) {
+        final stat = _categoryStats[index];
+        final rate = stat.completionRate;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    stat.category,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface,
+                    ),
                   ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                  Text(
+                    '${stat.completed}/${stat.total} (${(rate * 100).toInt()}%)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
-            ),
-          ],
-        ),
-      ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: rate,
+                  minHeight: 8,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

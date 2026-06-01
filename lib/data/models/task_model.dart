@@ -11,6 +11,7 @@ class TaskModel extends Equatable {
   final bool isRecurring;
   final String? recurrenceRule;
   final String? category;
+  final String? taskType;
   final int priority;
   final DateTime? completedAt;
   final bool isDeleted;
@@ -28,6 +29,7 @@ class TaskModel extends Equatable {
     this.isRecurring = false,
     this.recurrenceRule,
     this.category,
+    this.taskType = 'checklist',
     this.priority = 0,
     this.completedAt,
     this.isDeleted = false,
@@ -46,6 +48,7 @@ class TaskModel extends Equatable {
     bool? isRecurring,
     String? recurrenceRule,
     String? category,
+    String? taskType,
     int? priority,
     DateTime? completedAt,
     bool? isDeleted,
@@ -63,6 +66,7 @@ class TaskModel extends Equatable {
       isRecurring: isRecurring ?? this.isRecurring,
       recurrenceRule: recurrenceRule ?? this.recurrenceRule,
       category: category ?? this.category,
+      taskType: taskType ?? this.taskType,
       priority: priority ?? this.priority,
       completedAt: completedAt ?? this.completedAt,
       isDeleted: isDeleted ?? this.isDeleted,
@@ -83,6 +87,7 @@ class TaskModel extends Equatable {
       'isRecurring': isRecurring ? 1 : 0,
       'recurrenceRule': recurrenceRule,
       'category': category,
+      'taskType': taskType,
       'priority': priority,
       'completedAt': completedAt?.toIso8601String(),
       'isDeleted': isDeleted ? 1 : 0,
@@ -105,6 +110,7 @@ class TaskModel extends Equatable {
       isRecurring: (map['isRecurring'] as int) == 1,
       recurrenceRule: map['recurrenceRule'] as String?,
       category: map['category'] as String?,
+      taskType: map['taskType'] as String? ?? 'checklist',
       priority: map['priority'] as int? ?? 0,
       completedAt: map['completedAt'] != null
           ? DateTime.parse(map['completedAt'] as String)
@@ -118,7 +124,7 @@ class TaskModel extends Equatable {
   @override
   List<Object?> get props => [
         id, title, description, createdAt, updatedAt, reminderTime,
-        isCompleted, isRecurring, recurrenceRule, category, priority,
+        isCompleted, isRecurring, recurrenceRule, category, taskType, priority,
         completedAt, isDeleted, version, syncStatus,
       ];
 }

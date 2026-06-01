@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:io';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/extensions/date_extensions.dart';
 import '../../../core/utils/id_generator.dart';
-import '../../../data/models/task_model.dart';
+import '../../../data/models/task_log_model.dart';
 import '../../providers/task_provider.dart';
+import '../../../services/media/media_service.dart';
+import '../../widgets/common/section_title.dart';
 
 class TaskDetailScreen extends ConsumerStatefulWidget {
   final String taskId;
@@ -23,18 +27,23 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _commentController = TextEditingController();
   DateTime? _reminderTime;
   bool _isRecurring = false;
-  String? _recurrenceRule;
+  String? _category;
+  String? _taskType;
   int _priority = 0;
   bool _isLoading = false;
+
+  // Daily log state fields
+  TaskLogModel? _todayLog;
+  String? _mediaPath;
+  bool _logCompleted = false;
 
   @override
   void initState() {
     super.initState();
-    if (!widget.isNew) {
-      _loadTask();
-    }
+    _loadTask();
   }
 
   Future<void> _loadTask() async {
@@ -46,9 +55,35 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         _descriptionController.text = task.description ?? '';
         _reminderTime = task.reminderTime;
         _isRecurring = task.isRecurring;
-        _recurrenceRule = task.recurrenceRule;
+        _category = task.category;
+        _taskType = task.taskType;
         _priority = task.priority;
       });
+    }
+
+    // Load today's log
+    final today = DateTime.now();
+    final log = await repository.getTaskLog(widget.taskId, today);
+    if (log != null && mounted) {
+      setState(() {
+        _todayLog = log;
+        _commentController.text = log.comment ?? '';
+        _mediaPath = log.mediaPath;
+        _logCompleted = log.isCompleted;
+      });
+    } else {
+      if (task != null && task.isCompleted) {
+        setState(() {
+          _logCompleted = true;
+        });
+      }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final path = await MediaService.pickAndSaveImage();
+    if (path != null && mounted) {
+      setState(() => _mediaPath = path);
     }
   }
 
@@ -56,6 +91,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _commentController.dispose();
     super.dispose();
   }
 
@@ -103,7 +139,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               minLines: 2,
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Reminder'),
+            const SectionTitle('Reminder'),
             const SizedBox(height: 8),
             Card(
               margin: EdgeInsets.zero,
@@ -142,7 +178,26 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Priority'),
+            const SectionTitle('Category'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...AppConstants.categories.map((cat) {
+                  final isSelected = _category == cat;
+                  return ChoiceChip(
+                    label: Text(cat),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() => _category = selected ? cat : null);
+                    },
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const SectionTitle('Priority'),
             const SizedBox(height: 8),
             SegmentedButton<int>(
               segments: const [
@@ -168,6 +223,130 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               },
               multiSelectionEnabled: false,
             ),
+            const SizedBox(height: 24),
+            const SectionTitle('Task Type'),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _taskType,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.category_outlined),
+                hintText: 'Select task type',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'checklist', child: Text('Checklist')),
+                DropdownMenuItem(value: 'numeric', child: Text('Numeric (e.g. weight)')),
+                DropdownMenuItem(value: 'text', child: Text('Text (e.g. notes)')),
+                DropdownMenuItem(value: 'photo', child: Text('Photo (e.g. progress pic)')),
+              ],
+              onChanged: (value) => setState(() => _taskType = value),
+            ),
+            const SizedBox(height: 24),
+            const SectionTitle("Today's Entry & Progress"),
+            const SizedBox(height: 8),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Completed for Today"),
+                      subtitle: const Text("Mark this task as done today"),
+                      value: _logCompleted,
+                      onChanged: (value) => setState(() => _logCompleted = value ?? false),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _commentController,
+                      decoration: const InputDecoration(
+                        labelText: "Comment / Value (e.g. weight, notes)",
+                        hintText: "Enter weight, interactions, comments...",
+                        prefixIcon: Icon(Icons.note_alt_outlined),
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "Media / Photo Upload",
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_mediaPath == null)
+                      OutlinedButton.icon(
+                        onPressed: _pickImage,
+                        icon: const Icon(Icons.add_a_photo_outlined),
+                        label: const Text("Attach Photo"),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(_mediaPath!),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              TextButton.icon(
+                                onPressed: _pickImage,
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text("Change"),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                onPressed: () => setState(() => _mediaPath = null),
+                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                label: const Text("Remove", style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const SectionTitle("Historical Logs"),
+            const SizedBox(height: 8),
+            Consumer(
+              builder: (context, ref, child) {
+                final historyAsync = ref.watch(taskLogHistoryProvider(widget.taskId));
+                return historyAsync.when(
+                  data: (logs) {
+                    if (logs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            "No historical logs recorded yet",
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: logs.map((log) => _buildHistoryCard(context, log)).toList(),
+                    );
+                  },
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (err, _) => Center(child: Text("Error: $err")),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -192,13 +371,52 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.w600,
-          ),
+  Widget _buildHistoryCard(BuildContext context, TaskLogModel log) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  log.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: log.isCompleted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  log.date,
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            if (log.comment != null && log.comment!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                log.comment!,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ],
+            if (log.mediaPath != null && log.mediaPath!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(log.mediaPath!),
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -230,8 +448,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     try {
       final actions = ref.read(taskActionsProvider);
 
+      String currentTaskId = widget.taskId;
       if (widget.isNew) {
-        await actions.createTask(
+        final task = await actions.createTask(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim().isEmpty
               ? null
@@ -239,8 +458,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
           reminderTime: _reminderTime,
           isRecurring: _isRecurring,
           recurrenceRule: _isRecurring ? 'daily' : null,
+          category: _category,
+          taskType: _taskType,
           priority: _priority,
         );
+        currentTaskId = task.id;
       } else {
         final repository = ref.read(taskRepositoryProvider);
         final existing = await repository.getTask(widget.taskId);
@@ -254,10 +476,29 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             reminderTime: _reminderTime,
             isRecurring: _isRecurring,
             recurrenceRule: _isRecurring ? 'daily' : null,
+            category: _category,
+            taskType: _taskType,
             priority: _priority,
           );
         }
       }
+
+      // Save today's log
+      final today = DateTime.now();
+      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      
+      final log = TaskLogModel(
+        id: _todayLog?.id ?? IdGenerator.generate(),
+        taskId: currentTaskId,
+        date: dateStr,
+        isCompleted: _logCompleted,
+        completedAt: _logCompleted ? (_todayLog?.completedAt ?? today) : null,
+        comment: _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+        mediaPath: _mediaPath,
+        createdAt: _todayLog?.createdAt ?? today,
+        updatedAt: today,
+      );
+      await actions.saveTaskLog(log);
 
       if (mounted) {
         context.pop();

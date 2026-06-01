@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../data/local/database_helper.dart';
 import '../../data/models/task_model.dart';
 import '../../data/models/daily_completion_model.dart';
+import '../../data/models/task_log_model.dart';
 
 class ExportService {
   final DatabaseHelper _db;
@@ -17,12 +19,14 @@ class ExportService {
       DateTime.now().subtract(const Duration(days: 365)),
       DateTime.now(),
     );
+    final taskLogs = await _db.getAllTaskLogs();
 
     final exportData = {
-      'version': 1,
+      'version': 2,
       'exportedAt': DateTime.now().toIso8601String(),
       'tasks': tasks.map((t) => t.toMap()).toList(),
       'completions': completions.map((c) => c.toMap()).toList(),
+      'taskLogs': taskLogs.map((l) => l.toMap()).toList(),
     };
 
     return jsonEncode(exportData);
@@ -68,12 +72,13 @@ class ExportService {
       final data = jsonDecode(jsonString) as Map<String, dynamic>;
       final version = data['version'] as int? ?? 1;
 
-      if (version != 1) {
+      if (version != 1 && version != 2) {
         throw UnsupportedError('Unsupported backup version: $version');
       }
 
       final tasksData = data['tasks'] as List<dynamic>? ?? [];
       final completionsData = data['completions'] as List<dynamic>? ?? [];
+      final taskLogsData = data['taskLogs'] as List<dynamic>? ?? [];
 
       for (final taskJson in tasksData) {
         final task = TaskModel.fromMap(taskJson as Map<String, dynamic>);
@@ -85,9 +90,14 @@ class ExportService {
         await _db.upsertDailyCompletion(completion);
       }
 
+      for (final logJson in taskLogsData) {
+        final log = TaskLogModel.fromMap(logJson as Map<String, dynamic>);
+        await _db.insertTaskLog(log);
+      }
+
       return true;
     } catch (e) {
-      print('Import failed: $e');
+      debugPrint('Import failed: $e');
       return false;
     }
   }
