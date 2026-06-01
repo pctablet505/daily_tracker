@@ -31,6 +31,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   void initState() {
     super.initState();
     _today = DateTime.now().dateOnly;
+    // Reset global filter providers so they don't persist across visits
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(searchQueryProvider.notifier).state = '';
+      ref.read(selectedCategoryProvider.notifier).state = null;
+    });
   }
 
   @override
@@ -406,6 +411,26 @@ class _TaskCardState extends ConsumerState<TaskCard> {
   final _commentController = TextEditingController();
   String? _photoPath;
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncControllers();
+  }
+
+  @override
+  void didUpdateWidget(TaskCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.task.id != widget.task.id) {
+      _syncControllers();
+    }
+  }
+
+  void _syncControllers() {
+    _valueController.clear();
+    _commentController.clear();
+    _photoPath = null;
+  }
 
   @override
   void dispose() {

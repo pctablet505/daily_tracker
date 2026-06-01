@@ -31,7 +31,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   DateTime? _reminderTime;
   bool _isRecurring = false;
   String? _category;
-  String? _taskType;
+  String? _taskType = 'checklist';
   int _priority = 0;
   bool _isLoading = false;
 
@@ -422,6 +422,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
   Future<void> _pickReminderTime() async {
     final now = DateTime.now();
+    // Pick date first, then time
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _reminderTime ?? now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+
     final time = await showTimePicker(
       context: context,
       initialTime: _reminderTime != null
@@ -430,8 +439,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
 
     if (time != null && mounted) {
-      final date = DateTime(now.year, now.month, now.day, time.hour, time.minute);
-      setState(() => _reminderTime = date);
+      final reminder = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      setState(() => _reminderTime = reminder);
     }
   }
 

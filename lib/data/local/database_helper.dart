@@ -113,7 +113,10 @@ class DatabaseHelper {
 
   Future<String> insertTask(TaskModel task) async {
     final db = await database;
-    await db.insert('tasks', task.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    final id = await db.insert('tasks', task.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    if (id <= 0) {
+      throw Exception('Failed to insert task: ${task.title}');
+    }
     return task.id;
   }
 
@@ -151,12 +154,11 @@ class DatabaseHelper {
 
   Future<List<TaskModel>> getTasksForDate(DateTime date) async {
     final db = await database;
-    final start = DateTime(date.year, date.month, date.day).toIso8601String();
-    final end = DateTime(date.year, date.month, date.day, 23, 59, 59).toIso8601String();
+    // In a daily tracker, all active tasks apply to every day.
+    // The 'date' parameter is kept for API compatibility and future per-date scheduling.
     final maps = await db.query(
       'tasks',
-      where: 'createdAt >= ? AND createdAt <= ? AND isDeleted = 0',
-      whereArgs: [start, end],
+      where: 'isDeleted = 0',
       orderBy: 'priority DESC, createdAt ASC',
     );
     return maps.map((m) => TaskModel.fromMap(m)).toList();
@@ -247,11 +249,14 @@ class DatabaseHelper {
   Future<void> _updateDailyCompletion() async {
     final db = await database;
     final today = DateTime.now();
+    final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     final start = DateTime(today.year, today.month, today.day).toIso8601String();
     final end = DateTime(today.year, today.month, today.day, 23, 59, 59).toIso8601String();
 
+    // Count tasks that existed before end of today (created today or earlier) and not deleted
     final totalResult = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM tasks WHERE isDeleted = 0',
+      'SELECT COUNT(*) as count FROM tasks WHERE createdAt <= ? AND isDeleted = 0',
+      [end],
     );
     final completedResult = await db.rawQuery(
       'SELECT COUNT(*) as count FROM tasks WHERE isCompleted = 1 AND completedAt >= ? AND completedAt <= ? AND isDeleted = 0',
@@ -265,7 +270,7 @@ class DatabaseHelper {
     await db.insert(
       'daily_completions',
       {
-        'id': '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}',
+        'id': dateStr,
         'date': start,
         'totalTasks': total,
         'completedTasks': completed,
@@ -497,6 +502,7 @@ class DatabaseHelper {
     final maps = await db.query(
       'task_logs',
       where: 'date = ?',
+      whereArgs: [date],
       orderBy: 'createdAt ASC',
     );
     return maps.map((m) => TaskLogModel.fromMap(m)).toList();
@@ -515,6 +521,13 @@ class DatabaseHelper {
     final db = await database;
     await db.close();
     _database = null;
+  }
+
+  Future<void> wipeAllData() async {
+    final db = await database;
+    await db.delete('tasks');
+    await db.delete('daily_completions');
+    await db.delete('task_logs');
   }
 }
 

@@ -59,7 +59,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
     }
   }
 
-  Future<void> _checkPin() async {
+  Future<void> _checkPin(String pinToCheck) async {
     final prefs = await SharedPreferences.getInstance();
     final savedPin = prefs.getString(AppConstants.prefAppLockPin);
 
@@ -69,11 +69,11 @@ class _AppLockScreenState extends State<AppLockScreen> {
       return;
     }
 
-    if (CryptoUtils.verifyPin(_enteredPin, savedPin)) {
+    if (CryptoUtils.verifyPin(pinToCheck, savedPin)) {
       widget.onUnlock();
-    } else if (_enteredPin == savedPin) {
+    } else if (pinToCheck == savedPin) {
       // Backward compatibility: migrate plaintext PIN to hashed
-      final hashedPin = CryptoUtils.hashPin(_enteredPin);
+      final hashedPin = CryptoUtils.hashPin(pinToCheck);
       await prefs.setString(AppConstants.prefAppLockPin, hashedPin);
       widget.onUnlock();
     } else {
@@ -87,12 +87,13 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
   void _onDigitPressed(String digit) {
     if (_enteredPin.length >= 4) return;
+    final newPin = _enteredPin + digit;
     setState(() {
-      _enteredPin += digit;
+      _enteredPin = newPin;
       _errorMessage = '';
     });
-    if (_enteredPin.length == 4) {
-      _checkPin();
+    if (newPin.length == 4) {
+      _checkPin(newPin);
     }
   }
 

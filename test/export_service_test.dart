@@ -43,6 +43,13 @@ class MockDatabaseHelper implements DatabaseHelper {
   }
 
   @override
+  Future<void> wipeAllData() async {
+    tasks.clear();
+    completions.clear();
+    logs.clear();
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

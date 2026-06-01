@@ -34,13 +34,16 @@ class QuietHoursService {
 
     final endParts = endStr.split(':').map(int.parse).toList();
 
-    // Schedule for the next day at the end of quiet hours
+    // Preserve seconds/milliseconds from original scheduled time
     var adjusted = DateTime(
       scheduledTime.year,
       scheduledTime.month,
       scheduledTime.day,
       endParts[0],
       endParts[1],
+      scheduledTime.second,
+      scheduledTime.millisecond,
+      scheduledTime.microsecond,
     );
 
     // If quiet hours end is before or at the same time as scheduled, move to next day

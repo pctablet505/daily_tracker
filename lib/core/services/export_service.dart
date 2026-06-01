@@ -37,7 +37,14 @@ class ExportService {
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/daily_tracker_backup.json');
     await file.writeAsString(jsonString);
-    await Share.shareXFiles([XFile(file.path)], text: 'Daily Tracker Backup');
+    try {
+      await Share.shareXFiles([XFile(file.path)], text: 'Daily Tracker Backup');
+    } finally {
+      // Clean up temp file after sharing
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 
   Future<String> exportToCsv() async {
@@ -64,7 +71,13 @@ class ExportService {
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/daily_tracker_analytics.csv');
     await file.writeAsString(csvString);
-    await Share.shareXFiles([XFile(file.path)], text: 'Daily Tracker Analytics');
+    try {
+      await Share.shareXFiles([XFile(file.path)], text: 'Daily Tracker Analytics');
+    } finally {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 
   Future<bool> importFromJson(String jsonString) async {
@@ -80,19 +93,28 @@ class ExportService {
       final completionsData = data['completions'] as List<dynamic>? ?? [];
       final taskLogsData = data['taskLogs'] as List<dynamic>? ?? [];
 
+      // Wipe existing data before import to prevent duplicates
+      await _db.wipeAllData();
+
       for (final taskJson in tasksData) {
         final task = TaskModel.fromMap(taskJson as Map<String, dynamic>);
-        await _db.insertTask(task);
+        if (task.id.isNotEmpty && task.title.isNotEmpty) {
+          await _db.insertTask(task);
+        }
       }
 
       for (final completionJson in completionsData) {
         final completion = DailyCompletionModel.fromMap(completionJson as Map<String, dynamic>);
-        await _db.upsertDailyCompletion(completion);
+        if (completion.id.isNotEmpty) {
+          await _db.upsertDailyCompletion(completion);
+        }
       }
 
       for (final logJson in taskLogsData) {
         final log = TaskLogModel.fromMap(logJson as Map<String, dynamic>);
-        await _db.insertTaskLog(log);
+        if (log.id.isNotEmpty && log.taskId.isNotEmpty) {
+          await _db.insertTaskLog(log);
+        }
       }
 
       return true;

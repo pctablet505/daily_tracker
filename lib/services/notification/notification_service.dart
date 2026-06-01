@@ -5,6 +5,14 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../../core/constants/app_constants.dart';
 
+/// Exception thrown when exact alarm permission is denied on Android 12+.
+class ExactAlarmPermissionException implements Exception {
+  final String message;
+  ExactAlarmPermissionException(this.message);
+  @override
+  String toString() => message;
+}
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -80,6 +88,18 @@ class NotificationService {
 
     // Ensure scheduled date is in the future
     if (scheduledDate.isBefore(DateTime.now())) return;
+
+    // Check exact alarm permission on Android 12+ (API 31+)
+    final platform = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (platform != null) {
+      final canSchedule = await platform.canScheduleExactNotifications();
+      if (canSchedule == false) {
+        throw ExactAlarmPermissionException(
+          'Exact alarm permission denied. Enable it in app settings > Alarms & reminders.',
+        );
+      }
+    }
 
     final androidDetails = AndroidNotificationDetails(
       AppConstants.channelTaskReminders,

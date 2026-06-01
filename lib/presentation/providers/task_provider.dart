@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/dependency_injection.dart';
 import '../../data/local/database_helper.dart';
@@ -101,8 +102,14 @@ class TaskActions {
       taskType: taskType,
       priority: priority,
     );
-    await _reminderService.scheduleTaskReminder(task);
+    // Always refresh UI even if reminder scheduling fails
     refreshAllTaskProviders();
+    // Schedule reminder separately so failures don't break task creation
+    try {
+      await _reminderService.scheduleTaskReminder(task);
+    } catch (e) {
+      debugPrint('Reminder scheduling failed for task ${task.id}: $e');
+    }
     return task;
   }
 
@@ -160,18 +167,14 @@ class TaskActions {
   }
 
   Future<void> _runMediaCleanup() async {
-    try {
-      final repository = ref.read(taskRepositoryProvider);
-      final logs = await repository.getAllTaskLogs();
-      final activePaths = logs
-          .map((l) => l.mediaPath)
-          .where((path) => path != null && path.isNotEmpty)
-          .cast<String>()
-          .toList();
-      await MediaService.cleanupUnusedMedia(activePaths);
-    } catch (e) {
-      // Ignore cleanup errors
-    }
+    final repository = ref.read(taskRepositoryProvider);
+    final logs = await repository.getAllTaskLogs();
+    final activePaths = logs
+        .map((l) => l.mediaPath)
+        .where((path) => path != null && path.isNotEmpty)
+        .cast<String>()
+        .toList();
+    await MediaService.cleanupUnusedMedia(activePaths);
   }
 
   void refreshAllTaskProviders() {

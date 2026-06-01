@@ -34,10 +34,8 @@ class DailyCompletionModel extends Equatable {
       date: DateTime.parse(map['date'] as String),
       totalTasks: map['totalTasks'] as int,
       completedTasks: map['completedTasks'] as int,
-      completionRate: map['completionRate'] as double,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String)
-          : null,
+      completionRate: (map['completionRate'] as num).toDouble(),
+      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt'] as String) : null,
     );
   }
 
