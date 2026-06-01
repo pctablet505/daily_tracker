@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/dependency_injection.dart';
 import '../../../core/services/export_service.dart';
@@ -134,7 +136,7 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Import Data'),
             subtitle: const Text('Restore from JSON backup'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _importData(context),
+            onTap: () => _importData(context, ref),
           ),
           const Divider(),
           _buildSectionHeader(context, 'Updates'),
@@ -153,10 +155,37 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           _buildSectionHeader(context, 'About'),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Version'),
-            trailing: Text('1.0.0'),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version = snapshot.hasData
+                  ? '${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                  : '1.0.0';
+              return ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Version'),
+                trailing: Text(version),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.open_in_new),
+            title: const Text('Source Code'),
+            subtitle: const Text('View on GitHub'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final uri = Uri.parse(
+                'https://github.com/${AppConstants.githubOwner}/${AppConstants.githubRepo}',
+              );
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.policy_outlined),
+            title: const Text('Privacy'),
+            subtitle: const Text('Data stays on your device and Google Drive'),
           ),
           const SizedBox(height: 32),
         ],
@@ -196,63 +225,28 @@ class SettingsScreen extends ConsumerWidget {
     SettingsState settings,
     SettingsNotifier notifier,
   ) async {
-    TimeOfDay? start = settings.quietHoursStart != null
+    final initialStart = settings.quietHoursStart != null
         ? TimeOfDay.fromDateTime(settings.quietHoursStart!)
         : const TimeOfDay(hour: 22, minute: 0);
-    TimeOfDay? end = settings.quietHoursEnd != null
+    final initialEnd = settings.quietHoursEnd != null
         ? TimeOfDay.fromDateTime(settings.quietHoursEnd!)
         : const TimeOfDay(hour: 7, minute: 0);
 
-    await showDialog(
+    final result = await showDialog<_QuietHoursResult>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Quiet Hours'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Start Time'),
-              trailing: Text(start?.format(context) ?? '22:00'),
-              onTap: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: start ?? const TimeOfDay(hour: 22, minute: 0),
-                );
-                if (picked != null) start = picked;
-              },
-            ),
-            ListTile(
-              title: const Text('End Time'),
-              trailing: Text(end?.format(context) ?? '07:00'),
-              onTap: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: end ?? const TimeOfDay(hour: 7, minute: 0),
-                );
-                if (picked != null) end = picked;
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final now = DateTime.now();
-              notifier.setQuietHours(
-                DateTime(now.year, now.month, now.day, start!.hour, start!.minute),
-                DateTime(now.year, now.month, now.day, end!.hour, end!.minute),
-              );
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (context) => _QuietHoursDialog(
+        initialStart: initialStart,
+        initialEnd: initialEnd,
       ),
     );
+
+    if (result != null) {
+      final now = DateTime.now();
+      notifier.setQuietHours(
+        DateTime(now.year, now.month, now.day, result.start.hour, result.start.minute),
+        DateTime(now.year, now.month, now.day, result.end.hour, result.end.minute),
+      );
+    }
   }
 
   Future<void> _checkForUpdates(BuildContext context, WidgetRef ref) async {
@@ -275,7 +269,7 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _importData(BuildContext context) async {
+  Future<void> _importData(BuildContext context, WidgetRef ref) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -288,13 +282,62 @@ class SettingsScreen extends ConsumerWidget {
       final file = result.files.first;
       if (file.path == null) return;
 
+      if (!context.mounted) return;
+
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: Icon(Icons.warning_amber, color: Theme.of(context).colorScheme.error),
+          title: const Text('Overwrite Data?'),
+          content: const Text(
+            'Importing will replace all existing tasks, completion history, and logs. This cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !context.mounted) return;
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text('Importing data...'),
+              ],
+            ),
+          ),
+        ),
+      );
+
       final jsonString = await File(file.path!).readAsString();
       final exportService = ExportService(getIt<DatabaseHelper>());
       final success = await exportService.importFromJson(jsonString);
 
       if (!context.mounted) return;
+      Navigator.pop(context); // dismiss loading dialog
 
       if (success) {
+        // Refresh all providers
+        ref.read(taskActionsProvider).refreshAllTaskProviders();
+        ref.invalidate(allTaskLogsProvider);
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Data imported successfully')),
         );
@@ -305,6 +348,8 @@ class SettingsScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
+        // Dismiss loading dialog if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Import error: $e')),
         );
@@ -687,6 +732,88 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+}
+
+class _QuietHoursResult {
+  final TimeOfDay start;
+  final TimeOfDay end;
+  _QuietHoursResult(this.start, this.end);
+}
+
+class _QuietHoursDialog extends StatefulWidget {
+  final TimeOfDay initialStart;
+  final TimeOfDay initialEnd;
+
+  const _QuietHoursDialog({
+    required this.initialStart,
+    required this.initialEnd,
+  });
+
+  @override
+  State<_QuietHoursDialog> createState() => _QuietHoursDialogState();
+}
+
+class _QuietHoursDialogState extends State<_QuietHoursDialog> {
+  late TimeOfDay _start;
+  late TimeOfDay _end;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.initialStart;
+    _end = widget.initialEnd;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Quiet Hours'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: const Text('Start Time'),
+            trailing: Text(_start.format(context)),
+            onTap: () async {
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: _start,
+              );
+              if (picked != null) {
+                setState(() => _start = picked);
+              }
+            },
+          ),
+          ListTile(
+            title: const Text('End Time'),
+            trailing: Text(_end.format(context)),
+            onTap: () async {
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: _end,
+              );
+              if (picked != null) {
+                setState(() => _end = picked);
+              }
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            context,
+            _QuietHoursResult(_start, _end),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
+    );
   }
 }
 
