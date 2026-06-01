@@ -223,39 +223,47 @@ class TemplatesScreen extends ConsumerWidget {
     if (confirmed == true) {
       final actions = ref.read(taskActionsProvider);
       final createdIds = <String>[];
-      for (final task in template.dos) {
-        final created = await actions.createTask(
-          title: task.title,
-          description: task.unit,
-          category: 'Do',
-          taskType: task.taskType,
-        );
-        createdIds.add(created.id);
-      }
-      for (final task in template.donts) {
-        final created = await actions.createTask(
-          title: task.title,
-          description: task.unit,
-          category: 'Don\'t',
-          taskType: task.taskType,
-        );
-        createdIds.add(created.id);
-      }
-      if (context.mounted) {
-        context.go('/today');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added ${allTasks.length} tasks from ${template.name}'),
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () async {
-                for (final id in createdIds) {
-                  await actions.deleteTask(id);
-                }
-              },
+      try {
+        for (final task in template.dos) {
+          final created = await actions.createTask(
+            title: task.title,
+            description: task.unit,
+            category: 'Do',
+            taskType: task.taskType,
+          );
+          createdIds.add(created.id);
+        }
+        for (final task in template.donts) {
+          final created = await actions.createTask(
+            title: task.title,
+            description: task.unit,
+            category: 'Don\'t',
+            taskType: task.taskType,
+          );
+          createdIds.add(created.id);
+        }
+        if (context.mounted) {
+          context.go('/today');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Added ${allTasks.length} tasks from ${template.name}'),
+              action: SnackBarAction(
+                label: 'Undo',
+                onPressed: () async {
+                  for (final id in createdIds) {
+                    await actions.deleteTask(id);
+                  }
+                },
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to apply template: $e')),
+          );
+        }
       }
     }
   }
