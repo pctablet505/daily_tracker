@@ -20,11 +20,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedDay = _focusedDay;
+    _selectedDay = _focusedDay.dateOnly;
   }
 
   Future<void> _onRefresh() async {
-    ref.invalidate(tasksForDateProvider(_selectedDay ?? DateTime.now()));
+    ref.invalidate(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
   }
 
   @override
@@ -45,7 +45,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
             onDaySelected: (selectedDay, focusedDay) {
               setState(() {
-                _selectedDay = selectedDay;
+                _selectedDay = selectedDay.dateOnly;
                 _focusedDay = focusedDay;
               });
             },

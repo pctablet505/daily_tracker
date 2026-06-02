@@ -10,7 +10,17 @@ class CryptoUtils {
     return digest.toString();
   }
 
+  /// Constant-time string comparison to prevent timing attacks.
+  static bool _constantTimeEquals(String a, String b) {
+    if (a.length != b.length) return false;
+    var result = 0;
+    for (var i = 0; i < a.length; i++) {
+      result |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+    }
+    return result == 0;
+  }
+
   static bool verifyPin(String pin, String hash) {
-    return hashPin(pin) == hash;
+    return _constantTimeEquals(hashPin(pin), hash);
   }
 }

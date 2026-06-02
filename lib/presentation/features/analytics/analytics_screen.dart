@@ -35,57 +35,67 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   }
 
   Future<void> _loadStats() async {
-    final db = getIt<DatabaseHelper>();
-    final streak = await db.getStreakCount();
-    final bestStreak = await db.getBestStreakCount();
-    final total = await db.getTotalTasksCount();
-    final completed = await db.getCompletedTasksCount();
-    final avg = await db.getAverageCompletionRate();
-    final categoryStats = await db.getCategoryStats();
+    try {
+      final db = getIt<DatabaseHelper>();
+      final streak = await db.getStreakCount();
+      final bestStreak = await db.getBestStreakCount();
+      final total = await db.getTotalTasksCount();
+      final completed = await db.getCompletedTasksCount();
+      final avg = await db.getAverageCompletionRate();
+      final categoryStats = await db.getCategoryStats();
 
-    // Get today's completion
-    final todayCompletion = await db.getDailyCompletion(DateTime.now());
-    final todayTotal = todayCompletion?.totalTasks ?? 0;
-    final todayCompleted = todayCompletion?.completedTasks ?? 0;
+      // Get today's completion
+      final todayCompletion = await db.getDailyCompletion(DateTime.now());
+      final todayTotal = todayCompletion?.totalTasks ?? 0;
+      final todayCompleted = todayCompletion?.completedTasks ?? 0;
 
-    // Get last 7 days of completion data
-    final now = DateTime.now();
-    final weekStart = now.subtract(const Duration(days: 6));
-    final completions = await db.getDailyCompletionsRange(weekStart, now);
+      // Get last 7 days of completion data
+      final now = DateTime.now();
+      final weekStart = now.subtract(const Duration(days: 6));
+      final completions = await db.getDailyCompletionsRange(weekStart, now);
 
-    final stats = <DailyStat>[];
-    for (int i = 6; i >= 0; i--) {
-      final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
-      final completion = completions.firstWhere(
-        (c) => c.date.year == date.year && c.date.month == date.month && c.date.day == date.day,
-        orElse: () => DailyCompletionModel(
-          id: '',
-          date: date,
-          totalTasks: 0,
-          completedTasks: 0,
-          completionRate: 0.0,
-        ),
-      );
-      stats.add(DailyStat(
-        date: completion.date,
-        completed: completion.completedTasks,
-        total: completion.totalTasks,
-      ));
-    }
+      final stats = <DailyStat>[];
+      for (int i = 6; i >= 0; i--) {
+        final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+        final completion = completions.firstWhere(
+          (c) => c.date.year == date.year && c.date.month == date.month && c.date.day == date.day,
+          orElse: () => DailyCompletionModel(
+            id: '',
+            date: date,
+            totalTasks: 0,
+            completedTasks: 0,
+            completionRate: 0.0,
+          ),
+        );
+        stats.add(DailyStat(
+          date: completion.date,
+          completed: completion.completedTasks,
+          total: completion.totalTasks,
+        ));
+      }
 
-    if (mounted) {
-      setState(() {
-        _streak = streak;
-        _bestStreak = bestStreak;
-        _totalTasks = total;
-        _completedTasks = completed;
-        _avgRate = avg;
-        _weeklyStats = stats;
-        _categoryStats = categoryStats;
-        _todayTotal = todayTotal;
-        _todayCompleted = todayCompleted;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _streak = streak;
+          _bestStreak = bestStreak;
+          _totalTasks = total;
+          _completedTasks = completed;
+          _avgRate = avg;
+          _weeklyStats = stats;
+          _categoryStats = categoryStats;
+          _todayTotal = todayTotal;
+          _todayCompleted = todayCompleted;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // Ensure loading state is cleared so the error surfaces instead of
+      // leaving the user stuck on a spinner. The error still propagates
+      // to the framework's error handler.
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      rethrow;
     }
   }
 

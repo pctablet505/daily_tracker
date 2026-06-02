@@ -176,6 +176,8 @@ class TemplatesScreen extends ConsumerWidget {
             description: task.unit,
             category: 'Do',
             taskType: task.taskType,
+            isRecurring: true,
+            recurrenceRule: 'daily',
           );
           createdIds.add(created.id);
         }
@@ -185,6 +187,8 @@ class TemplatesScreen extends ConsumerWidget {
             description: task.unit,
             category: 'Don\'t',
             taskType: task.taskType,
+            isRecurring: true,
+            recurrenceRule: 'daily',
           );
           createdIds.add(created.id);
         }

@@ -20,6 +20,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
   bool? _hasSeenOnboarding;
   bool _isLocked = false;
   bool _isLoading = true;
+  bool _hasShownUpdateDialog = false;
 
   @override
   void initState() {
@@ -68,9 +69,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
       );
     }
 
-    // Handle update check result
+    // Handle update check result — show dialog once per app session
     updateAsync.whenData((update) {
-      if (update != null && mounted) {
+      if (update != null && mounted && !_hasShownUpdateDialog) {
+        _hasShownUpdateDialog = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           UpdateDialog.show(context, update);
         });

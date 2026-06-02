@@ -495,7 +495,7 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
             const SizedBox(height: 16),
             if (_lastSyncTime != null) ...[
               Text(
-                'Last sync: ${_lastSyncTime!.substring(0, 16).replaceFirst('T', ' ')}',
+                'Last sync: ${_formatLastSyncTime(_lastSyncTime!)}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -732,6 +732,20 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+}
+
+String _formatLastSyncTime(String lastSync) {
+  try {
+    final dt = DateTime.parse(lastSync);
+    final y = dt.year;
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final h = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$y-$m-$d $h:$min';
+  } catch (_) {
+    return lastSync;
   }
 }
 

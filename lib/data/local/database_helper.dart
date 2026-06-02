@@ -532,6 +532,31 @@ class DatabaseHelper {
     await db.delete('daily_completions');
     await db.delete('task_logs');
   }
+
+  /// Atomically imports all data within a single SQLite transaction.
+  /// If any insert fails, the entire import is rolled back.
+  Future<void> importBatch({
+    required List<TaskModel> tasks,
+    required List<DailyCompletionModel> completions,
+    required List<TaskLogModel> logs,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('tasks');
+      await txn.delete('daily_completions');
+      await txn.delete('task_logs');
+
+      for (final task in tasks) {
+        await txn.insert('tasks', task.toMap());
+      }
+      for (final completion in completions) {
+        await txn.insert('daily_completions', completion.toMap());
+      }
+      for (final log in logs) {
+        await txn.insert('task_logs', log.toMap());
+      }
+    });
+  }
 }
 
 class CategoryStat {

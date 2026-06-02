@@ -130,7 +130,7 @@ class BackgroundService {
         networkType: NetworkType.unmetered,
         requiresBatteryNotLow: true,
       ),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
+      existingWorkPolicy: ExistingWorkPolicy.update,
     );
   }
 
@@ -145,7 +145,7 @@ class BackgroundService {
         requiresBatteryNotLow: false,
         requiresCharging: false,
       ),
-      existingWorkPolicy: ExistingWorkPolicy.replace,
+      existingWorkPolicy: ExistingWorkPolicy.update,
     );
   }
 

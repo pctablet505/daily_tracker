@@ -71,13 +71,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         _mediaPath = log.mediaPath;
         _logCompleted = log.isCompleted;
       });
-    } else {
-      if (task != null && task.isCompleted) {
-        setState(() {
-          _logCompleted = true;
-        });
-      }
     }
+    // Note: We do NOT infer today's log completion from task.isCompleted,
+    // because task.isCompleted reflects the last time the task was toggled,
+    // which may be from a previous day. Creating a false log for "today"
+    // would inflate today's completion stats incorrectly.
   }
 
   Future<void> _pickImage() async {

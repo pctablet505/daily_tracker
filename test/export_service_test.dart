@@ -50,6 +50,23 @@ class MockDatabaseHelper implements DatabaseHelper {
   }
 
   @override
+  Future<void> importBatch({
+    required List<TaskModel> tasks,
+    required List<DailyCompletionModel> completions,
+    required List<TaskLogModel> logs,
+  }) async {
+    this.tasks
+      ..clear()
+      ..addAll(tasks);
+    this.completions
+      ..clear()
+      ..addAll(completions);
+    this.logs
+      ..clear()
+      ..addAll(logs);
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

@@ -23,14 +23,14 @@ class TodayScreen extends ConsumerStatefulWidget {
 }
 
 class _TodayScreenState extends ConsumerState<TodayScreen> {
-  late final DateTime _today;
   final _searchController = TextEditingController();
   bool _isSearching = false;
+
+  DateTime get _today => DateTime.now().dateOnly;
 
   @override
   void initState() {
     super.initState();
-    _today = DateTime.now().dateOnly;
     // Reset global filter providers so they don't persist across visits
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(searchQueryProvider.notifier).state = '';
