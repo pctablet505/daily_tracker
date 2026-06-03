@@ -74,7 +74,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
       if (update != null && mounted && !_hasShownUpdateDialog) {
         _hasShownUpdateDialog = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          UpdateDialog.show(context, update);
+          final navContext = rootNavigatorKey.currentState?.context;
+          if (navContext != null && navContext.mounted) {
+            UpdateDialog.show(navContext, update);
+          }
         });
       }
     });

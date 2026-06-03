@@ -54,7 +54,9 @@ class UpdateService {
 
       return UpdateInfo(
         version: latestVersion,
-        changelog: response.data['body'] ?? 'No changelog available',
+        changelog: (response.data['body'] ?? 'No changelog available')
+            .toString()
+            .replaceAll(r'\n', '\n'),
         downloadUrl: apkAsset['browser_download_url'],
         fileSize: apkAsset['size'],
       );
@@ -166,7 +168,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
             const SizedBox(height: 12),
             const Text('What\'s new:', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Flexible(
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.35,
+              ),
               child: SingleChildScrollView(
                 child: MarkdownBody(
                   data: widget.updateInfo.changelog,

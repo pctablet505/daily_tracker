@@ -1,7 +1,7 @@
 name: daily_tracker
 description: "A cross-platform daily task tracker with Google Drive sync and auto-updates."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.6.0
@@ -29,7 +29,7 @@ dependencies:
   connectivity_plus: ^5.0.2
 
   # Notifications
-  flutter_local_notifications: ^14.1.5
+  flutter_local_notifications: ^17.2.3
   timezone: ^0.9.4
   workmanager: ^0.5.2
 

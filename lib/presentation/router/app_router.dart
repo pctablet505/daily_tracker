@@ -8,12 +8,12 @@ import '../features/templates/templates_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/tasks/task_detail_screen.dart';
 
-final _rootNavigatorKey = GlobalKey<NavigatorState>();
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 class AppRouter {
   static GoRouter router(bool hasSeenOnboarding) {
     return GoRouter(
-      navigatorKey: _rootNavigatorKey,
+      navigatorKey: rootNavigatorKey,
       initialLocation: hasSeenOnboarding ? '/today' : '/onboarding',
       routes: [
         GoRoute(
@@ -69,7 +69,7 @@ class AppRouter {
         ),
         GoRoute(
           path: '/task/:id',
-          parentNavigatorKey: _rootNavigatorKey,
+          parentNavigatorKey: rootNavigatorKey,
           pageBuilder: (context, state) {
             final taskId = state.pathParameters['id']!;
             final isNew = state.uri.queryParameters['new'] == 'true';
