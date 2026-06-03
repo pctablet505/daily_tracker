@@ -126,7 +126,10 @@ class TaskActions {
     await repository.deleteTask(id);
     await _reminderService.cancelTaskReminder(id);
     refreshAllTaskProviders();
-    _runMediaCleanup();
+    ref.invalidate(taskLogProvider);
+    ref.invalidate(taskLogHistoryProvider);
+    ref.invalidate(allTaskLogsProvider);
+    await _runMediaCleanup();
   }
 
   Future<TaskModel> updateTask(TaskModel task, {

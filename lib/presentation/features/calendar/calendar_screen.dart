@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:go_router/go_router.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../../../core/extensions/date_extensions.dart';
 import '../../../data/models/task_model.dart';
@@ -122,27 +124,76 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       final task = tasks[index];
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: Checkbox(
-                            value: task.isCompleted,
-                            onChanged: (value) async {
-                              final actions = ref.read(taskActionsProvider);
-                              await actions.toggleCompletion(task);
-                            },
+                        child: Slidable(
+                          key: ValueKey(task.id),
+                          endActionPane: ActionPane(
+                            motion: const ScrollMotion(),
+                            children: [
+                              SlidableAction(
+                                onPressed: (_) => context.push('/task/${task.id}'),
+                                backgroundColor: colorScheme.primary,
+                                foregroundColor: Colors.white,
+                                icon: Icons.edit,
+                                label: 'Edit',
+                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                              ),
+                              SlidableAction(
+                                onPressed: (_) async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Task?'),
+                                      content: const Text('This task will be moved to trash. You can restore it later.'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: Theme.of(ctx).colorScheme.error,
+                                          ),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed == true && context.mounted) {
+                                    final actions = ref.read(taskActionsProvider);
+                                    await actions.deleteTask(task.id);
+                                  }
+                                },
+                                backgroundColor: colorScheme.error,
+                                foregroundColor: Colors.white,
+                                icon: Icons.delete,
+                                label: 'Delete',
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                              ),
+                            ],
                           ),
-                          title: Text(
-                            task.title,
-                            style: TextStyle(
-                              decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                              color: task.isCompleted
-                                  ? colorScheme.onSurfaceVariant
-                                  : colorScheme.onSurface,
+                          child: ListTile(
+                            leading: Checkbox(
+                              value: task.isCompleted,
+                              onChanged: (value) async {
+                                final actions = ref.read(taskActionsProvider);
+                                await actions.toggleCompletion(task);
+                              },
                             ),
+                            title: Text(
+                              task.title,
+                              style: TextStyle(
+                                decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                                color: task.isCompleted
+                                    ? colorScheme.onSurfaceVariant
+                                    : colorScheme.onSurface,
+                              ),
+                            ),
+                            subtitle: task.reminderTime != null
+                                ? Text(task.reminderTime!.formattedTime)
+                                : null,
+                            trailing: _priorityDot(task.priority, colorScheme),
                           ),
-                          subtitle: task.reminderTime != null
-                              ? Text(task.reminderTime!.formattedTime)
-                              : null,
-                          trailing: _priorityDot(task.priority, colorScheme),
                         ),
                       );
                     },

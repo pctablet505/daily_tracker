@@ -458,10 +458,16 @@ class _TaskCardState extends ConsumerState<TaskCard> {
               Row(
                 children: [
                   if (task.taskType == 'checklist')
-                    Checkbox(
-                      value: task.isCompleted,
-                      onChanged: (_) => _toggleChecklist(),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    GestureDetector(
+                      onTap: _toggleChecklist,
+                      behavior: HitTestBehavior.opaque,
+                      child: AbsorbPointer(
+                        child: Checkbox(
+                          value: task.isCompleted,
+                          onChanged: (_) {},
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        ),
+                      ),
                     )
                   else
                     _buildTypeIcon(colorScheme),

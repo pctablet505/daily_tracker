@@ -256,15 +256,27 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                       onChanged: (value) => setState(() => _logCompleted = value ?? false),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _commentController,
-                      decoration: const InputDecoration(
-                        labelText: "Comment / Value (e.g. weight, notes)",
-                        hintText: "Enter weight, interactions, comments...",
-                        prefixIcon: Icon(Icons.note_alt_outlined),
+                    if (_taskType == 'numeric')
+                      TextField(
+                        controller: _commentController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: "Value (e.g. weight, measurement)",
+                          hintText: "Enter a numeric value...",
+                          prefixIcon: Icon(Icons.numbers),
+                        ),
+                        maxLines: 1,
+                      )
+                    else
+                      TextField(
+                        controller: _commentController,
+                        decoration: const InputDecoration(
+                          labelText: "Comment / Notes",
+                          hintText: "Enter notes, interactions, comments...",
+                          prefixIcon: Icon(Icons.note_alt_outlined),
+                        ),
+                        maxLines: 2,
                       ),
-                      maxLines: 2,
-                    ),
                     const SizedBox(height: 16),
                     Text(
                       "Media / Photo Upload",

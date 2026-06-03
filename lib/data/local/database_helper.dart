@@ -132,12 +132,19 @@ class DatabaseHelper {
 
   Future<int> deleteTask(String id) async {
     final db = await database;
-    return await db.update(
+    final result = await db.update(
       'tasks',
       {'isDeleted': 1, 'updatedAt': DateTime.now().toIso8601String(), 'syncStatus': 'pending'},
       where: 'id = ?',
       whereArgs: [id],
     );
+    // Clean up orphaned logs for this task
+    await db.delete('task_logs', where: 'taskId = ?', whereArgs: [id]);
+    // Recalculate today's completion stats since total task count changed
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    await _updateDailyCompletion(dateStr);
+    return result;
   }
 
   Future<int> permanentlyDeleteTask(String id) async {
@@ -147,7 +154,7 @@ class DatabaseHelper {
 
   Future<TaskModel?> getTask(String id) async {
     final db = await database;
-    final maps = await db.query('tasks', where: 'id = ?', whereArgs: [id]);
+    final maps = await db.query('tasks', where: 'id = ? AND isDeleted = 0', whereArgs: [id]);
     if (maps.isEmpty) return null;
     return TaskModel.fromMap(maps.first);
   }
