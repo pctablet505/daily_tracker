@@ -23,7 +23,8 @@ void main() {
       expect(find.text('Add Task'), findsOneWidget);
     });
 
-    testWidgets('renders pending and completed sections', (WidgetTester tester) async {
+    testWidgets('renders pending and completed sections',
+        (WidgetTester tester) async {
       final tasks = [
         TaskModel(
           id: '1',
@@ -148,7 +149,8 @@ Widget _buildTestApp({required List<Override> overrides}) {
             ),
             GoRoute(
               path: '/task/:id',
-              builder: (context, state) => const Scaffold(body: Text('Task Detail')),
+              builder: (context, state) =>
+                  const Scaffold(body: Text('Task Detail')),
             ),
           ],
         );

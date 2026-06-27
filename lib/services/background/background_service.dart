@@ -54,9 +54,12 @@ Future<void> _checkForUpdates() async {
 
     if (update != null) {
       // Store pending update so UI can show it on next launch
-      await prefs.setString(AppConstants.prefPendingUpdateVersion, update.version);
-      await prefs.setString(AppConstants.prefPendingUpdateUrl, update.downloadUrl);
-      await prefs.setString(AppConstants.prefPendingUpdateChangelog, update.changelog);
+      await prefs.setString(
+          AppConstants.prefPendingUpdateVersion, update.version);
+      await prefs.setString(
+          AppConstants.prefPendingUpdateUrl, update.downloadUrl);
+      await prefs.setString(
+          AppConstants.prefPendingUpdateChangelog, update.changelog);
     }
   } catch (e) {
     AppLogger.e('Background update check failed', e);

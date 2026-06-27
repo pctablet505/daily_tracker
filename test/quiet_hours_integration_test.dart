@@ -78,39 +78,55 @@ void main() {
       );
     });
 
-    test('cross-day range 22:00-07:00 treats overnight hours as quiet', () async {
+    test('cross-day range 22:00-07:00 treats overnight hours as quiet',
+        () async {
       await setQuietHours('22:00', '07:00');
 
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 23, 0)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 22, 0)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 16, 6, 59)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 16, 7, 0)), isFalse);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 21, 59)), isFalse);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 16, 12, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 23, 0)), isTrue);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 22, 0)), isTrue);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 16, 6, 59)), isTrue);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 16, 7, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 21, 59)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 16, 12, 0)), isFalse);
     });
 
     test('same-day range 09:00-17:00 treats daytime hours as quiet', () async {
       await setQuietHours('09:00', '17:00');
 
       expect(await service.isInQuietHours(DateTime(2024, 6, 15, 9, 0)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 16, 59)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 8, 59)), isFalse);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 17, 0)), isFalse);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 0, 0)), isFalse);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 23, 59)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 16, 59)), isTrue);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 8, 59)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 17, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 0, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 23, 59)), isFalse);
     });
 
-    test('time exactly at boundary follows half-open interval semantics', () async {
+    test('time exactly at boundary follows half-open interval semantics',
+        () async {
       await setQuietHours('22:00', '07:00');
 
       // Start is inclusive, end is exclusive.
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 22, 0)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 16, 7, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 22, 0)), isTrue);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 16, 7, 0)), isFalse);
 
       await setQuietHours('09:00', '17:00');
 
       expect(await service.isInQuietHours(DateTime(2024, 6, 15, 9, 0)), isTrue);
-      expect(await service.isInQuietHours(DateTime(2024, 6, 15, 17, 0)), isFalse);
+      expect(
+          await service.isInQuietHours(DateTime(2024, 6, 15, 17, 0)), isFalse);
     });
 
     test('malformed time strings fall back to false', () async {
@@ -181,7 +197,8 @@ void main() {
       expect(adjusted, equals(scheduled));
     });
 
-    test('malformed or missing quiet hours leave scheduled time unchanged', () async {
+    test('malformed or missing quiet hours leave scheduled time unchanged',
+        () async {
       final scheduled = DateTime(2024, 6, 15, 23, 30);
 
       expect(await service.adjustForQuietHours(scheduled), equals(scheduled));

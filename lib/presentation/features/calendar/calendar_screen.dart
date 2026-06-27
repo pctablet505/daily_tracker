@@ -27,14 +27,16 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   Future<void> _onRefresh() async {
-    ref.invalidate(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
+    ref.invalidate(
+        tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final tasksAsync = ref.watch(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
+    final tasksAsync = ref
+        .watch(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
@@ -78,7 +80,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(12),
               ),
-              formatButtonTextStyle: TextStyle(color: colorScheme.onPrimaryContainer),
+              formatButtonTextStyle:
+                  TextStyle(color: colorScheme.onPrimaryContainer),
             ),
           ),
           const Divider(),
@@ -93,7 +96,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         return SingleChildScrollView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           child: ConstrainedBox(
-                            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                            constraints: BoxConstraints(
+                                minHeight: constraints.maxHeight),
                             child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -101,14 +105,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                   Icon(
                                     Icons.event_available_outlined,
                                     size: 48,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                    color: colorScheme.onSurfaceVariant
+                                        .withValues(alpha: 0.5),
                                   ),
                                   const SizedBox(height: 12),
                                   Text(
                                     'No tasks for ${_selectedDay?.formattedDate ?? 'today'}',
                                     style: theme.textTheme.bodyLarge?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -131,12 +136,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             motion: const ScrollMotion(),
                             children: [
                               SlidableAction(
-                                onPressed: (_) => context.push('/task/${task.id}'),
+                                onPressed: (_) =>
+                                    context.push('/task/${task.id}'),
                                 backgroundColor: colorScheme.primary,
                                 foregroundColor: Colors.white,
                                 icon: Icons.edit,
                                 label: 'Edit',
-                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                                borderRadius: const BorderRadius.horizontal(
+                                    left: Radius.circular(12)),
                               ),
                               SlidableAction(
                                 onPressed: (_) async {
@@ -144,16 +151,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                     context: context,
                                     builder: (ctx) => AlertDialog(
                                       title: const Text('Delete Task?'),
-                                      content: const Text('This task will be moved to trash. You can restore it later.'),
+                                      content: const Text(
+                                          'This task will be moved to trash. You can restore it later.'),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(ctx, false),
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
                                           child: const Text('Cancel'),
                                         ),
                                         FilledButton(
-                                          onPressed: () => Navigator.pop(ctx, true),
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: Theme.of(ctx).colorScheme.error,
+                                            backgroundColor:
+                                                Theme.of(ctx).colorScheme.error,
                                           ),
                                           child: const Text('Delete'),
                                         ),
@@ -161,7 +172,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                     ),
                                   );
                                   if (confirmed == true && context.mounted) {
-                                    final actions = ref.read(taskActionsProvider);
+                                    final actions =
+                                        ref.read(taskActionsProvider);
                                     await actions.deleteTask(task.id);
                                   }
                                 },
@@ -169,7 +181,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 foregroundColor: Colors.white,
                                 icon: Icons.delete,
                                 label: 'Delete',
-                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                                borderRadius: const BorderRadius.horizontal(
+                                    right: Radius.circular(12)),
                               ),
                             ],
                           ),
@@ -184,7 +197,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Could not update task: $e')),
+                                      SnackBar(
+                                          content: Text(
+                                              'Could not update task: $e')),
                                     );
                                   }
                                 }
@@ -193,7 +208,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             title: Text(
                               task.title,
                               style: TextStyle(
-                                decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                                decoration: task.isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
                                 color: task.isCompleted
                                     ? colorScheme.onSurfaceVariant
                                     : colorScheme.onSurface,

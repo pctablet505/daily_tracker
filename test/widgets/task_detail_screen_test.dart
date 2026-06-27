@@ -44,7 +44,15 @@ class _FakeTaskRepository implements TaskRepository {
   Future<void> deleteTask(String id) async {}
 
   @override
-  Future<TaskModel> updateTask(TaskModel task, {String? title, String? description, DateTime? reminderTime, bool? isRecurring, String? recurrenceRule, String? category, String? taskType, int? priority}) async {
+  Future<TaskModel> updateTask(TaskModel task,
+      {String? title,
+      String? description,
+      DateTime? reminderTime,
+      bool? isRecurring,
+      String? recurrenceRule,
+      String? category,
+      String? taskType,
+      int? priority}) async {
     final updated = task.copyWith(
       title: title,
       description: description,
@@ -64,7 +72,9 @@ class _FakeTaskRepository implements TaskRepository {
 
   @override
   Future<TaskModel?> getTask(String id) async {
-    return _tasks.cast<TaskModel?>().firstWhere((t) => t!.id == id, orElse: () => null);
+    return _tasks
+        .cast<TaskModel?>()
+        .firstWhere((t) => t!.id == id, orElse: () => null);
   }
 
   @override
@@ -72,7 +82,8 @@ class _FakeTaskRepository implements TaskRepository {
   @override
   Future<List<TaskModel>> getAllActiveTasks() async => _tasks;
   @override
-  Future<List<TaskModel>> getPendingTasks() async => _tasks.where((t) => !t.isCompleted).toList();
+  Future<List<TaskModel>> getPendingTasks() async =>
+      _tasks.where((t) => !t.isCompleted).toList();
   @override
   Future<List<TaskModel>> getCompletedTasksForDate(DateTime date) async => [];
   @override
@@ -91,7 +102,8 @@ class _FakeTaskRepository implements TaskRepository {
   }
 
   @override
-  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) async => _logs.where((l) => l.taskId == taskId).toList();
+  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) async =>
+      _logs.where((l) => l.taskId == taskId).toList();
 
   @override
   Future<void> saveTaskLog(TaskLogModel log) async {
@@ -120,7 +132,8 @@ void main() {
       expect(find.text('Create Task'), findsOneWidget);
     });
 
-    testWidgets('shows validation error for empty title', (WidgetTester tester) async {
+    testWidgets('shows validation error for empty title',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         _buildTestApp(
           const TaskDetailScreen(taskId: 'new-task', isNew: true),

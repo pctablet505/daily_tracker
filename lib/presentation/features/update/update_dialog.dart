@@ -79,7 +79,8 @@ class UpdateService {
         if (r < c) return false;
       }
     } catch (e) {
-      AppLogger.e('Version comparison failed (remote=$remote, current=$current)', e);
+      AppLogger.e(
+          'Version comparison failed (remote=$remote, current=$current)', e);
       return false;
     }
     return false;
@@ -113,7 +114,8 @@ class UpdateService {
         if (await file.exists()) {
           final actualSize = await file.length();
           if (actualSize != expectedSize) {
-            AppLogger.e('APK size mismatch: expected $expectedSize, got $actualSize');
+            AppLogger.e(
+                'APK size mismatch: expected $expectedSize, got $actualSize');
             await file.delete();
             return null;
           }
@@ -165,10 +167,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
           children: [
             Text(
               'Version ${widget.updateInfo.version}',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            const Text('What\'s new:', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('What\'s new:',
+                style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -243,7 +247,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (!result.isGranted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Install permission required to update')),
+            const SnackBar(
+                content: Text('Install permission required to update')),
           );
         }
         return;

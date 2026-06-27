@@ -8,12 +8,16 @@ extension DateTimeExtensions on DateTime {
 
   bool get isYesterday {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    return year == yesterday.year && month == yesterday.month && day == yesterday.day;
+    return year == yesterday.year &&
+        month == yesterday.month &&
+        day == yesterday.day;
   }
 
   bool get isTomorrow {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
-    return year == tomorrow.year && month == tomorrow.month && day == tomorrow.day;
+    return year == tomorrow.year &&
+        month == tomorrow.month &&
+        day == tomorrow.day;
   }
 
   bool isSameDay(DateTime other) {
@@ -25,7 +29,8 @@ extension DateTimeExtensions on DateTime {
   }
 
   String get formattedTime {
-    final hour = this.hour > 12 ? this.hour - 12 : (this.hour == 0 ? 12 : this.hour);
+    final hour =
+        this.hour > 12 ? this.hour - 12 : (this.hour == 0 ? 12 : this.hour);
     final period = this.hour >= 12 ? 'PM' : 'AM';
     final minuteStr = minute.toString().padLeft(2, '0');
     return '$hour:$minuteStr $period';
@@ -35,8 +40,18 @@ extension DateTimeExtensions on DateTime {
 
   static String _monthName(int month) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return months[month - 1];
   }

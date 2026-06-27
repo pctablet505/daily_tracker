@@ -22,8 +22,12 @@ class ReminderService {
       if (task.isRecurring && task.recurrenceRule == 'daily') {
         // Reschedule for next occurrence (tomorrow at same time)
         reminderTime = DateTime(
-          now.year, now.month, now.day,
-          reminderTime.hour, reminderTime.minute, reminderTime.second,
+          now.year,
+          now.month,
+          now.day,
+          reminderTime.hour,
+          reminderTime.minute,
+          reminderTime.second,
         );
         if (!reminderTime.isAfter(now)) {
           reminderTime = reminderTime.add(const Duration(days: 1));

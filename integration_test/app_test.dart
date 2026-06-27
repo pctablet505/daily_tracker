@@ -4,14 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:daily_tracker/main.dart' as app;
 
-Future<void> _waitFor(Finder finder, WidgetTester tester, {int retries = 20}) async {
+Future<void> _waitFor(Finder finder, WidgetTester tester,
+    {int retries = 20}) async {
   for (var i = 0; i < retries; i++) {
     await tester.pump(const Duration(milliseconds: 500));
     if (finder.evaluate().isNotEmpty) return;
   }
 }
 
-Future<void> _waitUntilAbsent(Finder finder, WidgetTester tester, {int retries = 20}) async {
+Future<void> _waitUntilAbsent(Finder finder, WidgetTester tester,
+    {int retries = 20}) async {
   for (var i = 0; i < retries; i++) {
     await tester.pump(const Duration(milliseconds: 500));
     if (finder.evaluate().isEmpty) return;
@@ -22,9 +24,11 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Daily Tracker end-to-end', () {
-    testWidgets('create, complete, and delete a task', (WidgetTester tester) async {
+    testWidgets('create, complete, and delete a task',
+        (WidgetTester tester) async {
       // Reset persisted app state so tests always start from onboarding/today.
-      const preferencesChannel = MethodChannel('plugins.flutter.io/shared_preferences');
+      const preferencesChannel =
+          MethodChannel('plugins.flutter.io/shared_preferences');
       try {
         await preferencesChannel.invokeMethod('clear');
       } catch (_) {
@@ -57,7 +61,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter task title.
-      await tester.enterText(find.byType(TextField).first, 'Integration Test Task');
+      await tester.enterText(
+          find.byType(TextField).first, 'Integration Test Task');
       await tester.pumpAndSettle();
 
       // Save task.
@@ -94,7 +99,8 @@ void main() {
       await _waitFor(find.text('Integration Test Task'), tester);
 
       // Swipe to delete (flutter_slidable) and confirm the dialog.
-      await tester.drag(find.text('Integration Test Task'), const Offset(-500, 0));
+      await tester.drag(
+          find.text('Integration Test Task'), const Offset(-500, 0));
       await tester.pumpAndSettle();
 
       // Tap the slidable Delete action to open the confirmation dialog.

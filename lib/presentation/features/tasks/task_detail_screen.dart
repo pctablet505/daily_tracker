@@ -150,7 +150,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               child: Column(
                 children: [
                   ListTile(
-                    leading: Icon(Icons.access_time, color: colorScheme.primary),
+                    leading:
+                        Icon(Icons.access_time, color: colorScheme.primary),
                     title: Text(_reminderTime != null
                         ? _reminderTime!.formattedTime
                         : 'No reminder set'),
@@ -160,7 +161,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                     trailing: _reminderTime != null
                         ? IconButton(
                             icon: const Icon(Icons.clear),
-                            onPressed: () => setState(() => _reminderTime = null),
+                            onPressed: () =>
+                                setState(() => _reminderTime = null),
                           )
                         : const Icon(Icons.chevron_right),
                     onTap: _pickReminderTime,
@@ -170,12 +172,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                     SwitchListTile(
                       secondary: Icon(
                         Icons.repeat,
-                        color: _isRecurring ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                        color: _isRecurring
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
                       ),
                       title: const Text('Repeat Daily'),
                       subtitle: const Text('Reset this task every day'),
                       value: _isRecurring,
-                      onChanged: (value) => setState(() => _isRecurring = value),
+                      onChanged: (value) =>
+                          setState(() => _isRecurring = value),
                     ),
                   ],
                 ],
@@ -238,9 +243,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               ),
               items: const [
                 DropdownMenuItem(value: 'checklist', child: Text('Checklist')),
-                DropdownMenuItem(value: 'numeric', child: Text('Numeric (e.g. weight)')),
-                DropdownMenuItem(value: 'text', child: Text('Text (e.g. notes)')),
-                DropdownMenuItem(value: 'photo', child: Text('Photo (e.g. progress pic)')),
+                DropdownMenuItem(
+                    value: 'numeric', child: Text('Numeric (e.g. weight)')),
+                DropdownMenuItem(
+                    value: 'text', child: Text('Text (e.g. notes)')),
+                DropdownMenuItem(
+                    value: 'photo', child: Text('Photo (e.g. progress pic)')),
               ],
               onChanged: (value) => setState(() => _taskType = value),
             ),
@@ -259,13 +267,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                       title: const Text("Completed for Today"),
                       subtitle: const Text("Mark this task as done today"),
                       value: _logCompleted,
-                      onChanged: (value) => setState(() => _logCompleted = value ?? false),
+                      onChanged: (value) =>
+                          setState(() => _logCompleted = value ?? false),
                     ),
                     const SizedBox(height: 12),
                     if (_taskType == 'numeric')
                       TextField(
                         controller: _commentController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                         decoration: const InputDecoration(
                           labelText: "Value (e.g. weight, measurement)",
                           hintText: "Enter a numeric value...",
@@ -321,9 +331,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                               ),
                               const Spacer(),
                               TextButton.icon(
-                                onPressed: () => setState(() => _mediaPath = null),
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                label: const Text("Remove", style: TextStyle(color: Colors.red)),
+                                onPressed: () =>
+                                    setState(() => _mediaPath = null),
+                                icon: const Icon(Icons.delete_outline,
+                                    color: Colors.red),
+                                label: const Text("Remove",
+                                    style: TextStyle(color: Colors.red)),
                               ),
                             ],
                           ),
@@ -338,7 +351,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             const SizedBox(height: 8),
             Consumer(
               builder: (context, ref, child) {
-                final historyAsync = ref.watch(taskLogHistoryProvider(widget.taskId));
+                final historyAsync =
+                    ref.watch(taskLogHistoryProvider(widget.taskId));
                 return historyAsync.when(
                   data: (logs) {
                     if (logs.isEmpty) {
@@ -348,17 +362,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                           child: Text(
                             "No historical logs recorded yet",
                             style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       );
                     }
                     return Column(
-                      children: logs.map((log) => _buildHistoryCard(context, log)).toList(),
+                      children: logs
+                          .map((log) => _buildHistoryCard(context, log))
+                          .toList(),
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (err, _) => Center(child: Text("Error: $err")),
                 );
               },
@@ -378,7 +395,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                 ? const SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   )
                 : Text(widget.isNew ? 'Create Task' : 'Save Changes'),
           ),
@@ -401,13 +419,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             Row(
               children: [
                 Icon(
-                  log.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                  color: log.isCompleted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                  log.isCompleted
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: log.isCompleted
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   log.date,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -455,7 +478,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
 
     if (time != null && mounted) {
-      final reminder = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      final reminder =
+          DateTime(date.year, date.month, date.day, time.hour, time.minute);
       setState(() => _reminderTime = reminder);
     }
   }
@@ -511,15 +535,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
 
       // Save today's log
       final today = DateTime.now();
-      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-      
+      final dateStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
       final log = TaskLogModel(
         id: _todayLog?.id ?? IdGenerator.generate(),
         taskId: currentTaskId,
         date: dateStr,
         isCompleted: _logCompleted,
         completedAt: _logCompleted ? (_todayLog?.completedAt ?? today) : null,
-        comment: _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+        comment: _commentController.text.trim().isEmpty
+            ? null
+            : _commentController.text.trim(),
         mediaPath: _mediaPath,
         createdAt: _todayLog?.createdAt ?? today,
         updatedAt: today,
@@ -545,7 +572,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Task?'),
-        content: const Text('This task will be moved to trash. You can restore it later.'),
+        content: const Text(
+            'This task will be moved to trash. You can restore it later.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

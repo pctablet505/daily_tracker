@@ -16,7 +16,8 @@ class AppLogger {
 
   static void e(String message, [Object? error]) {
     if (kDebugMode) {
-      debugPrint('[DailyTracker] ERROR: $message${error != null ? ' | $error' : ''}');
+      debugPrint(
+          '[DailyTracker] ERROR: $message${error != null ? ' | $error' : ''}');
     }
   }
 }

@@ -136,7 +136,8 @@ void main() {
     });
 
     test('import preserves all optional nullable fields', () async {
-      await dbHelper.insertTask(_makeTask(category: 'Health', taskType: 'numeric'));
+      await dbHelper
+          .insertTask(_makeTask(category: 'Health', taskType: 'numeric'));
       await dbHelper.insertTaskLog(_makeLog(comment: null, mediaPath: null));
 
       final json = await exportService.exportToJson();
@@ -153,7 +154,8 @@ void main() {
       expect(logs.first.mediaPath, isNull);
     });
 
-    test('import replaces existing data atomically (old data cleared)', () async {
+    test('import replaces existing data atomically (old data cleared)',
+        () async {
       await dbHelper.insertTask(_makeTask(id: 'old-task', title: 'Old'));
       final newJson = jsonEncode({
         'version': 2,
@@ -257,7 +259,8 @@ void main() {
       );
     });
 
-    test('exportToCsv produces header row and one data row per completion', () async {
+    test('exportToCsv produces header row and one data row per completion',
+        () async {
       await dbHelper.upsertDailyCompletion(DailyCompletionModel(
         id: '2026-01-01T00:00:00.000',
         date: DateTime(2026, 1, 1),
@@ -266,7 +269,8 @@ void main() {
         completionRate: 0.7,
       ));
       final csv = await exportService.exportToCsv();
-      expect(csv, contains('Date,Total Tasks,Completed Tasks,Completion Rate %'));
+      expect(
+          csv, contains('Date,Total Tasks,Completed Tasks,Completion Rate %'));
       expect(csv, contains('2026-01-01'));
       expect(csv, contains('10'));
       expect(csv, contains('70.0'));

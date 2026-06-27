@@ -78,8 +78,10 @@ class TaskModel extends Equatable {
       recurrenceRule: recurrenceRule == _nullableSentinel
           ? this.recurrenceRule
           : recurrenceRule as String?,
-      category: category == _nullableSentinel ? this.category : category as String?,
-      taskType: taskType == _nullableSentinel ? this.taskType : taskType as String?,
+      category:
+          category == _nullableSentinel ? this.category : category as String?,
+      taskType:
+          taskType == _nullableSentinel ? this.taskType : taskType as String?,
       priority: priority ?? this.priority,
       completedAt: completedAt == _nullableSentinel
           ? this.completedAt
@@ -134,8 +136,21 @@ class TaskModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, title, description, createdAt, updatedAt, reminderTime,
-        isCompleted, isRecurring, recurrenceRule, category, taskType, priority,
-        completedAt, isDeleted, version, syncStatus,
+        id,
+        title,
+        description,
+        createdAt,
+        updatedAt,
+        reminderTime,
+        isCompleted,
+        isRecurring,
+        recurrenceRule,
+        category,
+        taskType,
+        priority,
+        completedAt,
+        isDeleted,
+        version,
+        syncStatus,
       ];
 }

@@ -112,7 +112,8 @@ void main() {
   });
 
   group('resetRecurringTasksForNewDay', () {
-    test('only resets recurring tasks completed yesterday, not today', () async {
+    test('only resets recurring tasks completed yesterday, not today',
+        () async {
       final today = DateTime.now();
       final yesterday = today.subtract(const Duration(days: 1));
 
@@ -156,7 +157,8 @@ void main() {
 
       final refreshedYesterday = (await repository.getTask(yesterdayTask.id))!;
       final refreshedToday = (await repository.getTask(todayTask.id))!;
-      final refreshedNonRecurring = (await repository.getTask(nonRecurringTask.id))!;
+      final refreshedNonRecurring =
+          (await repository.getTask(nonRecurringTask.id))!;
 
       expect(refreshedYesterday.isCompleted, isFalse);
       expect(refreshedYesterday.completedAt, isNull);
@@ -270,7 +272,8 @@ void main() {
       expect(taskLogs, hasLength(1));
 
       final saved = taskLogs.first;
-      expect(saved.isCompleted, isFalse); // iterations is even, last i=49 -> odd -> false
+      expect(saved.isCompleted,
+          isFalse); // iterations is even, last i=49 -> odd -> false
       expect(saved.comment, equals('version ${iterations - 1}'));
     });
 

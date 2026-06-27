@@ -47,10 +47,12 @@ class SyncService {
   Future<drive.DriveApi> _getDriveApi() async {
     var user = _googleSignIn.currentUser;
     if (user == null) {
-      AppLogger.d('_getDriveApi: currentUser is null, attempting signInSilently');
+      AppLogger.d(
+          '_getDriveApi: currentUser is null, attempting signInSilently');
       user = await _googleSignIn.signInSilently();
     }
-    AppLogger.d('_getDriveApi: currentUser is ${user == null ? "NULL" : "NOT NULL"}');
+    AppLogger.d(
+        '_getDriveApi: currentUser is ${user == null ? "NULL" : "NOT NULL"}');
     if (user == null) {
       throw Exception('Not signed in to Google. Please sign in again.');
     }
@@ -59,7 +61,8 @@ class SyncService {
     final authClient = await _googleSignIn.authenticatedClient();
     AppLogger.d('_getDriveApi: authClient obtained: ${authClient != null}');
     if (authClient == null) {
-      throw Exception('Google Drive authentication failed. Please sign in again.');
+      throw Exception(
+          'Google Drive authentication failed. Please sign in again.');
     }
 
     return drive.DriveApi(authClient);
@@ -114,13 +117,15 @@ class SyncService {
       final jsonString = jsonEncode(backupData);
       final bytes = utf8.encode(jsonString);
 
-      AppLogger.d('uploadBackup: checking existing backup files on Google Drive');
+      AppLogger.d(
+          'uploadBackup: checking existing backup files on Google Drive');
       // Check if backup file already exists
       final existingFiles = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: "name='${AppConstants.syncFileName}'",
       );
-      AppLogger.d('uploadBackup: found ${existingFiles.files?.length ?? 0} existing backup files');
+      AppLogger.d(
+          'uploadBackup: found ${existingFiles.files?.length ?? 0} existing backup files');
 
       final media = drive.Media(Stream.fromIterable([bytes]), bytes.length);
 
@@ -143,7 +148,8 @@ class SyncService {
 
       // Update last sync time
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(AppConstants.prefLastSyncTime, DateTime.now().toIso8601String());
+      await prefs.setString(
+          AppConstants.prefLastSyncTime, DateTime.now().toIso8601String());
 
       return true;
     } catch (e) {
@@ -174,7 +180,8 @@ class SyncService {
       }
 
       final fileId = existingFiles.files!.first.id!;
-      final media = await driveApi.files.get(fileId, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
+      final media = await driveApi.files.get(fileId,
+          downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
       final bytes = await media.stream.expand((x) => x).toList();
       final jsonString = utf8.decode(bytes);
 

@@ -15,11 +15,16 @@ void main() async {
   setupDependencies();
 
   // Service initialization should never prevent the app from launching.
-  await _safeInitialize(() => NotificationService().initialize(), 'NotificationService');
-  await _safeInitialize(() => BackgroundService.initialize(), 'BackgroundService');
-  await _safeInitialize(() => BackgroundService.registerUpdateCheck(), 'registerUpdateCheck');
-  await _safeInitialize(() => BackgroundService.registerAutoSync(), 'registerAutoSync');
-  await _safeInitialize(() => BackgroundService.registerDailyReset(), 'registerDailyReset');
+  await _safeInitialize(
+      () => NotificationService().initialize(), 'NotificationService');
+  await _safeInitialize(
+      () => BackgroundService.initialize(), 'BackgroundService');
+  await _safeInitialize(
+      () => BackgroundService.registerUpdateCheck(), 'registerUpdateCheck');
+  await _safeInitialize(
+      () => BackgroundService.registerAutoSync(), 'registerAutoSync');
+  await _safeInitialize(
+      () => BackgroundService.registerDailyReset(), 'registerDailyReset');
 
   // Reset recurring tasks on app startup
   await _resetRecurringTasks();
@@ -31,7 +36,8 @@ void main() async {
   );
 }
 
-Future<void> _safeInitialize(Future<void> Function() init, String name, {Duration timeout = const Duration(seconds: 3)}) async {
+Future<void> _safeInitialize(Future<void> Function() init, String name,
+    {Duration timeout = const Duration(seconds: 3)}) async {
   try {
     await init().timeout(timeout);
   } catch (e) {

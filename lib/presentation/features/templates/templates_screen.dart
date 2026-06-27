@@ -10,22 +10,29 @@ class TemplatesScreen extends ConsumerWidget {
     _TaskTemplate(
       name: 'Headman Habits',
       icon: Icons.military_tech,
-      description: 'Goal: To be a 10/10 — Recreate a new you. A complete 90-day challenge to rebuild yourself.',
+      description:
+          'Goal: To be a 10/10 — Recreate a new you. A complete 90-day challenge to rebuild yourself.',
       dos: [
         _TemplateTask(title: 'Pray Daily (be thankful)', taskType: 'checklist'),
         _TemplateTask(title: 'Weigh yourself', taskType: 'numeric', unit: 'kg'),
-        _TemplateTask(title: '1 hour everyday in nature/sun', taskType: 'checklist'),
-        _TemplateTask(title: 'Workout everyday 1 hour minimum', taskType: 'checklist'),
-        _TemplateTask(title: 'Interact with someone new everyday', taskType: 'text'),
+        _TemplateTask(
+            title: '1 hour everyday in nature/sun', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Workout everyday 1 hour minimum', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Interact with someone new everyday', taskType: 'text'),
         _TemplateTask(title: 'Progress photo everyday', taskType: 'photo'),
       ],
       donts: [
         _TemplateTask(title: 'No caffeine', taskType: 'checklist'),
         _TemplateTask(title: 'No Sugar/Processed food', taskType: 'checklist'),
-        _TemplateTask(title: 'No smoking/vaping/drugs/weed/tobacco', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'No smoking/vaping/drugs/weed/tobacco',
+            taskType: 'checklist'),
         _TemplateTask(title: 'No porn/dirty websites', taskType: 'checklist'),
         _TemplateTask(title: 'No jerking off', taskType: 'checklist'),
-        _TemplateTask(title: 'No Social media scrolling', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'No Social media scrolling', taskType: 'checklist'),
       ],
     ),
     _TaskTemplate(
@@ -57,12 +64,14 @@ class TemplatesScreen extends ConsumerWidget {
       icon: Icons.bedtime,
       description: 'Relax and prepare for quality sleep.',
       dos: [
-        _TemplateTask(title: 'Review today\'s accomplishments', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Review today\'s accomplishments', taskType: 'checklist'),
         _TemplateTask(title: 'Prepare for tomorrow', taskType: 'checklist'),
         _TemplateTask(title: 'Read for 20 minutes', taskType: 'checklist'),
       ],
       donts: [
-        _TemplateTask(title: 'No screens 30 min before bed', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'No screens 30 min before bed', taskType: 'checklist'),
       ],
     ),
     _TaskTemplate(
@@ -71,9 +80,13 @@ class TemplatesScreen extends ConsumerWidget {
       description: 'Nourish your body and mind.',
       dos: [
         _TemplateTask(title: 'Eat 3 healthy meals', taskType: 'checklist'),
-        _TemplateTask(title: 'Drink 8 glasses of water', taskType: 'numeric', unit: 'glasses'),
+        _TemplateTask(
+            title: 'Drink 8 glasses of water',
+            taskType: 'numeric',
+            unit: 'glasses'),
         _TemplateTask(title: 'Take vitamins', taskType: 'checklist'),
-        _TemplateTask(title: 'Walk 10,000 steps', taskType: 'numeric', unit: 'steps'),
+        _TemplateTask(
+            title: 'Walk 10,000 steps', taskType: 'numeric', unit: 'steps'),
       ],
       donts: [],
     ),
@@ -82,9 +95,12 @@ class TemplatesScreen extends ConsumerWidget {
       icon: Icons.lightbulb,
       description: 'Maximize your output and focus.',
       dos: [
-        _TemplateTask(title: 'Complete top 3 priorities', taskType: 'checklist'),
-        _TemplateTask(title: 'Check emails (2 times only)', taskType: 'checklist'),
-        _TemplateTask(title: 'Take a break every 90 min', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Complete top 3 priorities', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Check emails (2 times only)', taskType: 'checklist'),
+        _TemplateTask(
+            title: 'Take a break every 90 min', taskType: 'checklist'),
         _TemplateTask(title: 'Update task list', taskType: 'checklist'),
       ],
       donts: [],
@@ -136,15 +152,15 @@ class TemplatesScreen extends ConsumerWidget {
                       template.name,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '${template.dos.length + template.donts.length} tasks',
                       style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -156,7 +172,8 @@ class TemplatesScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _applyTemplate(BuildContext context, WidgetRef ref, _TaskTemplate template) async {
+  Future<void> _applyTemplate(
+      BuildContext context, WidgetRef ref, _TaskTemplate template) async {
     final allTasks = [...template.dos, ...template.donts];
     final confirmed = await showDialog<bool>(
       context: context,
@@ -196,7 +213,8 @@ class TemplatesScreen extends ConsumerWidget {
           context.go('/today');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Added ${allTasks.length} tasks from ${template.name}'),
+              content:
+                  Text('Added ${allTasks.length} tasks from ${template.name}'),
               action: SnackBarAction(
                 label: 'Undo',
                 onPressed: () async {
@@ -251,35 +269,38 @@ class _TemplateApplyDialog extends StatelessWidget {
                 Text(
                   template.description!,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 ),
                 const SizedBox(height: 16),
               ],
-              Text('This will add ${allTasks.length} tasks to your today list:'),
+              Text(
+                  'This will add ${allTasks.length} tasks to your today list:'),
               const SizedBox(height: 12),
               if (template.dos.isNotEmpty) ...[
                 Text(
                   'DOs:',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 4),
-                ...template.dos.map((task) => _buildTaskPreview(context, task, Icons.check_circle_outline)),
+                ...template.dos.map((task) => _buildTaskPreview(
+                    context, task, Icons.check_circle_outline)),
                 const SizedBox(height: 12),
               ],
               if (template.donts.isNotEmpty) ...[
                 Text(
                   'DON\'Ts:',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 4),
-                ...template.donts.map((task) => _buildTaskPreview(context, task, Icons.block)),
+                ...template.donts.map(
+                    (task) => _buildTaskPreview(context, task, Icons.block)),
               ],
             ],
           ),
@@ -298,7 +319,8 @@ class _TemplateApplyDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildTaskPreview(BuildContext context, _TemplateTask task, IconData icon) {
+  Widget _buildTaskPreview(
+      BuildContext context, _TemplateTask task, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -308,10 +330,13 @@ class _TemplateApplyDialog extends StatelessWidget {
           Expanded(child: Text(task.title)),
           if (task.taskType != 'checklist')
             Icon(
-              task.taskType == 'numeric' ? Icons.numbers :
-              task.taskType == 'text' ? Icons.notes :
-              task.taskType == 'photo' ? Icons.camera_alt :
-              Icons.help_outline,
+              task.taskType == 'numeric'
+                  ? Icons.numbers
+                  : task.taskType == 'text'
+                      ? Icons.notes
+                      : task.taskType == 'photo'
+                          ? Icons.camera_alt
+                          : Icons.help_outline,
               size: 14,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),

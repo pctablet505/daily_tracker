@@ -35,7 +35,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
+    _confettiController =
+        ConfettiController(duration: const Duration(seconds: 1));
     // Reset global filter providers so they don't persist across visits
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(searchQueryProvider.notifier).state = '';
@@ -94,7 +95,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                       Text(
                         DateFormat('EEEE, MMMM d').format(_today),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                     ],
@@ -132,11 +135,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                               strokeWidth: 5,
                               strokeCap: StrokeCap.round,
                               color: Theme.of(context).colorScheme.primary,
-                              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
                             ),
                             Text(
                               '${(progress * 100).toInt()}%',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.bold,
                                   ),
                             ),
@@ -163,7 +171,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   }).toList();
                 }
                 if (selectedCategory != null) {
-                  filteredTasks = filteredTasks.where((t) => t.category == selectedCategory).toList();
+                  filteredTasks = filteredTasks
+                      .where((t) => t.category == selectedCategory)
+                      .toList();
                 }
 
                 if (filteredTasks.isEmpty && tasks.isEmpty) {
@@ -182,12 +192,30 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 }
 
                 // Group by category and completion
-                final dosPending = filteredTasks.where((t) => t.category == 'Do' && !t.isCompleted).toList();
-                final dosCompleted = filteredTasks.where((t) => t.category == 'Do' && t.isCompleted).toList();
-                final dontsPending = filteredTasks.where((t) => t.category == 'Don\'t' && !t.isCompleted).toList();
-                final dontsCompleted = filteredTasks.where((t) => t.category == 'Don\'t' && t.isCompleted).toList();
-                final otherPending = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && !t.isCompleted).toList();
-                final otherCompleted = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && t.isCompleted).toList();
+                final dosPending = filteredTasks
+                    .where((t) => t.category == 'Do' && !t.isCompleted)
+                    .toList();
+                final dosCompleted = filteredTasks
+                    .where((t) => t.category == 'Do' && t.isCompleted)
+                    .toList();
+                final dontsPending = filteredTasks
+                    .where((t) => t.category == 'Don\'t' && !t.isCompleted)
+                    .toList();
+                final dontsCompleted = filteredTasks
+                    .where((t) => t.category == 'Don\'t' && t.isCompleted)
+                    .toList();
+                final otherPending = filteredTasks
+                    .where((t) =>
+                        t.category != 'Do' &&
+                        t.category != 'Don\'t' &&
+                        !t.isCompleted)
+                    .toList();
+                final otherCompleted = filteredTasks
+                    .where((t) =>
+                        t.category != 'Do' &&
+                        t.category != 'Don\'t' &&
+                        t.isCompleted)
+                    .toList();
 
                 return CustomScrollView(
                   slivers: [
@@ -203,15 +231,23 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                 label: Text(
                                   'All',
                                   style: TextStyle(
-                                    fontWeight: selectedCategory == null ? FontWeight.w600 : FontWeight.normal,
+                                    fontWeight: selectedCategory == null
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
                                   ),
                                 ),
                                 selected: selectedCategory == null,
                                 onSelected: (_) {
-                                  ref.read(selectedCategoryProvider.notifier).state = null;
+                                  ref
+                                      .read(selectedCategoryProvider.notifier)
+                                      .state = null;
                                 },
-                                selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                selectedColor: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
                                 showCheckmark: false,
                               ),
                               const SizedBox(width: 8),
@@ -223,16 +259,24 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                     label: Text(
                                       cat,
                                       style: TextStyle(
-                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
                                       ),
                                     ),
                                     selected: isSelected,
                                     onSelected: (_) {
-                                      ref.read(selectedCategoryProvider.notifier).state =
-                                          isSelected ? null : cat;
+                                      ref
+                                          .read(
+                                              selectedCategoryProvider.notifier)
+                                          .state = isSelected ? null : cat;
                                     },
-                                    selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    selectedColor: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                     showCheckmark: false,
                                   ),
                                 );
@@ -245,38 +289,55 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 
                     // DOs - Pending
                     if (dosPending.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'DOs (${dosPending.length})', color: Theme.of(context).colorScheme.primary),
+                      _buildSectionHeader(context, 'DOs (${dosPending.length})',
+                          color: Theme.of(context).colorScheme.primary),
                       _buildTaskList(context, ref, dosPending),
                     ],
 
                     // DON'Ts - Pending
                     if (dontsPending.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'DON\'Ts (${dontsPending.length})', color: Theme.of(context).colorScheme.error),
+                      _buildSectionHeader(
+                          context, 'DON\'Ts (${dontsPending.length})',
+                          color: Theme.of(context).colorScheme.error),
                       _buildTaskList(context, ref, dontsPending),
                     ],
 
                     // Other - Pending
                     if (otherPending.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'Pending (${otherPending.length})', color: Theme.of(context).colorScheme.primary),
+                      _buildSectionHeader(
+                          context, 'Pending (${otherPending.length})',
+                          color: Theme.of(context).colorScheme.primary),
                       _buildTaskList(context, ref, otherPending),
                     ],
 
                     // DOs - Completed
                     if (dosCompleted.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'DOs Completed (${dosCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      _buildTaskList(context, ref, dosCompleted, isCompleted: true),
+                      _buildSectionHeader(
+                          context, 'DOs Completed (${dosCompleted.length})',
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, dosCompleted,
+                          isCompleted: true),
                     ],
 
                     // DON'Ts - Completed
                     if (dontsCompleted.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'DON\'Ts Completed (${dontsCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      _buildTaskList(context, ref, dontsCompleted, isCompleted: true),
+                      _buildSectionHeader(context,
+                          'DON\'Ts Completed (${dontsCompleted.length})',
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, dontsCompleted,
+                          isCompleted: true),
                     ],
 
                     // Other - Completed
                     if (otherCompleted.isNotEmpty) ...[
-                      _buildSectionHeader(context, 'Completed (${otherCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      _buildTaskList(context, ref, otherCompleted, isCompleted: true),
+                      _buildSectionHeader(
+                          context, 'Completed (${otherCompleted.length})',
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, otherCompleted,
+                          isCompleted: true),
                     ],
 
                     const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
@@ -310,7 +371,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, {required Color color}) {
+  Widget _buildSectionHeader(BuildContext context, String title,
+      {required Color color}) {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       sliver: SliverToBoxAdapter(
@@ -325,7 +387,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     );
   }
 
-  Widget _buildTaskList(BuildContext context, WidgetRef ref, List<TaskModel> tasks, {bool isCompleted = false}) {
+  Widget _buildTaskList(
+      BuildContext context, WidgetRef ref, List<TaskModel> tasks,
+      {bool isCompleted = false}) {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverList.separated(
@@ -372,7 +436,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text('Delete Task?'),
-                        content: const Text('This task will be moved to trash. You can restore it later.'),
+                        content: const Text(
+                            'This task will be moved to trash. You can restore it later.'),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
@@ -492,102 +557,109 @@ class _TaskCardState extends ConsumerState<TaskCard> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  if (task.taskType == 'checklist')
-                    GestureDetector(
-                      onTap: _toggleChecklist,
-                      behavior: HitTestBehavior.opaque,
-                      child: AbsorbPointer(
-                        child: Checkbox(
-                          value: task.isCompleted,
-                          onChanged: (_) {},
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        ),
-                      ),
-                    )
-                  else
-                    _buildTypeIcon(colorScheme),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Hero(
-                          tag: 'task-title-${task.id}',
-                          child: Material(
-                            type: MaterialType.transparency,
-                            child: Text(
-                              task.title,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
-                                    color: widget.isCompleted
-                                        ? colorScheme.onSurfaceVariant
-                                        : colorScheme.onSurface,
-                                  ),
-                            ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (task.taskType == 'checklist')
+                      GestureDetector(
+                        onTap: _toggleChecklist,
+                        behavior: HitTestBehavior.opaque,
+                        child: AbsorbPointer(
+                          child: Checkbox(
+                            value: task.isCompleted,
+                            onChanged: (_) {},
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6)),
                           ),
                         ),
-                        if (task.category != null)
-                          Chip(
-                            label: Text(
-                              task.category!,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                    fontSize: 11,
-                                    color: task.category == 'Don\'t'
-                                        ? colorScheme.onErrorContainer
-                                        : colorScheme.onSecondaryContainer,
-                                  ),
+                      )
+                    else
+                      _buildTypeIcon(colorScheme),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Hero(
+                            tag: 'task-title-${task.id}',
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: Text(
+                                task.title,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  decoration: widget.isCompleted
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  color: widget.isCompleted
+                                      ? colorScheme.onSurfaceVariant
+                                      : colorScheme.onSurface,
+                                ),
+                              ),
                             ),
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            backgroundColor: task.category == 'Don\'t'
-                                ? colorScheme.errorContainer
-                                : colorScheme.secondaryContainer,
-                            side: BorderSide.none,
                           ),
-                      ],
-                    ),
-                  ),
-                  if (task.priority > 0)
-                    Container(
-                      width: 4,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _priorityColor(task.priority, colorScheme),
-                        borderRadius: BorderRadius.circular(2),
+                          if (task.category != null)
+                            Chip(
+                              label: Text(
+                                task.category!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 11,
+                                  color: task.category == 'Don\'t'
+                                      ? colorScheme.onErrorContainer
+                                      : colorScheme.onSecondaryContainer,
+                                ),
+                              ),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              backgroundColor: task.category == 'Don\'t'
+                                  ? colorScheme.errorContainer
+                                  : colorScheme.secondaryContainer,
+                              side: BorderSide.none,
+                            ),
+                        ],
                       ),
                     ),
+                    if (task.priority > 0)
+                      Container(
+                        width: 4,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _priorityColor(task.priority, colorScheme),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                  ],
+                ),
+
+                // Show input fields for non-checklist pending tasks
+                if (!widget.isCompleted && task.taskType != 'checklist') ...[
+                  const SizedBox(height: 8),
+                  _buildTaskInput(colorScheme),
                 ],
-              ),
 
-              // Show input fields for non-checklist pending tasks
-              if (!widget.isCompleted && task.taskType != 'checklist') ...[
-                const SizedBox(height: 8),
-                _buildTaskInput(colorScheme),
+                // Show saved data for completed non-checklist tasks
+                if (widget.isCompleted && task.taskType != 'checklist') ...[
+                  const SizedBox(height: 8),
+                  _buildCompletedData(colorScheme),
+                ],
               ],
-
-              // Show saved data for completed non-checklist tasks
-              if (widget.isCompleted && task.taskType != 'checklist') ...[
-                const SizedBox(height: 8),
-                _buildCompletedData(colorScheme),
-              ],
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildTypeIcon(ColorScheme colorScheme) {
-    final icon = widget.task.taskType == 'numeric' ? Icons.numbers :
-                 widget.task.taskType == 'text' ? Icons.notes :
-                 widget.task.taskType == 'photo' ? Icons.camera_alt :
-                 Icons.check_circle_outline;
+    final icon = widget.task.taskType == 'numeric'
+        ? Icons.numbers
+        : widget.task.taskType == 'text'
+            ? Icons.notes
+            : widget.task.taskType == 'photo'
+                ? Icons.camera_alt
+                : Icons.check_circle_outline;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Icon(icon, color: colorScheme.primary, size: 24),
@@ -604,15 +676,20 @@ class _TaskCardState extends ConsumerState<TaskCard> {
             Expanded(
               child: TextField(
                 controller: _valueController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _saveAndComplete(),
                 decoration: InputDecoration(
                   hintText: 'Enter value',
-                  suffixText: task.description?.isNotEmpty == true ? task.description : null,
+                  suffixText: task.description?.isNotEmpty == true
+                      ? task.description
+                      : null,
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
@@ -632,8 +709,10 @@ class _TaskCardState extends ConsumerState<TaskCard> {
               decoration: InputDecoration(
                 hintText: 'Add notes / comment...',
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             const SizedBox(height: 4),
@@ -682,7 +761,11 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     return FilledButton.icon(
       onPressed: _isSaving ? null : _saveAndComplete,
       icon: _isSaving
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white))
           : const Icon(Icons.check, size: 18),
       label: Text(_isSaving ? 'Saving...' : 'Done'),
     );
@@ -692,7 +775,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     return Consumer(
       builder: (context, ref, child) {
         final today = DateTime.now().dateOnly;
-        final logAsync = ref.watch(taskLogProvider(TaskLogParam(widget.task.id, today)));
+        final logAsync =
+            ref.watch(taskLogProvider(TaskLogParam(widget.task.id, today)));
 
         return logAsync.when(
           data: (log) {
@@ -726,7 +810,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
 
             return const SizedBox.shrink();
           },
-          loading: () => const SizedBox(height: 20, child: LinearProgressIndicator()),
+          loading: () =>
+              const SizedBox(height: 20, child: LinearProgressIndicator()),
           error: (_, __) => const SizedBox.shrink(),
         );
       },
@@ -735,7 +820,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
 
   Future<void> _takePhoto() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.camera, maxWidth: 1200, maxHeight: 1200);
+    final picked = await picker.pickImage(
+        source: ImageSource.camera, maxWidth: 1200, maxHeight: 1200);
     if (picked != null) {
       setState(() => _photoPath = picked.path);
     }
@@ -747,7 +833,8 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     try {
       final task = widget.task;
       final today = DateTime.now();
-      final dateStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
       String? comment;
       String? mediaPath;
@@ -886,17 +973,17 @@ class _EmptyState extends StatelessWidget {
                     Text(
                       'No tasks for today',
                       style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Add your first task to start tracking your daily goals.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyLarge?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 32),
                     FilledButton.icon(
@@ -946,17 +1033,17 @@ class _NoResultsState extends StatelessWidget {
                     Text(
                       'No tasks found',
                       style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Try adjusting your search or filters.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(

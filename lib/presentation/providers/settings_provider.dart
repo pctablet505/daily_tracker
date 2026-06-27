@@ -4,7 +4,8 @@ import '../../core/constants/app_constants.dart';
 import '../../core/services/dependency_injection.dart';
 import '../../services/sync/sync_service.dart';
 
-final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
+final settingsProvider =
+    StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
   return SettingsNotifier();
 });
 
@@ -64,14 +65,18 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     state = SettingsState(
-      notificationsEnabled: prefs.getBool(AppConstants.prefNotificationsEnabled) ?? true,
+      notificationsEnabled:
+          prefs.getBool(AppConstants.prefNotificationsEnabled) ?? true,
       autoSync: prefs.getBool(AppConstants.prefAutoSync) ?? true,
       wifiOnlyUpdates: prefs.getBool(AppConstants.prefWifiOnlyUpdates) ?? true,
       wifiOnlySync: prefs.getBool(AppConstants.prefWifiOnlySync) ?? true,
       appLockEnabled: prefs.getBool(AppConstants.prefAppLockEnabled) ?? false,
-      biometricEnabled: prefs.getBool(AppConstants.prefBiometricEnabled) ?? false,
-      quietHoursStart: _parseTime(prefs.getString(AppConstants.prefQuietHoursStart)),
-      quietHoursEnd: _parseTime(prefs.getString(AppConstants.prefQuietHoursEnd)),
+      biometricEnabled:
+          prefs.getBool(AppConstants.prefBiometricEnabled) ?? false,
+      quietHoursStart:
+          _parseTime(prefs.getString(AppConstants.prefQuietHoursStart)),
+      quietHoursEnd:
+          _parseTime(prefs.getString(AppConstants.prefQuietHoursEnd)),
     );
   }
 
@@ -80,7 +85,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     try {
       final parts = timeStr.split(':');
       final now = DateTime.now();
-      return DateTime(now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]));
+      return DateTime(now.year, now.month, now.day, int.parse(parts[0]),
+          int.parse(parts[1]));
     } catch (_) {
       return null;
     }
@@ -130,12 +136,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> setQuietHours(DateTime? start, DateTime? end) async {
     final prefs = await SharedPreferences.getInstance();
     if (start != null) {
-      await prefs.setString(AppConstants.prefQuietHoursStart, _timeToString(start)!);
+      await prefs.setString(
+          AppConstants.prefQuietHoursStart, _timeToString(start)!);
     } else {
       await prefs.remove(AppConstants.prefQuietHoursStart);
     }
     if (end != null) {
-      await prefs.setString(AppConstants.prefQuietHoursEnd, _timeToString(end)!);
+      await prefs.setString(
+          AppConstants.prefQuietHoursEnd, _timeToString(end)!);
     } else {
       await prefs.remove(AppConstants.prefQuietHoursEnd);
     }

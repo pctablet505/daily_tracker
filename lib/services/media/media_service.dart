@@ -50,7 +50,8 @@ class MediaService {
       if (!await mediaDir.exists()) return;
 
       final List<FileSystemEntity> files = await mediaDir.list().toList();
-      final Set<String> activeSet = activePaths.map((p) => path.normalize(p)).toSet();
+      final Set<String> activeSet =
+          activePaths.map((p) => path.normalize(p)).toSet();
 
       for (final file in files) {
         if (file is File) {

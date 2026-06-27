@@ -92,14 +92,17 @@ class _PinSetupDialogState extends State<PinSetupDialog> {
           children: [
             Text(
               _isConfirming ? 'Confirm PIN' : 'Set PIN',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              _isConfirming ? 'Enter the same PIN again' : 'Create a 4-digit PIN',
+              _isConfirming
+                  ? 'Enter the same PIN again'
+                  : 'Create a 4-digit PIN',
               style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 24),
             PinDots(
@@ -111,7 +114,8 @@ class _PinSetupDialogState extends State<PinSetupDialog> {
             if (_errorMessage.isNotEmpty)
               Text(
                 _errorMessage,
-                style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.error),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: colorScheme.error),
               ),
             const SizedBox(height: 16),
             NumpadGrid(
@@ -130,5 +134,4 @@ class _PinSetupDialogState extends State<PinSetupDialog> {
       ),
     );
   }
-
 }

@@ -35,7 +35,8 @@ class ThemeNotifier extends StateNotifier<ThemeState> {
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     final themeIndex = prefs.getInt(AppConstants.prefDarkMode) ?? 0;
-    final useMaterialYou = prefs.getBool(AppConstants.prefUseMaterialYou) ?? true;
+    final useMaterialYou =
+        prefs.getBool(AppConstants.prefUseMaterialYou) ?? true;
 
     state = ThemeState(
       themeMode: ThemeMode.values[themeIndex],

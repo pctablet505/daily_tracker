@@ -24,22 +24,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _OnboardingPage(
       icon: Icons.check_circle_outline,
       title: 'Track Your Daily Tasks',
-      description: 'Create a personalized checklist of things you want to accomplish every day. Stay organized and productive.',
+      description:
+          'Create a personalized checklist of things you want to accomplish every day. Stay organized and productive.',
     ),
     _OnboardingPage(
       icon: Icons.notifications_active_outlined,
       title: 'Smart Reminders',
-      description: 'Set time-based reminders for your tasks so you never forget what matters most.',
+      description:
+          'Set time-based reminders for your tasks so you never forget what matters most.',
     ),
     _OnboardingPage(
       icon: Icons.sync_outlined,
       title: 'Sync Across Devices',
-      description: 'Your data stays safe and synced with Google Drive. Access your tasks from any device.',
+      description:
+          'Your data stays safe and synced with Google Drive. Access your tasks from any device.',
     ),
     _OnboardingPage(
       icon: Icons.trending_up,
       title: 'Build Streaks',
-      description: 'Track your consistency, build habits, and celebrate your progress with analytics.',
+      description:
+          'Track your consistency, build habits, and celebrate your progress with analytics.',
     ),
   ];
 
@@ -99,7 +103,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 curve: Curves.easeInOut,
                               ),
                       child: Text(
-                        _currentPage == _pages.length - 1 ? 'Get Started' : 'Next',
+                        _currentPage == _pages.length - 1
+                            ? 'Get Started'
+                            : 'Next',
                         style: const TextStyle(fontSize: 16),
                       ),
                     ),
@@ -140,16 +146,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             page.title,
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
             page.description,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

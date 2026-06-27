@@ -71,7 +71,8 @@ class ExportService {
     final file = File('${tempDir.path}/daily_tracker_analytics.csv');
     await file.writeAsString(csvString);
     try {
-      await Share.shareXFiles([XFile(file.path)], text: 'Daily Tracker Analytics');
+      await Share.shareXFiles([XFile(file.path)],
+          text: 'Daily Tracker Analytics');
     } finally {
       if (await file.exists()) {
         await file.delete();
@@ -108,12 +109,14 @@ class ExportService {
     final completions = <DailyCompletionModel>[];
     final completionIds = <String>{};
     for (final completionJson in completionsData) {
-      final completion = DailyCompletionModel.fromMap(completionJson as Map<String, dynamic>);
+      final completion =
+          DailyCompletionModel.fromMap(completionJson as Map<String, dynamic>);
       if (completion.id.isEmpty) {
         throw FormatException('Invalid completion: empty id');
       }
       if (!completionIds.add(completion.id)) {
-        throw FormatException('Invalid completion: duplicate id ${completion.id}');
+        throw FormatException(
+            'Invalid completion: duplicate id ${completion.id}');
       }
       completions.add(completion);
     }

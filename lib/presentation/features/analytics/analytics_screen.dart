@@ -56,9 +56,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
       final stats = <DailyStat>[];
       for (int i = 6; i >= 0; i--) {
-        final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+        final date =
+            DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
         final completion = completions.firstWhere(
-          (c) => c.date.year == date.year && c.date.month == date.month && c.date.day == date.day,
+          (c) =>
+              c.date.year == date.year &&
+              c.date.month == date.month &&
+              c.date.day == date.day,
           orElse: () => DailyCompletionModel(
             id: '',
             date: date,
@@ -192,12 +196,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                     const SectionTitle('Category Breakdown'),
                     const SizedBox(height: 12),
                     SizedBox(
-                      height: _categoryStats.isEmpty ? 60 : _categoryStats.length * 56.0,
+                      height: _categoryStats.isEmpty
+                          ? 60
+                          : _categoryStats.length * 56.0,
                       child: _categoryStats.isEmpty
                           ? Center(
                               child: Text(
                                 'No category data yet',
-                                style: TextStyle(color: colorScheme.onSurfaceVariant),
+                                style: TextStyle(
+                                    color: colorScheme.onSurfaceVariant),
                               ),
                             )
                           : _buildCategoryChart(colorScheme),
@@ -245,14 +252,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         Icon(
                           Icons.history_toggle_off,
                           size: 48,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          color: colorScheme.onSurfaceVariant
+                              .withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           'No tracking history logged yet',
                           style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -285,8 +293,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         Row(
                           children: [
                             Icon(
-                              log.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                              color: log.isCompleted ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                              log.isCompleted
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: log.isCompleted
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
@@ -294,12 +306,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                               child: Text(
                                 taskTitle,
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: colorScheme.secondaryContainer,
                                 borderRadius: BorderRadius.circular(8),
@@ -307,10 +320,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                               child: Text(
                                 category,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                      fontSize: 10,
-                                      color: colorScheme.onSecondaryContainer,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  fontSize: 10,
+                                  color: colorScheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ],
@@ -319,8 +332,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                         Text(
                           log.date,
                           style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         if (log.comment != null && log.comment!.isNotEmpty) ...[
                           const SizedBox(height: 12),
@@ -329,7 +342,8 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                             style: theme.textTheme.bodyMedium,
                           ),
                         ],
-                        if (log.mediaPath != null && log.mediaPath!.isNotEmpty) ...[
+                        if (log.mediaPath != null &&
+                            log.mediaPath!.isNotEmpty) ...[
                           const SizedBox(height: 12),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
@@ -370,7 +384,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     return BarChart(
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
-        maxY: _weeklyStats.map((s) => s.total).reduce((a, b) => a > b ? a : b).toDouble() + 1,
+        maxY: _weeklyStats
+                .map((s) => s.total)
+                .reduce((a, b) => a > b ? a : b)
+                .toDouble() +
+            1,
         barTouchData: BarTouchData(enabled: false),
         titlesData: FlTitlesData(
           show: true,
@@ -380,7 +398,15 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index >= 0 && index < _weeklyStats.length) {
-                  final dayName = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][_weeklyStats[index].date.weekday - 1];
+                  final dayName = [
+                    'Mon',
+                    'Tue',
+                    'Wed',
+                    'Thu',
+                    'Fri',
+                    'Sat',
+                    'Sun'
+                  ][_weeklyStats[index].date.weekday - 1];
                   return Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
@@ -396,9 +422,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               },
             ),
           ),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),

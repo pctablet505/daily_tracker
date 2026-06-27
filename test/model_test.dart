@@ -101,9 +101,21 @@ void main() {
     });
 
     test('equatable equality works correctly', () {
-      final a = TaskModel(id: '1', title: 'A', createdAt: DateTime(2024, 1, 1), updatedAt: DateTime(2024, 1, 1));
-      final b = TaskModel(id: '1', title: 'A', createdAt: DateTime(2024, 1, 1), updatedAt: DateTime(2024, 1, 1));
-      final c = TaskModel(id: '2', title: 'B', createdAt: DateTime(2024, 1, 1), updatedAt: DateTime(2024, 1, 1));
+      final a = TaskModel(
+          id: '1',
+          title: 'A',
+          createdAt: DateTime(2024, 1, 1),
+          updatedAt: DateTime(2024, 1, 1));
+      final b = TaskModel(
+          id: '1',
+          title: 'A',
+          createdAt: DateTime(2024, 1, 1),
+          updatedAt: DateTime(2024, 1, 1));
+      final c = TaskModel(
+          id: '2',
+          title: 'B',
+          createdAt: DateTime(2024, 1, 1),
+          updatedAt: DateTime(2024, 1, 1));
 
       expect(a, equals(b));
       expect(a, isNot(equals(c)));

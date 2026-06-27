@@ -61,7 +61,8 @@ void main() {
       expect(CryptoUtils.verifyPin(longPin, hash), isTrue);
     });
 
-    test('different inputs produce different hashes (collision resistance)', () {
+    test('different inputs produce different hashes (collision resistance)',
+        () {
       final hashes = <String>{};
       for (int i = 0; i < 100; i++) {
         hashes.add(CryptoUtils.hashPin(i.toString()));
@@ -75,7 +76,8 @@ void main() {
       expect(CryptoUtils.verifyPin('1234', tampered), isFalse);
     });
 
-    test('timing attack resistance - verifyPin uses constant time comparison', () {
+    test('timing attack resistance - verifyPin uses constant time comparison',
+        () {
       final hash = CryptoUtils.hashPin('1234');
       // Both should return false quickly without leaking info
       expect(CryptoUtils.verifyPin('1235', hash), isFalse);
@@ -116,12 +118,15 @@ void main() {
     });
 
     test('isToday at midnight boundary', () {
-      final justBeforeMidnight = DateTime.now().add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+      final justBeforeMidnight = DateTime.now()
+          .add(const Duration(days: 1))
+          .subtract(const Duration(milliseconds: 1));
       expect(justBeforeMidnight.isToday, isFalse);
     });
 
     test('isYesterday relative to today', () {
-      final yesterday = DateTime.now().subtract(const Duration(days: 1)).dateOnly;
+      final yesterday =
+          DateTime.now().subtract(const Duration(days: 1)).dateOnly;
       expect(yesterday.isYesterday, isTrue);
     });
 

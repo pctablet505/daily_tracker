@@ -55,7 +55,8 @@ class SettingsScreen extends ConsumerWidget {
                   : 'Not set',
             ),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showQuietHoursPicker(context, ref, settings, settingsNotifier),
+            onTap: () =>
+                _showQuietHoursPicker(context, ref, settings, settingsNotifier),
           ),
           const Divider(),
           _buildSectionHeader(context, 'Security'),
@@ -243,8 +244,10 @@ class SettingsScreen extends ConsumerWidget {
     if (result != null) {
       final now = DateTime.now();
       notifier.setQuietHours(
-        DateTime(now.year, now.month, now.day, result.start.hour, result.start.minute),
-        DateTime(now.year, now.month, now.day, result.end.hour, result.end.minute),
+        DateTime(now.year, now.month, now.day, result.start.hour,
+            result.start.minute),
+        DateTime(
+            now.year, now.month, now.day, result.end.hour, result.end.minute),
       );
     }
   }
@@ -252,7 +255,9 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _checkForUpdates(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(content: Text('Checking for updates...'), duration: Duration(seconds: 2)),
+      const SnackBar(
+          content: Text('Checking for updates...'),
+          duration: Duration(seconds: 2)),
     );
 
     final service = UpdateService();
@@ -288,7 +293,8 @@ class SettingsScreen extends ConsumerWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          icon: Icon(Icons.warning_amber, color: Theme.of(context).colorScheme.error),
+          icon: Icon(Icons.warning_amber,
+              color: Theme.of(context).colorScheme.error),
           title: const Text('Overwrite Data?'),
           content: const Text(
             'Importing will replace all existing tasks, completion history, and logs. This cannot be undone.',
@@ -349,7 +355,8 @@ class SettingsScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         // Dismiss loading dialog if still showing
-        Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+        Navigator.of(context, rootNavigator: true)
+            .popUntil((route) => route.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Import error: $e')),
         );
@@ -370,7 +377,8 @@ class SettingsScreen extends ConsumerWidget {
       subtitle: Text(
         isSignedIn ? 'Signed in' : 'Not signed in',
         style: TextStyle(
-          color: isSignedIn ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          color:
+              isSignedIn ? colorScheme.primary : colorScheme.onSurfaceVariant,
         ),
       ),
       trailing: const Icon(Icons.chevron_right),
@@ -454,7 +462,8 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
     final signedIn = await syncService.isSignedIn();
     String? email;
     if (signedIn) {
-      final user = syncService.currentUser ?? await syncService.signInSilently();
+      final user =
+          syncService.currentUser ?? await syncService.signInSilently();
       email = user?.email;
     }
     if (mounted) {
@@ -508,7 +517,8 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.upload),
               label: Text(_isLoading ? 'Syncing...' : 'Upload Sync Data'),
@@ -582,7 +592,8 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Sync skipped: Wi-Fi Only is enabled. Connect to Wi-Fi or disable Wi-Fi Only Sync in Settings.'),
+              content: Text(
+                  'Sync skipped: Wi-Fi Only is enabled. Connect to Wi-Fi or disable Wi-Fi Only Sync in Settings.'),
               duration: Duration(seconds: 4),
             ),
           );
@@ -601,7 +612,9 @@ class _SyncBottomSheetState extends ConsumerState<_SyncBottomSheet> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sync failed. Check your Google Sign-In or network connection.')),
+          const SnackBar(
+              content: Text(
+                  'Sync failed. Check your Google Sign-In or network connection.')),
         );
       }
     } catch (e) {

@@ -34,8 +34,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
 
   Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool(AppConstants.prefFirstLaunch) ?? false;
-    final appLockEnabled = prefs.getBool(AppConstants.prefAppLockEnabled) ?? false;
+    final hasSeenOnboarding =
+        prefs.getBool(AppConstants.prefFirstLaunch) ?? false;
+    final appLockEnabled =
+        prefs.getBool(AppConstants.prefAppLockEnabled) ?? false;
 
     _router = AppRouter.router(hasSeenOnboarding);
 

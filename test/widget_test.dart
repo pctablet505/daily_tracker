@@ -20,7 +20,8 @@ void main() {
   setUpAll(() async {
     _ensureSqlite3Loaded();
     databaseFactory = createDatabaseFactoryFfi(ffiInit: _ensureSqlite3Loaded);
-    tempDir = await Directory.systemTemp.createTemp('daily_tracker_widget_test_');
+    tempDir =
+        await Directory.systemTemp.createTemp('daily_tracker_widget_test_');
   });
 
   setUp(() async {

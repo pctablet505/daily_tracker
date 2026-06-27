@@ -12,7 +12,8 @@ final taskRepositoryProvider = Provider<TaskRepository>((ref) {
   return TaskRepository(getIt<DatabaseHelper>());
 });
 
-final tasksForDateProvider = FutureProvider.family<List<TaskModel>, DateTime>((ref, date) async {
+final tasksForDateProvider =
+    FutureProvider.family<List<TaskModel>, DateTime>((ref, date) async {
   final repository = ref.watch(taskRepositoryProvider);
   return repository.getTasksForDate(date);
 });
@@ -22,7 +23,8 @@ final pendingTasksProvider = FutureProvider<List<TaskModel>>((ref) async {
   return repository.getPendingTasks();
 });
 
-final completedTasksTodayProvider = FutureProvider<List<TaskModel>>((ref) async {
+final completedTasksTodayProvider =
+    FutureProvider<List<TaskModel>>((ref) async {
   final repository = ref.watch(taskRepositoryProvider);
   return repository.getCompletedTasksForDate(DateTime.now());
 });
@@ -56,12 +58,14 @@ class TaskLogParam {
   int get hashCode => taskId.hashCode ^ date.year ^ date.month ^ date.day;
 }
 
-final taskLogProvider = FutureProvider.family<TaskLogModel?, TaskLogParam>((ref, param) async {
+final taskLogProvider =
+    FutureProvider.family<TaskLogModel?, TaskLogParam>((ref, param) async {
   final repository = ref.watch(taskRepositoryProvider);
   return repository.getTaskLog(param.taskId, param.date);
 });
 
-final taskLogHistoryProvider = FutureProvider.family<List<TaskLogModel>, String>((ref, taskId) async {
+final taskLogHistoryProvider =
+    FutureProvider.family<List<TaskLogModel>, String>((ref, taskId) async {
   final repository = ref.watch(taskRepositoryProvider);
   return repository.getTaskLogsForTask(taskId);
 });
@@ -134,7 +138,8 @@ class TaskActions {
 
   Future<void> cleanupUnusedMedia() => _runMediaCleanup();
 
-  Future<TaskModel> updateTask(TaskModel task, {
+  Future<TaskModel> updateTask(
+    TaskModel task, {
     String? title,
     String? description,
     DateTime? reminderTime,

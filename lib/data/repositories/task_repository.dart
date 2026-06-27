@@ -39,7 +39,8 @@ class TaskRepository {
     return task;
   }
 
-  Future<TaskModel> updateTask(TaskModel task, {
+  Future<TaskModel> updateTask(
+    TaskModel task, {
     String? title,
     String? description,
     DateTime? reminderTime,
@@ -83,15 +84,18 @@ class TaskRepository {
 
   Future<TaskModel?> getTask(String id) => _db.getTask(id);
 
-  Future<List<TaskModel>> getTasksForDate(DateTime date) => _db.getTasksForDate(date);
+  Future<List<TaskModel>> getTasksForDate(DateTime date) =>
+      _db.getTasksForDate(date);
 
   Future<List<TaskModel>> getAllActiveTasks() => _db.getAllActiveTasks();
 
   Future<List<TaskModel>> getPendingTasks() => _db.getPendingTasks();
 
-  Future<List<TaskModel>> getCompletedTasksForDate(DateTime date) => _db.getCompletedTasksForDate(date);
+  Future<List<TaskModel>> getCompletedTasksForDate(DateTime date) =>
+      _db.getCompletedTasksForDate(date);
 
-  Future<List<TaskModel>> getTasksWithReminders() => _db.getTasksWithReminders();
+  Future<List<TaskModel>> getTasksWithReminders() =>
+      _db.getTasksWithReminders();
 
   Future<List<TaskModel>> getRecurringTasks() => _db.getRecurringTasks();
 
@@ -118,16 +122,19 @@ class TaskRepository {
 
   // Task Logs
   Future<TaskLogModel?> getTaskLog(String taskId, DateTime date) {
-    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     return _db.getTaskLog(taskId, dateStr);
   }
 
-  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) => _db.getTaskLogsForTask(taskId);
+  Future<List<TaskLogModel>> getTaskLogsForTask(String taskId) =>
+      _db.getTaskLogsForTask(taskId);
 
   Future<void> saveTaskLog(TaskLogModel log) async {
     final existing = await _db.getTaskLog(log.taskId, log.date);
     if (existing != null) {
-      await _db.updateTaskLog(log.copyWith(id: existing.id, updatedAt: DateTime.now()));
+      await _db.updateTaskLog(
+          log.copyWith(id: existing.id, updatedAt: DateTime.now()));
     } else {
       await _db.insertTaskLog(log);
     }
@@ -135,5 +142,3 @@ class TaskRepository {
 
   Future<List<TaskLogModel>> getAllTaskLogs() => _db.getAllTaskLogs();
 }
-
-

@@ -90,7 +90,8 @@ void main() {
 
     test('returns default for null', () {
       expect(SafeParse.string(null), equals(''));
-      expect(SafeParse.string(null, defaultValue: 'fallback'), equals('fallback'));
+      expect(
+          SafeParse.string(null, defaultValue: 'fallback'), equals('fallback'));
     });
   });
 

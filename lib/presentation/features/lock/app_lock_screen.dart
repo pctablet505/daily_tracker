@@ -30,7 +30,8 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
   Future<void> _checkBiometric() async {
     final prefs = await SharedPreferences.getInstance();
-    final biometricEnabled = prefs.getBool(AppConstants.prefBiometricEnabled) ?? false;
+    final biometricEnabled =
+        prefs.getBool(AppConstants.prefBiometricEnabled) ?? false;
 
     if (biometricEnabled) {
       final canCheck = await _localAuth.canCheckBiometrics;
@@ -100,7 +101,8 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
   void _onBackspace() {
     if (_enteredPin.isEmpty) return;
-    setState(() => _enteredPin = _enteredPin.substring(0, _enteredPin.length - 1));
+    setState(
+        () => _enteredPin = _enteredPin.substring(0, _enteredPin.length - 1));
   }
 
   @override
@@ -125,15 +127,15 @@ class _AppLockScreenState extends State<AppLockScreen> {
               Text(
                 'App Locked',
                 style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Enter your PIN to continue',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 32),
               PinDots(
@@ -146,9 +148,9 @@ class _AppLockScreenState extends State<AppLockScreen> {
                 Text(
                   _errorMessage,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.error,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               const Spacer(),
               NumpadGrid(
@@ -168,5 +170,4 @@ class _AppLockScreenState extends State<AppLockScreen> {
       ),
     );
   }
-
 }

@@ -53,7 +53,9 @@ class TaskLogModel extends Equatable {
           ? this.completedAt
           : completedAt as DateTime?,
       comment: comment == _nullableSentinel ? this.comment : comment as String?,
-      mediaPath: mediaPath == _nullableSentinel ? this.mediaPath : mediaPath as String?,
+      mediaPath: mediaPath == _nullableSentinel
+          ? this.mediaPath
+          : mediaPath as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       syncStatus: syncStatus ?? this.syncStatus,
@@ -91,5 +93,16 @@ class TaskLogModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, taskId, date, isCompleted, completedAt, comment, mediaPath, createdAt, updatedAt, syncStatus];
+  List<Object?> get props => [
+        id,
+        taskId,
+        date,
+        isCompleted,
+        completedAt,
+        comment,
+        mediaPath,
+        createdAt,
+        updatedAt,
+        syncStatus
+      ];
 }

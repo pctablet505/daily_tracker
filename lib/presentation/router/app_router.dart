@@ -76,7 +76,8 @@ class AppRouter {
             return CustomTransitionPage(
               key: state.pageKey,
               child: TaskDetailScreen(taskId: taskId, isNew: isNew),
-              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
                 return SlideTransition(
                   position: Tween<Offset>(
                     begin: const Offset(0, 1),

@@ -11,7 +11,6 @@ import 'package:daily_tracker/data/models/daily_completion_model.dart';
 import 'package:daily_tracker/core/extensions/date_extensions.dart';
 
 void main() {
-
   late DatabaseHelper dbHelper;
 
   late Directory tempDir;
@@ -316,7 +315,8 @@ void main() {
     });
 
     group('streak edge cases', () {
-      test('getStreakCount is zero when no completions meet threshold', () async {
+      test('getStreakCount is zero when no completions meet threshold',
+          () async {
         final today = DateTime.now().dateOnly;
         await dbHelper.upsertDailyCompletion(
           DailyCompletionModel(
@@ -359,7 +359,8 @@ void main() {
         expect(await dbHelper.getStreakCount(), equals(1));
       });
 
-      test('getStreakCount counts today when threshold is exactly 0.5', () async {
+      test('getStreakCount counts today when threshold is exactly 0.5',
+          () async {
         final today = DateTime.now().dateOnly;
         await dbHelper.upsertDailyCompletion(
           DailyCompletionModel(
@@ -405,16 +406,51 @@ void main() {
         final base = DateTime(2024, 6, 10);
         final completions = [
           // 3-day run
-          DailyCompletionModel(id: '2024-06-01', date: base.subtract(const Duration(days: 9)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
-          DailyCompletionModel(id: '2024-06-02', date: base.subtract(const Duration(days: 8)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
-          DailyCompletionModel(id: '2024-06-03', date: base.subtract(const Duration(days: 7)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-01',
+              date: base.subtract(const Duration(days: 9)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-02',
+              date: base.subtract(const Duration(days: 8)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-03',
+              date: base.subtract(const Duration(days: 7)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
           // Gap + 2-day run
-          DailyCompletionModel(id: '2024-06-05', date: base.subtract(const Duration(days: 5)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
-          DailyCompletionModel(id: '2024-06-06', date: base.subtract(const Duration(days: 4)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-05',
+              date: base.subtract(const Duration(days: 5)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-06',
+              date: base.subtract(const Duration(days: 4)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
           // Low completion day breaks the streak
-          DailyCompletionModel(id: '2024-06-07', date: base.subtract(const Duration(days: 3)), totalTasks: 1, completedTasks: 0, completionRate: 0.0),
+          DailyCompletionModel(
+              id: '2024-06-07',
+              date: base.subtract(const Duration(days: 3)),
+              totalTasks: 1,
+              completedTasks: 0,
+              completionRate: 0.0),
           // Single day after break
-          DailyCompletionModel(id: '2024-06-09', date: base.subtract(const Duration(days: 1)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-09',
+              date: base.subtract(const Duration(days: 1)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         ];
 
         for (final completion in completions) {
@@ -427,27 +463,58 @@ void main() {
       test('getBestStreakCount ignores below-threshold days', () async {
         final base = DateTime(2024, 6, 15);
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-15', date: base, totalTasks: 2, completedTasks: 1, completionRate: 0.5),
+          DailyCompletionModel(
+              id: '2024-06-15',
+              date: base,
+              totalTasks: 2,
+              completedTasks: 1,
+              completionRate: 0.5),
         );
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-16', date: base.add(const Duration(days: 1)), totalTasks: 2, completedTasks: 0, completionRate: 0.49),
+          DailyCompletionModel(
+              id: '2024-06-16',
+              date: base.add(const Duration(days: 1)),
+              totalTasks: 2,
+              completedTasks: 0,
+              completionRate: 0.49),
         );
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-17', date: base.add(const Duration(days: 2)), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-17',
+              date: base.add(const Duration(days: 2)),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         );
 
         expect(await dbHelper.getBestStreakCount(), equals(1));
       });
 
-      test('getAverageCompletionRate returns arithmetic mean of mixed rates', () async {
+      test('getAverageCompletionRate returns arithmetic mean of mixed rates',
+          () async {
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-01', date: DateTime(2024, 6, 1), totalTasks: 1, completedTasks: 0, completionRate: 0.0),
+          DailyCompletionModel(
+              id: '2024-06-01',
+              date: DateTime(2024, 6, 1),
+              totalTasks: 1,
+              completedTasks: 0,
+              completionRate: 0.0),
         );
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-02', date: DateTime(2024, 6, 2), totalTasks: 2, completedTasks: 1, completionRate: 0.5),
+          DailyCompletionModel(
+              id: '2024-06-02',
+              date: DateTime(2024, 6, 2),
+              totalTasks: 2,
+              completedTasks: 1,
+              completionRate: 0.5),
         );
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: '2024-06-03', date: DateTime(2024, 6, 3), totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: '2024-06-03',
+              date: DateTime(2024, 6, 3),
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         );
 
         expect(await dbHelper.getAverageCompletionRate(), closeTo(0.5, 0.001));
@@ -457,19 +524,36 @@ void main() {
         expect(await dbHelper.getAverageCompletionRate(), equals(0.0));
       });
 
-      test('getStreakCount tolerates duplicate and out-of-order completion rows', () async {
+      test(
+          'getStreakCount tolerates duplicate and out-of-order completion rows',
+          () async {
         final today = DateTime.now().dateOnly;
         final yesterday = today.subtract(const Duration(days: 1));
 
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: _dateString(yesterday), date: yesterday, totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: _dateString(yesterday),
+              date: yesterday,
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         );
         // Duplicate/upsert for same day should not inflate streak.
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: _dateString(yesterday), date: yesterday, totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: _dateString(yesterday),
+              date: yesterday,
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         );
         await dbHelper.upsertDailyCompletion(
-          DailyCompletionModel(id: _dateString(today), date: today, totalTasks: 1, completedTasks: 1, completionRate: 1.0),
+          DailyCompletionModel(
+              id: _dateString(today),
+              date: today,
+              totalTasks: 1,
+              completedTasks: 1,
+              completionRate: 1.0),
         );
 
         expect(await dbHelper.getStreakCount(), equals(2));

@@ -25,7 +25,8 @@ class DailyCompletionModel extends Equatable {
       'totalTasks': totalTasks,
       'completedTasks': completedTasks,
       'completionRate': completionRate,
-      'createdAt': createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+      'createdAt':
+          createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
     };
   }
 
@@ -41,5 +42,6 @@ class DailyCompletionModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, date, totalTasks, completedTasks, completionRate];
+  List<Object?> get props =>
+      [id, date, totalTasks, completedTasks, completionRate];
 }
