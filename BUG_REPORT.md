@@ -1,5 +1,7 @@
 # Daily Tracker - Comprehensive Bug Report
 
+> **Status as of 2026-06-27:** All 31 issues below have been resolved in the current source (latest commit `7a8099e`). The file/line references are stale; use this document only as historical context. See `data/context/projects/daily-tracker/AGENTS.md` (or the project session logs) for the latest verification notes.
+
 ## Critical Bugs (Crash / Data Loss)
 
 ### 1. DatabaseHelper.getTaskLogsForDate - MISSING whereArgs [CRASH/DATA LEAK]
