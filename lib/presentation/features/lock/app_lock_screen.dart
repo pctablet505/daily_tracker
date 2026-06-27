@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/utils/app_logger.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_constants.dart';
@@ -54,7 +55,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
         widget.onUnlock();
       }
     } on PlatformException catch (e) {
-      debugPrint('Biometric auth error: $e');
+      AppLogger.e('Biometric auth error', e);
       setState(() => _useBiometric = false);
     }
   }

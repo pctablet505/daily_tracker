@@ -71,8 +71,14 @@ class TaskRepository {
   }
 
   Future<void> toggleTaskCompletion(TaskModel task) async {
-    final newStatus = !task.isCompleted;
-    await _db.toggleTaskCompletion(task.id, newStatus);
+    final now = DateTime.now();
+    final updated = task.copyWith(
+      isCompleted: !task.isCompleted,
+      completedAt: !task.isCompleted ? now : null,
+      updatedAt: now,
+      syncStatus: 'pending',
+    );
+    await _db.updateTaskCompletion(updated);
   }
 
   Future<TaskModel?> getTask(String id) => _db.getTask(id);

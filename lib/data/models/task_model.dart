@@ -1,4 +1,11 @@
 import 'package:equatable/equatable.dart';
+import '../../core/utils/safe_parse.dart';
+
+class _NullableSentinel {
+  const _NullableSentinel();
+}
+
+const _nullableSentinel = _NullableSentinel();
 
 class TaskModel extends Equatable {
   final String id;
@@ -40,17 +47,17 @@ class TaskModel extends Equatable {
   TaskModel copyWith({
     String? id,
     String? title,
-    String? description,
+    Object? description = _nullableSentinel,
     DateTime? createdAt,
     DateTime? updatedAt,
-    DateTime? reminderTime,
+    Object? reminderTime = _nullableSentinel,
     bool? isCompleted,
     bool? isRecurring,
-    String? recurrenceRule,
-    String? category,
-    String? taskType,
+    Object? recurrenceRule = _nullableSentinel,
+    Object? category = _nullableSentinel,
+    Object? taskType = _nullableSentinel,
     int? priority,
-    DateTime? completedAt,
+    Object? completedAt = _nullableSentinel,
     bool? isDeleted,
     int? version,
     String? syncStatus,
@@ -58,17 +65,25 @@ class TaskModel extends Equatable {
     return TaskModel(
       id: id ?? this.id,
       title: title ?? this.title,
-      description: description ?? this.description,
+      description: description == _nullableSentinel
+          ? this.description
+          : description as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      reminderTime: reminderTime ?? this.reminderTime,
+      reminderTime: reminderTime == _nullableSentinel
+          ? this.reminderTime
+          : reminderTime as DateTime?,
       isCompleted: isCompleted ?? this.isCompleted,
       isRecurring: isRecurring ?? this.isRecurring,
-      recurrenceRule: recurrenceRule ?? this.recurrenceRule,
-      category: category ?? this.category,
-      taskType: taskType ?? this.taskType,
+      recurrenceRule: recurrenceRule == _nullableSentinel
+          ? this.recurrenceRule
+          : recurrenceRule as String?,
+      category: category == _nullableSentinel ? this.category : category as String?,
+      taskType: taskType == _nullableSentinel ? this.taskType : taskType as String?,
       priority: priority ?? this.priority,
-      completedAt: completedAt ?? this.completedAt,
+      completedAt: completedAt == _nullableSentinel
+          ? this.completedAt
+          : completedAt as DateTime?,
       isDeleted: isDeleted ?? this.isDeleted,
       version: version ?? this.version,
       syncStatus: syncStatus ?? this.syncStatus,
@@ -98,26 +113,22 @@ class TaskModel extends Equatable {
 
   factory TaskModel.fromMap(Map<String, dynamic> map) {
     return TaskModel(
-      id: map['id'] as String,
-      title: map['title'] as String,
-      description: map['description'] as String?,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      updatedAt: DateTime.parse(map['updatedAt'] as String),
-      reminderTime: map['reminderTime'] != null
-          ? DateTime.parse(map['reminderTime'] as String)
-          : null,
-      isCompleted: (map['isCompleted'] as int) == 1,
-      isRecurring: (map['isRecurring'] as int) == 1,
-      recurrenceRule: map['recurrenceRule'] as String?,
-      category: map['category'] as String?,
-      taskType: map['taskType'] as String? ?? 'checklist',
-      priority: map['priority'] as int? ?? 0,
-      completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'] as String)
-          : null,
-      isDeleted: (map['isDeleted'] as int? ?? 0) == 1,
-      version: map['version'] as int? ?? 1,
-      syncStatus: map['syncStatus'] as String? ?? 'pending',
+      id: SafeParse.string(map['id'], defaultValue: ''),
+      title: SafeParse.string(map['title'], defaultValue: ''),
+      description: SafeParse.stringNullable(map['description']),
+      createdAt: SafeParse.dateTimeOrNow(map['createdAt']),
+      updatedAt: SafeParse.dateTimeOrNow(map['updatedAt']),
+      reminderTime: SafeParse.dateTime(map['reminderTime']),
+      isCompleted: SafeParse.boolean(map['isCompleted']),
+      isRecurring: SafeParse.boolean(map['isRecurring']),
+      recurrenceRule: SafeParse.stringNullable(map['recurrenceRule']),
+      category: SafeParse.stringNullable(map['category']),
+      taskType: SafeParse.stringNullable(map['taskType']) ?? 'checklist',
+      priority: SafeParse.integer(map['priority']),
+      completedAt: SafeParse.dateTime(map['completedAt']),
+      isDeleted: SafeParse.boolean(map['isDeleted']),
+      version: SafeParse.integer(map['version'], defaultValue: 1),
+      syncStatus: SafeParse.stringNullable(map['syncStatus']) ?? 'pending',
     );
   }
 

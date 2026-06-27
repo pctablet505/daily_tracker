@@ -71,7 +71,7 @@ void main() {
 
     test('verifyPin with tampered hash', () {
       final hash = CryptoUtils.hashPin('1234');
-      final tampered = hash.substring(0, hash.length - 1) + 'X';
+      final tampered = '${hash.substring(0, hash.length - 1)}X';
       expect(CryptoUtils.verifyPin('1234', tampered), isFalse);
     });
 

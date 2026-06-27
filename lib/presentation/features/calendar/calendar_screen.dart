@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
@@ -176,8 +177,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                             leading: Checkbox(
                               value: task.isCompleted,
                               onChanged: (value) async {
+                                HapticFeedback.mediumImpact();
                                 final actions = ref.read(taskActionsProvider);
-                                await actions.toggleCompletion(task);
+                                try {
+                                  await actions.toggleCompletion(task);
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Could not update task: $e')),
+                                    );
+                                  }
+                                }
                               },
                             ),
                             title: Text(

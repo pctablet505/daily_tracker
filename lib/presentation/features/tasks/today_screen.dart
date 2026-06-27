@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:confetti/confetti.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/extensions/date_extensions.dart';
 import '../../../core/utils/id_generator.dart';
@@ -24,6 +27,7 @@ class TodayScreen extends ConsumerStatefulWidget {
 
 class _TodayScreenState extends ConsumerState<TodayScreen> {
   final _searchController = TextEditingController();
+  late final ConfettiController _confettiController;
   bool _isSearching = false;
 
   DateTime get _today => DateTime.now().dateOnly;
@@ -31,6 +35,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
     // Reset global filter providers so they don't persist across visits
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(searchQueryProvider.notifier).state = '';
@@ -40,8 +45,14 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 
   @override
   void dispose() {
+    _confettiController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _playConfetti() {
+    if (_confettiController.state == ConfettiControllerState.playing) return;
+    _confettiController.play();
   }
 
   @override
@@ -51,232 +62,251 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final searchQuery = ref.watch(searchQueryProvider);
     final selectedCategory = ref.watch(selectedCategoryProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: _isSearching
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search tasks...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                style: Theme.of(context).textTheme.titleMedium,
-                onChanged: (value) {
-                  ref.read(searchQueryProvider.notifier).state = value;
-                },
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _today.isToday ? 'Today' : _today.formattedDate,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  Text(
-                    DateFormat('EEEE, MMMM d').format(_today),
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-        actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchController.clear();
-                  ref.read(searchQueryProvider.notifier).state = '';
-                }
-              });
-            },
-          ),
-          Consumer(
-            builder: (context, ref, child) {
-              final completed = completedAsync.value?.length ?? 0;
-              final total = (tasksAsync.value?.length ?? 0);
-              final progress = total > 0 ? completed / total : 0.0;
-
-              return Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Center(
-                  child: SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          value: progress,
-                          strokeWidth: 4,
-                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        ),
-                        Text(
-                          '${(progress * 100).toInt()}%',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                      ],
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: _isSearching
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'Search tasks...',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _onRefresh,
-        child: tasksAsync.when(
-          data: (tasks) {
-            // Apply search and category filters
-            var filteredTasks = tasks;
-            if (searchQuery.isNotEmpty) {
-              final query = searchQuery.toLowerCase();
-              filteredTasks = filteredTasks.where((t) {
-                return t.title.toLowerCase().contains(query) ||
-                    (t.description?.toLowerCase().contains(query) ?? false);
-              }).toList();
-            }
-            if (selectedCategory != null) {
-              filteredTasks = filteredTasks.where((t) => t.category == selectedCategory).toList();
-            }
-
-            if (filteredTasks.isEmpty && tasks.isEmpty) {
-              return _EmptyState(onAddTask: () => _openNewTask(context));
-            }
-
-            if (filteredTasks.isEmpty) {
-              return _NoResultsState(
-                onClearFilters: () {
-                  ref.read(searchQueryProvider.notifier).state = '';
-                  ref.read(selectedCategoryProvider.notifier).state = null;
-                  _searchController.clear();
-                  setState(() => _isSearching = false);
-                },
-              );
-            }
-
-            // Group by category and completion
-            final dosPending = filteredTasks.where((t) => t.category == 'Do' && !t.isCompleted).toList();
-            final dosCompleted = filteredTasks.where((t) => t.category == 'Do' && t.isCompleted).toList();
-            final dontsPending = filteredTasks.where((t) => t.category == 'Don\'t' && !t.isCompleted).toList();
-            final dontsCompleted = filteredTasks.where((t) => t.category == 'Don\'t' && t.isCompleted).toList();
-            final otherPending = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && !t.isCompleted).toList();
-            final otherCompleted = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && t.isCompleted).toList();
-
-            return CustomScrollView(
-              slivers: [
-                // Category filter chips
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          FilterChip(
-                            label: Text(
-                              'All',
-                              style: TextStyle(
-                                fontWeight: selectedCategory == null ? FontWeight.w600 : FontWeight.normal,
-                              ),
+                    style: Theme.of(context).textTheme.titleMedium,
+                    onChanged: (value) {
+                      ref.read(searchQueryProvider.notifier).state = value;
+                    },
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _today.isToday ? 'Today' : _today.formattedDate,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
                             ),
-                            selected: selectedCategory == null,
-                            onSelected: (_) {
-                              ref.read(selectedCategoryProvider.notifier).state = null;
-                            },
-                            selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            showCheckmark: false,
-                          ),
-                          const SizedBox(width: 8),
-                          ...AppConstants.categories.map((cat) {
-                            final isSelected = selectedCategory == cat;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: FilterChip(
+                      ),
+                      Text(
+                        DateFormat('EEEE, MMMM d').format(_today),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+            actions: [
+              IconButton(
+                icon: Icon(_isSearching ? Icons.close : Icons.search),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = !_isSearching;
+                    if (!_isSearching) {
+                      _searchController.clear();
+                      ref.read(searchQueryProvider.notifier).state = '';
+                    }
+                  });
+                },
+              ),
+              Consumer(
+                builder: (context, ref, child) {
+                  final completed = completedAsync.value?.length ?? 0;
+                  final total = (tasksAsync.value?.length ?? 0);
+                  final progress = total > 0 ? completed / total : 0.0;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 5,
+                              strokeCap: StrokeCap.round,
+                              color: Theme.of(context).colorScheme.primary,
+                              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            ),
+                            Text(
+                              '${(progress * 100).toInt()}%',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          body: RefreshIndicator(
+            onRefresh: _onRefresh,
+            child: tasksAsync.when(
+              data: (tasks) {
+                // Apply search and category filters
+                var filteredTasks = tasks;
+                if (searchQuery.isNotEmpty) {
+                  final query = searchQuery.toLowerCase();
+                  filteredTasks = filteredTasks.where((t) {
+                    return t.title.toLowerCase().contains(query) ||
+                        (t.description?.toLowerCase().contains(query) ?? false);
+                  }).toList();
+                }
+                if (selectedCategory != null) {
+                  filteredTasks = filteredTasks.where((t) => t.category == selectedCategory).toList();
+                }
+
+                if (filteredTasks.isEmpty && tasks.isEmpty) {
+                  return _EmptyState(onAddTask: () => _openNewTask(context));
+                }
+
+                if (filteredTasks.isEmpty) {
+                  return _NoResultsState(
+                    onClearFilters: () {
+                      ref.read(searchQueryProvider.notifier).state = '';
+                      ref.read(selectedCategoryProvider.notifier).state = null;
+                      _searchController.clear();
+                      setState(() => _isSearching = false);
+                    },
+                  );
+                }
+
+                // Group by category and completion
+                final dosPending = filteredTasks.where((t) => t.category == 'Do' && !t.isCompleted).toList();
+                final dosCompleted = filteredTasks.where((t) => t.category == 'Do' && t.isCompleted).toList();
+                final dontsPending = filteredTasks.where((t) => t.category == 'Don\'t' && !t.isCompleted).toList();
+                final dontsCompleted = filteredTasks.where((t) => t.category == 'Don\'t' && t.isCompleted).toList();
+                final otherPending = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && !t.isCompleted).toList();
+                final otherCompleted = filteredTasks.where((t) => t.category != 'Do' && t.category != 'Don\'t' && t.isCompleted).toList();
+
+                return CustomScrollView(
+                  slivers: [
+                    // Category filter chips
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              FilterChip(
                                 label: Text(
-                                  cat,
+                                  'All',
                                   style: TextStyle(
-                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    fontWeight: selectedCategory == null ? FontWeight.w600 : FontWeight.normal,
                                   ),
                                 ),
-                                selected: isSelected,
+                                selected: selectedCategory == null,
                                 onSelected: (_) {
-                                  ref.read(selectedCategoryProvider.notifier).state =
-                                      isSelected ? null : cat;
+                                  ref.read(selectedCategoryProvider.notifier).state = null;
                                 },
                                 selectedColor: Theme.of(context).colorScheme.primaryContainer,
                                 backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 showCheckmark: false,
                               ),
-                            );
-                          }),
-                        ],
+                              const SizedBox(width: 8),
+                              ...AppConstants.categories.map((cat) {
+                                final isSelected = selectedCategory == cat;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: FilterChip(
+                                    label: Text(
+                                      cat,
+                                      style: TextStyle(
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                      ),
+                                    ),
+                                    selected: isSelected,
+                                    onSelected: (_) {
+                                      ref.read(selectedCategoryProvider.notifier).state =
+                                          isSelected ? null : cat;
+                                    },
+                                    selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    showCheckmark: false,
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                // DOs - Pending
-                if (dosPending.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'DOs (${dosPending.length})', color: Theme.of(context).colorScheme.primary),
-                  _buildTaskList(context, ref, dosPending),
-                ],
+                    // DOs - Pending
+                    if (dosPending.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'DOs (${dosPending.length})', color: Theme.of(context).colorScheme.primary),
+                      _buildTaskList(context, ref, dosPending),
+                    ],
 
-                // DON'Ts - Pending
-                if (dontsPending.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'DON\'Ts (${dontsPending.length})', color: Theme.of(context).colorScheme.error),
-                  _buildTaskList(context, ref, dontsPending),
-                ],
+                    // DON'Ts - Pending
+                    if (dontsPending.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'DON\'Ts (${dontsPending.length})', color: Theme.of(context).colorScheme.error),
+                      _buildTaskList(context, ref, dontsPending),
+                    ],
 
-                // Other - Pending
-                if (otherPending.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'Pending (${otherPending.length})', color: Theme.of(context).colorScheme.primary),
-                  _buildTaskList(context, ref, otherPending),
-                ],
+                    // Other - Pending
+                    if (otherPending.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'Pending (${otherPending.length})', color: Theme.of(context).colorScheme.primary),
+                      _buildTaskList(context, ref, otherPending),
+                    ],
 
-                // DOs - Completed
-                if (dosCompleted.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'DOs Completed (${dosCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  _buildTaskList(context, ref, dosCompleted, isCompleted: true),
-                ],
+                    // DOs - Completed
+                    if (dosCompleted.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'DOs Completed (${dosCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, dosCompleted, isCompleted: true),
+                    ],
 
-                // DON'Ts - Completed
-                if (dontsCompleted.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'DON\'Ts Completed (${dontsCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  _buildTaskList(context, ref, dontsCompleted, isCompleted: true),
-                ],
+                    // DON'Ts - Completed
+                    if (dontsCompleted.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'DON\'Ts Completed (${dontsCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, dontsCompleted, isCompleted: true),
+                    ],
 
-                // Other - Completed
-                if (otherCompleted.isNotEmpty) ...[
-                  _buildSectionHeader(context, 'Completed (${otherCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  _buildTaskList(context, ref, otherCompleted, isCompleted: true),
-                ],
+                    // Other - Completed
+                    if (otherCompleted.isNotEmpty) ...[
+                      _buildSectionHeader(context, 'Completed (${otherCompleted.length})', color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      _buildTaskList(context, ref, otherCompleted, isCompleted: true),
+                    ],
 
-                const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-              ],
-            );
-          },
-          loading: () => const _LoadingState(),
-          error: (error, _) => Center(child: Text('Error: $error')),
+                    const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                  ],
+                );
+              },
+              loading: () => const _LoadingState(),
+              error: (error, _) => Center(child: Text('Error: $error')),
+            ),
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _openNewTask(context),
+            icon: const Icon(Icons.add),
+            label: const Text('New Task'),
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openNewTask(context),
-        icon: const Icon(Icons.add),
-        label: const Text('New Task'),
-      ),
+        IgnorePointer(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              emissionFrequency: 0.05,
+              numberOfParticles: 30,
+              gravity: 0.3,
+              shouldLoop: false,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -311,7 +341,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 SlidableAction(
                   onPressed: (_) async {
                     final actions = ref.read(taskActionsProvider);
+                    final wasCompleted = task.isCompleted;
                     await actions.toggleCompletion(task);
+                    if (!wasCompleted) _playConfetti();
                   },
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
@@ -372,6 +404,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
             child: TaskCard(
               task: task,
               isCompleted: isCompleted,
+              onCompleted: _playConfetti,
             ),
           );
         },
@@ -395,11 +428,13 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 class TaskCard extends ConsumerStatefulWidget {
   final TaskModel task;
   final bool isCompleted;
+  final VoidCallback onCompleted;
 
   const TaskCard({
     super.key,
     required this.task,
     this.isCompleted = false,
+    required this.onCompleted,
   });
 
   @override
@@ -445,14 +480,18 @@ class _TaskCardState extends ConsumerState<TaskCard> {
     final colorScheme = theme.colorScheme;
     final task = widget.task;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: () => _openTaskDetail(),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Column(
+    return AnimatedScale(
+      scale: widget.isCompleted ? 0.98 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: InkWell(
+          onTap: () => _openTaskDetail(),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -475,15 +514,21 @@ class _TaskCardState extends ConsumerState<TaskCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          task.title,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
-                                color: widget.isCompleted
-                                    ? colorScheme.onSurfaceVariant
-                                    : colorScheme.onSurface,
-                              ),
+                        Hero(
+                          tag: 'task-title-${task.id}',
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: Text(
+                              task.title,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    decoration: widget.isCompleted ? TextDecoration.lineThrough : null,
+                                    color: widget.isCompleted
+                                        ? colorScheme.onSurfaceVariant
+                                        : colorScheme.onSurface,
+                                  ),
+                            ),
+                          ),
                         ),
                         if (task.category != null)
                           Chip(
@@ -534,8 +579,9 @@ class _TaskCardState extends ConsumerState<TaskCard> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildTypeIcon(ColorScheme colorScheme) {
     final icon = widget.task.taskType == 'numeric' ? Icons.numbers :
@@ -696,6 +742,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
   }
 
   Future<void> _saveAndComplete() async {
+    HapticFeedback.mediumImpact();
     setState(() => _isSaving = true);
     try {
       final task = widget.task;
@@ -710,6 +757,12 @@ class _TaskCardState extends ConsumerState<TaskCard> {
         if (comment.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please enter a value')),
+          );
+          return;
+        }
+        if (double.tryParse(comment) == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter a valid number')),
           );
           return;
         }
@@ -732,6 +785,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
       }
 
       final actions = ref.read(taskActionsProvider);
+      final wasCompleted = task.isCompleted;
       // Mark task as completed first (creates today's log), then update log with data
       if (!task.isCompleted) {
         await actions.toggleCompletion(task);
@@ -747,14 +801,31 @@ class _TaskCardState extends ConsumerState<TaskCard> {
         createdAt: today,
         updatedAt: today,
       ));
+
+      if (!wasCompleted) {
+        widget.onCompleted();
+      }
+
+      if (mounted) {
+        setState(() {
+          _photoPath = null;
+          _valueController.clear();
+          _commentController.clear();
+        });
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _toggleChecklist() async {
+    HapticFeedback.mediumImpact();
     final actions = ref.read(taskActionsProvider);
+    final wasCompleted = widget.task.isCompleted;
     await actions.toggleCompletion(widget.task);
+    if (!wasCompleted) {
+      widget.onCompleted();
+    }
   }
 
   void _openTaskDetail() {
@@ -795,10 +866,21 @@ class _EmptyState extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      size: 80,
-                      color: colorScheme.primary.withValues(alpha: 0.3),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.95, end: 1.05),
+                      duration: const Duration(seconds: 2),
+                      curve: Curves.easeInOut,
+                      builder: (context, scale, child) {
+                        return Transform.scale(
+                          scale: scale,
+                          child: child,
+                        );
+                      },
+                      child: Icon(
+                        Icons.check_circle_outline,
+                        size: 80,
+                        color: colorScheme.primary.withValues(alpha: 0.3),
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -898,56 +980,62 @@ class _LoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: 5,
-      itemBuilder: (context, index) {
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Container(
-            height: 80,
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(4),
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final highlight = Theme.of(context).colorScheme.surfaceContainerHigh;
+    return Shimmer.fromColors(
+      baseColor: base,
+      highlightColor: highlight,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: 5,
+        itemBuilder: (context, index) {
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              height: 80,
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: 120,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: 120,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

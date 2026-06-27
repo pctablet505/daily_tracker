@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import '../../core/utils/app_logger.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -43,7 +44,7 @@ Future<void> _checkForUpdates() async {
     if (wifiOnly) {
       final connectivity = await Connectivity().checkConnectivity();
       if (connectivity != ConnectivityResult.wifi) {
-        debugPrint('Background update check skipped: not on Wi-Fi');
+        AppLogger.d('Background update check skipped: not on Wi-Fi');
         return;
       }
     }
@@ -58,7 +59,7 @@ Future<void> _checkForUpdates() async {
       await prefs.setString(AppConstants.prefPendingUpdateChangelog, update.changelog);
     }
   } catch (e) {
-    debugPrint('Background update check failed: $e');
+    AppLogger.e('Background update check failed', e);
   }
 }
 
@@ -80,7 +81,7 @@ Future<void> _performBackgroundSync() async {
       await syncService.uploadBackup(db);
     }
   } catch (e) {
-    debugPrint('Background sync failed: $e');
+    AppLogger.e('Background sync failed', e);
   }
 }
 
@@ -99,7 +100,7 @@ Future<void> _performDailyReset() async {
       }
     }
   } catch (e) {
-    debugPrint('Daily reset failed: $e');
+    AppLogger.e('Daily reset failed', e);
   }
 }
 

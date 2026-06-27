@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../core/utils/app_logger.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -26,7 +26,7 @@ class SyncService {
       final account = await _googleSignIn.signIn();
       return account;
     } catch (e) {
-      debugPrint('Google Sign-In error: $e');
+      AppLogger.e('Google Sign-In error', e);
       return null;
     }
   }
@@ -39,7 +39,7 @@ class SyncService {
     try {
       return await _googleSignIn.signInSilently();
     } catch (e) {
-      debugPrint('Google Sign-In silent error: $e');
+      AppLogger.e('Google Sign-In silent error', e);
       return null;
     }
   }
@@ -47,17 +47,17 @@ class SyncService {
   Future<drive.DriveApi> _getDriveApi() async {
     var user = _googleSignIn.currentUser;
     if (user == null) {
-      debugPrint('_getDriveApi: currentUser is null, attempting signInSilently...');
+      AppLogger.d('_getDriveApi: currentUser is null, attempting signInSilently');
       user = await _googleSignIn.signInSilently();
     }
-    debugPrint('_getDriveApi: currentUser is ${user == null ? "NULL" : "NOT NULL (email: ${user.email})"}');
+    AppLogger.d('_getDriveApi: currentUser is ${user == null ? "NULL" : "NOT NULL"}');
     if (user == null) {
       throw Exception('Not signed in to Google. Please sign in again.');
     }
 
-    debugPrint('_getDriveApi: calling authenticatedClient()...');
+    AppLogger.d('_getDriveApi: requesting authenticated client');
     final authClient = await _googleSignIn.authenticatedClient();
-    debugPrint('_getDriveApi: authClient is ${authClient == null ? "NULL" : "NOT NULL"}');
+    AppLogger.d('_getDriveApi: authClient obtained: ${authClient != null}');
     if (authClient == null) {
       throw Exception('Google Drive authentication failed. Please sign in again.');
     }
@@ -68,34 +68,34 @@ class SyncService {
   Future<bool> shouldSync() async {
     final prefs = await SharedPreferences.getInstance();
     final wifiOnly = prefs.getBool(AppConstants.prefWifiOnlySync) ?? true;
-    debugPrint('shouldSync: wifiOnly preference = $wifiOnly');
+    AppLogger.d('shouldSync: wifiOnly preference = $wifiOnly');
 
     if (wifiOnly) {
       final result = await Connectivity().checkConnectivity();
-      debugPrint('shouldSync: ConnectivityResult from plugin = $result');
+      AppLogger.d('shouldSync: connectivity result = $result');
       return result == ConnectivityResult.wifi;
     }
     return true;
   }
 
   Future<bool> uploadBackup(DatabaseHelper db) async {
-    debugPrint('uploadBackup: checking shouldSync...');
+    AppLogger.d('uploadBackup: checking shouldSync');
     final syncCheck = await shouldSync();
-    debugPrint('uploadBackup: shouldSync result = $syncCheck');
+    AppLogger.d('uploadBackup: shouldSync result = $syncCheck');
     if (!syncCheck) return false;
 
-    debugPrint('uploadBackup: getting DriveApi...');
+    AppLogger.d('uploadBackup: getting DriveApi');
     late final drive.DriveApi driveApi;
     try {
       driveApi = await _getDriveApi();
     } catch (e) {
-      debugPrint('uploadBackup: DriveApi auth failed: $e');
+      AppLogger.e('uploadBackup: DriveApi auth failed', e);
       return false;
     }
-    debugPrint('uploadBackup: driveApi obtained successfully');
+    AppLogger.d('uploadBackup: driveApi obtained successfully');
 
     try {
-      debugPrint('uploadBackup: gathering database tasks...');
+      AppLogger.d('uploadBackup: gathering database tasks');
       final tasks = await db.getAllActiveTasks();
       final completions = await db.getDailyCompletionsRange(
         DateTime.now().subtract(const Duration(days: 365)),
@@ -114,13 +114,13 @@ class SyncService {
       final jsonString = jsonEncode(backupData);
       final bytes = utf8.encode(jsonString);
 
-      debugPrint('uploadBackup: checking existing backup files on Google Drive...');
+      AppLogger.d('uploadBackup: checking existing backup files on Google Drive');
       // Check if backup file already exists
       final existingFiles = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: "name='${AppConstants.syncFileName}'",
       );
-      debugPrint('uploadBackup: found ${existingFiles.files?.length ?? 0} existing backup files');
+      AppLogger.d('uploadBackup: found ${existingFiles.files?.length ?? 0} existing backup files');
 
       final media = drive.Media(Stream.fromIterable([bytes]), bytes.length);
 
@@ -128,17 +128,17 @@ class SyncService {
         // Update existing file — do NOT set parents in update requests
         final fileId = existingFiles.files!.first.id!;
         final file = drive.File()..name = AppConstants.syncFileName;
-        debugPrint('uploadBackup: updating existing file $fileId on Google Drive...');
+        AppLogger.d('uploadBackup: updating existing file on Google Drive');
         await driveApi.files.update(file, fileId, uploadMedia: media);
-        debugPrint('uploadBackup: update successful');
+        AppLogger.d('uploadBackup: update successful');
       } else {
         // Create new file
         final file = drive.File()
           ..name = AppConstants.syncFileName
           ..parents = ['appDataFolder'];
-        debugPrint('uploadBackup: creating new backup file on Google Drive...');
+        AppLogger.d('uploadBackup: creating new backup file on Google Drive');
         await driveApi.files.create(file, uploadMedia: media);
-        debugPrint('uploadBackup: creation successful');
+        AppLogger.d('uploadBackup: creation successful');
       }
 
       // Update last sync time
@@ -147,7 +147,7 @@ class SyncService {
 
       return true;
     } catch (e) {
-      debugPrint('Upload backup failed: $e');
+      AppLogger.e('Upload backup failed', e);
       return false;
     }
   }
@@ -159,7 +159,7 @@ class SyncService {
     try {
       driveApi = await _getDriveApi();
     } catch (e) {
-      debugPrint('downloadBackup: DriveApi auth failed: $e');
+      AppLogger.e('downloadBackup: DriveApi auth failed', e);
       return null;
     }
 
@@ -180,7 +180,7 @@ class SyncService {
 
       return jsonDecode(jsonString) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('Download backup failed: $e');
+      AppLogger.e('Download backup failed', e);
       return null;
     }
   }

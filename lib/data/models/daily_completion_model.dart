@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../core/utils/safe_parse.dart';
 
 class DailyCompletionModel extends Equatable {
   final String id;
@@ -30,12 +31,12 @@ class DailyCompletionModel extends Equatable {
 
   factory DailyCompletionModel.fromMap(Map<String, dynamic> map) {
     return DailyCompletionModel(
-      id: map['id'] as String,
-      date: DateTime.parse(map['date'] as String),
-      totalTasks: map['totalTasks'] as int,
-      completedTasks: map['completedTasks'] as int,
-      completionRate: (map['completionRate'] as num).toDouble(),
-      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt'] as String) : null,
+      id: SafeParse.string(map['id'], defaultValue: ''),
+      date: SafeParse.dateTimeOrNow(map['date']),
+      totalTasks: SafeParse.integer(map['totalTasks']),
+      completedTasks: SafeParse.integer(map['completedTasks']),
+      completionRate: SafeParse.float(map['completionRate']),
+      createdAt: SafeParse.dateTime(map['createdAt']),
     );
   }
 

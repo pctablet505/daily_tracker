@@ -15,6 +15,7 @@ A cross-platform daily task tracker app built with Flutter. Features a modern Ma
 - **Export/Import**: Backup your data as JSON or export analytics as CSV
 - **App Lock**: PIN and biometric authentication support
 - **Dark/Light Theme**: Full Material 3 theming support
+- **Polished UI/UX**: Shimmer loading skeletons, confetti burst on completion, Hero title transitions, and a daily completion progress ring
 - **Offline First**: Works without internet; syncs when connected
 
 ## Tech Stack
@@ -76,6 +77,15 @@ flutter build apk --debug
 ### Release Build
 ```bash
 flutter build apk --release
+```
+
+### Tests
+```bash
+# Unit + widget tests (161 tests)
+flutter test
+
+# Integration test on a connected Android device (e.g., Pixel 9)
+flutter test integration_test/app_test.dart -d 49201FDAQ0009X
 ```
 
 ## Auto Update Mechanism

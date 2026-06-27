@@ -114,15 +114,21 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Task Title',
-                hintText: 'What do you need to do?',
-                prefixIcon: Icon(Icons.title),
+            Hero(
+              tag: 'task-title-${widget.taskId}',
+              child: Material(
+                type: MaterialType.transparency,
+                child: TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Task Title',
+                    hintText: 'What do you need to do?',
+                    prefixIcon: Icon(Icons.title),
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  maxLines: 1,
+                ),
               ),
-              textCapitalization: TextCapitalization.sentences,
-              maxLines: 1,
             ),
             const SizedBox(height: 16),
             TextField(

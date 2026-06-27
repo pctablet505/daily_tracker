@@ -1,4 +1,11 @@
 import 'package:equatable/equatable.dart';
+import '../../core/utils/safe_parse.dart';
+
+class _NullableSentinel {
+  const _NullableSentinel();
+}
+
+const _nullableSentinel = _NullableSentinel();
 
 class TaskLogModel extends Equatable {
   final String id;
@@ -30,9 +37,9 @@ class TaskLogModel extends Equatable {
     String? taskId,
     String? date,
     bool? isCompleted,
-    DateTime? completedAt,
-    String? comment,
-    String? mediaPath,
+    Object? completedAt = _nullableSentinel,
+    Object? comment = _nullableSentinel,
+    Object? mediaPath = _nullableSentinel,
     DateTime? createdAt,
     DateTime? updatedAt,
     String? syncStatus,
@@ -42,9 +49,11 @@ class TaskLogModel extends Equatable {
       taskId: taskId ?? this.taskId,
       date: date ?? this.date,
       isCompleted: isCompleted ?? this.isCompleted,
-      completedAt: completedAt ?? this.completedAt,
-      comment: comment ?? this.comment,
-      mediaPath: mediaPath ?? this.mediaPath,
+      completedAt: completedAt == _nullableSentinel
+          ? this.completedAt
+          : completedAt as DateTime?,
+      comment: comment == _nullableSentinel ? this.comment : comment as String?,
+      mediaPath: mediaPath == _nullableSentinel ? this.mediaPath : mediaPath as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       syncStatus: syncStatus ?? this.syncStatus,
@@ -68,16 +77,16 @@ class TaskLogModel extends Equatable {
 
   factory TaskLogModel.fromMap(Map<String, dynamic> map) {
     return TaskLogModel(
-      id: map['id'] as String,
-      taskId: map['taskId'] as String,
-      date: map['date'] as String,
-      isCompleted: (map['isCompleted'] as int) == 1,
-      completedAt: map['completedAt'] != null ? DateTime.parse(map['completedAt'] as String) : null,
-      comment: map['comment'] as String?,
-      mediaPath: map['mediaPath'] as String?,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      updatedAt: DateTime.parse(map['updatedAt'] as String),
-      syncStatus: map['syncStatus'] as String? ?? 'pending',
+      id: SafeParse.string(map['id'], defaultValue: ''),
+      taskId: SafeParse.string(map['taskId'], defaultValue: ''),
+      date: SafeParse.string(map['date'], defaultValue: ''),
+      isCompleted: SafeParse.boolean(map['isCompleted']),
+      completedAt: SafeParse.dateTime(map['completedAt']),
+      comment: SafeParse.stringNullable(map['comment']),
+      mediaPath: SafeParse.stringNullable(map['mediaPath']),
+      createdAt: SafeParse.dateTimeOrNow(map['createdAt']),
+      updatedAt: SafeParse.dateTimeOrNow(map['updatedAt']),
+      syncStatus: SafeParse.stringNullable(map['syncStatus']) ?? 'pending',
     );
   }
 

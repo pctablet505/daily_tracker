@@ -1,142 +1,316 @@
+import 'dart:convert';
+import 'dart:ffi';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqlite3/open.dart' as sqlite3_open;
 import 'package:daily_tracker/core/services/export_service.dart';
 import 'package:daily_tracker/data/local/database_helper.dart';
 import 'package:daily_tracker/data/models/task_model.dart';
 import 'package:daily_tracker/data/models/daily_completion_model.dart';
 import 'package:daily_tracker/data/models/task_log_model.dart';
 
-class MockDatabaseHelper implements DatabaseHelper {
-  final List<TaskModel> tasks = [];
-  final List<DailyCompletionModel> completions = [];
-  final List<TaskLogModel> logs = [];
+TaskModel _makeTask({
+  String id = 'task-1',
+  String title = 'No Sugar',
+  bool completed = false,
+  String? category,
+  String taskType = 'checklist',
+}) {
+  final now = DateTime.now();
+  return TaskModel(
+    id: id,
+    title: title,
+    createdAt: now,
+    updatedAt: now,
+    isCompleted: completed,
+    category: category,
+    taskType: taskType,
+  );
+}
 
-  @override
-  Future<List<TaskModel>> getAllActiveTasks() async {
-    return tasks;
-  }
-
-  @override
-  Future<List<DailyCompletionModel>> getDailyCompletionsRange(DateTime start, DateTime end) async {
-    return completions;
-  }
-
-  @override
-  Future<List<TaskLogModel>> getAllTaskLogs() async {
-    return logs;
-  }
-
-  @override
-  Future<String> insertTask(TaskModel task) async {
-    tasks.add(task);
-    return task.id;
-  }
-
-  @override
-  Future<void> upsertDailyCompletion(DailyCompletionModel completion) async {
-    completions.add(completion);
-  }
-
-  @override
-  Future<String> insertTaskLog(TaskLogModel log) async {
-    logs.add(log);
-    return log.id;
-  }
-
-  @override
-  Future<void> wipeAllData() async {
-    tasks.clear();
-    completions.clear();
-    logs.clear();
-  }
-
-  @override
-  Future<void> importBatch({
-    required List<TaskModel> tasks,
-    required List<DailyCompletionModel> completions,
-    required List<TaskLogModel> logs,
-  }) async {
-    this.tasks
-      ..clear()
-      ..addAll(tasks);
-    this.completions
-      ..clear()
-      ..addAll(completions);
-    this.logs
-      ..clear()
-      ..addAll(logs);
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+TaskLogModel _makeLog({
+  String id = 'log-1',
+  String taskId = 'task-1',
+  String date = '2026-05-31',
+  String? comment,
+  String? mediaPath,
+}) {
+  final now = DateTime.now();
+  return TaskLogModel(
+    id: id,
+    taskId: taskId,
+    date: date,
+    isCompleted: true,
+    comment: comment,
+    mediaPath: mediaPath,
+    createdAt: now,
+    updatedAt: now,
+  );
 }
 
 void main() {
-  group('ExportService Tests', () {
-    late MockDatabaseHelper mockDb;
+  group('ExportService — round-trip serialization', () {
+    late DatabaseHelper dbHelper;
     late ExportService exportService;
+    late Directory tempDir;
 
-    setUp(() {
-      mockDb = MockDatabaseHelper();
-      exportService = ExportService(mockDb);
+    setUpAll(() async {
+      _ensureSqlite3Loaded();
+      databaseFactory = createDatabaseFactoryFfi(
+        ffiInit: _ensureSqlite3Loaded,
+      );
+      tempDir = await Directory.systemTemp.createTemp('daily_tracker_test_');
     });
 
-    test('Export and import task logs JSON successfully', () async {
-      // 1. Arrange: add sample data to mock DB
-      final task = TaskModel(
-        id: 'task-1',
-        title: 'No Sugar',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      final completion = DailyCompletionModel(
+    setUp(() async {
+      final dbFile = File(p.join(tempDir.path, 'daily_tracker.db'));
+      if (await dbFile.exists()) {
+        await dbFile.delete();
+      }
+      DatabaseHelper.resetTestDatabasePath();
+      DatabaseHelper.setTestDatabasePath(dbFile.path);
+      dbHelper = DatabaseHelper();
+      exportService = ExportService(dbHelper);
+    });
+
+    tearDown(() async {
+      try {
+        await dbHelper.close();
+      } catch (_) {}
+      DatabaseHelper.resetTestDatabasePath();
+    });
+
+    tearDownAll(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('exports and re-imports tasks, completions, logs', () async {
+      await dbHelper.insertTask(_makeTask());
+      await dbHelper.upsertDailyCompletion(DailyCompletionModel(
         id: 'comp-1',
         date: DateTime.now(),
         totalTasks: 5,
         completedTasks: 3,
         completionRate: 0.6,
-      );
-      final log = TaskLogModel(
-        id: 'log-1',
-        taskId: 'task-1',
-        date: '2026-05-31',
-        isCompleted: true,
-        comment: 'Felt great, avoided sugar',
-        mediaPath: '/media/sugar.jpg',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
+      ));
+      await dbHelper.insertTaskLog(
+        _makeLog(comment: 'Felt great', mediaPath: '/img.jpg'),
       );
 
-      mockDb.tasks.add(task);
-      mockDb.completions.add(completion);
-      mockDb.logs.add(log);
+      final json = await exportService.exportToJson();
+      expect(json, contains('task-1'));
+      expect(json, contains('No Sugar'));
+      expect(json, contains('Felt great'));
+      expect(json, contains('/img.jpg'));
 
-      // 2. Act: Export to JSON
-      final jsonString = await exportService.exportToJson();
+      await dbHelper.wipeAllData();
 
-      // 3. Verify JSON contains the exported task log fields
-      expect(jsonString, contains('task-1'));
-      expect(jsonString, contains('No Sugar'));
-      expect(jsonString, contains('Felt great, avoided sugar'));
-      expect(jsonString, contains('/media/sugar.jpg'));
+      final ok = await exportService.importFromJson(json);
+      expect(ok, isTrue);
 
-      // 4. Act: Reset DB and Import from JSON
-      mockDb.tasks.clear();
-      mockDb.completions.clear();
-      mockDb.logs.clear();
+      final tasks = await dbHelper.getAllActiveTasks();
+      final completions = await dbHelper.getDailyCompletionsRange(
+        DateTime.now().subtract(const Duration(days: 365)),
+        DateTime.now(),
+      );
+      final logs = await dbHelper.getAllTaskLogs();
 
-      final success = await exportService.importFromJson(jsonString);
+      expect(tasks, hasLength(1));
+      expect(tasks.first.title, 'No Sugar');
+      expect(completions.first.completedTasks, 3);
+      expect(logs.first.comment, 'Felt great');
+      expect(logs.first.mediaPath, '/img.jpg');
+    });
 
-      // 5. Assert: Verify import succeeded and data restored
-      expect(success, isTrue);
-      expect(mockDb.tasks, hasLength(1));
-      expect(mockDb.tasks.first.title, 'No Sugar');
+    test('exports empty DB to valid JSON with empty arrays', () async {
+      final json = await exportService.exportToJson();
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      expect(decoded['tasks'], isEmpty);
+      expect(decoded['completions'], isEmpty);
+      expect(decoded['taskLogs'], isEmpty);
+      expect(decoded['version'], equals(2));
+    });
 
-      expect(mockDb.completions, hasLength(1));
-      expect(mockDb.completions.first.completedTasks, 3);
+    test('import preserves all optional nullable fields', () async {
+      await dbHelper.insertTask(_makeTask(category: 'Health', taskType: 'numeric'));
+      await dbHelper.insertTaskLog(_makeLog(comment: null, mediaPath: null));
 
-      expect(mockDb.logs, hasLength(1));
-      expect(mockDb.logs.first.comment, 'Felt great, avoided sugar');
-      expect(mockDb.logs.first.mediaPath, '/media/sugar.jpg');
+      final json = await exportService.exportToJson();
+      await dbHelper.wipeAllData();
+
+      await exportService.importFromJson(json);
+
+      final tasks = await dbHelper.getAllActiveTasks();
+      final logs = await dbHelper.getAllTaskLogs();
+
+      expect(tasks.first.category, 'Health');
+      expect(tasks.first.taskType, 'numeric');
+      expect(logs.first.comment, isNull);
+      expect(logs.first.mediaPath, isNull);
+    });
+
+    test('import replaces existing data atomically (old data cleared)', () async {
+      await dbHelper.insertTask(_makeTask(id: 'old-task', title: 'Old'));
+      final newJson = jsonEncode({
+        'version': 2,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'tasks': [_makeTask(id: 'new-task', title: 'New').toMap()],
+        'completions': [],
+        'taskLogs': [],
+      });
+
+      await exportService.importFromJson(newJson);
+
+      final tasks = await dbHelper.getAllActiveTasks();
+      expect(tasks, hasLength(1));
+      expect(tasks.first.id, 'new-task');
+      expect(tasks.first.title, 'New');
+    });
+
+    test('import rejects unsupported version number', () async {
+      final badJson = jsonEncode({
+        'version': 99,
+        'tasks': [],
+        'completions': [],
+        'taskLogs': [],
+      });
+      expect(
+        () => exportService.importFromJson(badJson),
+        throwsA(isA<UnsupportedError>()),
+      );
+    });
+
+    test('import rejects malformed JSON', () async {
+      expect(
+        () => exportService.importFromJson('not json at all'),
+        throwsA(anything),
+      );
+    });
+
+    test('import rejects task with empty id', () async {
+      final json = jsonEncode({
+        'version': 2,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'tasks': [
+          {
+            'id': '',
+            'title': 'No ID',
+            'createdAt': DateTime.now().toIso8601String(),
+            'updatedAt': DateTime.now().toIso8601String(),
+            'isCompleted': 0,
+            'isRecurring': 0,
+            'priority': 0,
+            'isDeleted': 0,
+            'version': 1,
+            'syncStatus': 'pending',
+          }
+        ],
+        'completions': [],
+        'taskLogs': [],
+      });
+      expect(
+        () => exportService.importFromJson(json),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('import rejects duplicate task ids in the same batch', () async {
+      final taskMap = _makeTask(id: 'dup').toMap();
+      final json = jsonEncode({
+        'version': 2,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'tasks': [taskMap, taskMap],
+        'completions': [],
+        'taskLogs': [],
+      });
+      expect(
+        () => exportService.importFromJson(json),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('import rejects task log with empty taskId', () async {
+      final json = jsonEncode({
+        'version': 2,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'tasks': [],
+        'completions': [],
+        'taskLogs': [
+          {
+            'id': 'log-x',
+            'taskId': '',
+            'date': '2026-06-01',
+            'isCompleted': 0,
+            'createdAt': DateTime.now().toIso8601String(),
+            'updatedAt': DateTime.now().toIso8601String(),
+            'syncStatus': 'pending',
+          }
+        ],
+      });
+      expect(
+        () => exportService.importFromJson(json),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('exportToCsv produces header row and one data row per completion', () async {
+      await dbHelper.upsertDailyCompletion(DailyCompletionModel(
+        id: '2026-01-01T00:00:00.000',
+        date: DateTime(2026, 1, 1),
+        totalTasks: 10,
+        completedTasks: 7,
+        completionRate: 0.7,
+      ));
+      final csv = await exportService.exportToCsv();
+      expect(csv, contains('Date,Total Tasks,Completed Tasks,Completion Rate %'));
+      expect(csv, contains('2026-01-01'));
+      expect(csv, contains('10'));
+      expect(csv, contains('70.0'));
+    });
+
+    test('version 1 backup is accepted (backward compat)', () async {
+      final json = jsonEncode({
+        'version': 1,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'tasks': [_makeTask().toMap()],
+        'completions': [],
+        'taskLogs': [],
+      });
+      final ok = await exportService.importFromJson(json);
+      expect(ok, isTrue);
+
+      final tasks = await dbHelper.getAllActiveTasks();
+      expect(tasks, hasLength(1));
     });
   });
+}
+
+/// Locates a prebuilt libsqlite3 shared object on the host and wires it into
+/// the sqlite3 package. This allows unit tests to run on Linux hosts that do
+/// not have a system libsqlite3.so in the default library search path.
+void _ensureSqlite3Loaded() {
+  const candidates = [
+    '/home/pctablet505/.cache/bazel/_bazel_pctablet505/c9d4eae62017b0ae004e50f66ccf4980/external/sysroot_linux_x86_64_glibc_2_27/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
+    '/usr/lib/x86_64-linux-gnu/libsqlite3.so.0',
+    '/lib/x86_64-linux-gnu/libsqlite3.so.0',
+  ];
+
+  for (final path in candidates) {
+    final file = File(path);
+    if (file.existsSync()) {
+      sqlite3_open.open.overrideFor(
+        sqlite3_open.OperatingSystem.linux,
+        () => DynamicLibrary.open(path),
+      );
+      return;
+    }
+  }
+
+  throw StateError(
+    'Could not find libsqlite3.so.0. Please install libsqlite3-dev or provide a valid path.',
+  );
 }

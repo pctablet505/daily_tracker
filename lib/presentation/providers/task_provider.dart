@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/utils/app_logger.dart';
 import '../../core/services/dependency_injection.dart';
 import '../../data/local/database_helper.dart';
 import '../../data/models/task_model.dart';
@@ -108,7 +108,7 @@ class TaskActions {
     try {
       await _reminderService.scheduleTaskReminder(task);
     } catch (e) {
-      debugPrint('Reminder scheduling failed for task ${task.id}: $e');
+      AppLogger.e('Reminder scheduling failed for task ${task.id}', e);
     }
     return task;
   }
@@ -131,6 +131,8 @@ class TaskActions {
     ref.invalidate(allTaskLogsProvider);
     await _runMediaCleanup();
   }
+
+  Future<void> cleanupUnusedMedia() => _runMediaCleanup();
 
   Future<TaskModel> updateTask(TaskModel task, {
     String? title,
@@ -166,7 +168,7 @@ class TaskActions {
     ref.invalidate(taskLogHistoryProvider);
     ref.invalidate(allTaskLogsProvider);
     refreshAllTaskProviders();
-    _runMediaCleanup();
+    await _runMediaCleanup();
   }
 
   Future<void> _runMediaCleanup() async {

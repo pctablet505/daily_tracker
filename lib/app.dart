@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
@@ -21,6 +22,9 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
   bool _isLocked = false;
   bool _isLoading = true;
   bool _hasShownUpdateDialog = false;
+  // Router stored as a field so it isn't recreated on every rebuild, which
+  // would reset the current route back to initialLocation.
+  late final GoRouter _router;
 
   @override
   void initState() {
@@ -32,6 +36,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenOnboarding = prefs.getBool(AppConstants.prefFirstLaunch) ?? false;
     final appLockEnabled = prefs.getBool(AppConstants.prefAppLockEnabled) ?? false;
+
+    _router = AppRouter.router(hasSeenOnboarding);
 
     setState(() {
       _hasSeenOnboarding = hasSeenOnboarding;
@@ -88,7 +94,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
       theme: AppTheme.lightTheme(null),
       darkTheme: AppTheme.darkTheme(null),
       themeMode: themeState.themeMode,
-      routerConfig: AppRouter.router(_hasSeenOnboarding!),
+      routerConfig: _router,
     );
   }
 }

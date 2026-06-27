@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:open_filex/open_filex.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/app_logger.dart';
 
 class UpdateInfo {
   final String version;
@@ -61,7 +62,7 @@ class UpdateService {
         fileSize: apkAsset['size'],
       );
     } catch (e) {
-      debugPrint('Update check failed: $e');
+      AppLogger.e('Update check failed', e);
       return null;
     }
   }
@@ -77,7 +78,8 @@ class UpdateService {
         if (r > c) return true;
         if (r < c) return false;
       }
-    } catch (_) {
+    } catch (e) {
+      AppLogger.e('Version comparison failed (remote=$remote, current=$current)', e);
       return false;
     }
     return false;
@@ -111,7 +113,7 @@ class UpdateService {
         if (await file.exists()) {
           final actualSize = await file.length();
           if (actualSize != expectedSize) {
-            debugPrint('APK size mismatch: expected $expectedSize, got $actualSize');
+            AppLogger.e('APK size mismatch: expected $expectedSize, got $actualSize');
             await file.delete();
             return null;
           }
@@ -120,7 +122,7 @@ class UpdateService {
 
       return filePath;
     } catch (e) {
-      debugPrint('Download failed: $e');
+      AppLogger.e('Download failed', e);
       return null;
     }
   }

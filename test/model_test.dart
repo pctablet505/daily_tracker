@@ -110,6 +110,68 @@ void main() {
       expect(a.hashCode, equals(b.hashCode));
     });
 
+    test('fromMap handles null boolean fields safely', () {
+      final map = {
+        'id': 'null-bool-test',
+        'title': 'Null Bool Test',
+        'createdAt': '2024-06-15T10:00:00.000',
+        'updatedAt': '2024-06-15T10:00:00.000',
+        'isCompleted': null,
+        'isRecurring': null,
+        'isDeleted': null,
+      };
+
+      final task = TaskModel.fromMap(map);
+      expect(task.isCompleted, isFalse);
+      expect(task.isRecurring, isFalse);
+      expect(task.isDeleted, isFalse);
+    });
+
+    test('fromMap handles malformed dates gracefully', () {
+      final map = {
+        'id': 'bad-date-test',
+        'title': 'Bad Date Test',
+        'createdAt': 'not-a-date',
+        'updatedAt': 'not-a-date',
+      };
+
+      final task = TaskModel.fromMap(map);
+      expect(task.id, equals('bad-date-test'));
+      expect(task.title, equals('Bad Date Test'));
+      expect(task.createdAt, isA<DateTime>());
+      expect(task.updatedAt, isA<DateTime>());
+    });
+
+    test('fromMap handles string booleans and ints', () {
+      final map = {
+        'id': 'string-bool-test',
+        'title': 'String Bool Test',
+        'createdAt': '2024-06-15T10:00:00.000',
+        'updatedAt': '2024-06-15T10:00:00.000',
+        'isCompleted': '1',
+        'isRecurring': 'true',
+        'isDeleted': 'yes',
+      };
+
+      final task = TaskModel.fromMap(map);
+      expect(task.isCompleted, isTrue);
+      expect(task.isRecurring, isTrue);
+      expect(task.isDeleted, isTrue);
+    });
+
+    test('fromMap with empty id defaults to empty string', () {
+      final map = {
+        'id': null,
+        'title': null,
+        'createdAt': '2024-06-15T10:00:00.000',
+        'updatedAt': '2024-06-15T10:00:00.000',
+      };
+
+      final task = TaskModel.fromMap(map);
+      expect(task.id, equals(''));
+      expect(task.title, equals(''));
+    });
+
     test('toMap produces correct SQLite-compatible values', () {
       final task = TaskModel(
         id: 'sqlite-test',
@@ -172,6 +234,47 @@ void main() {
       expect(log.isCompleted, isFalse);
     });
 
+    test('fromMap handles null and malformed fields safely', () {
+      final map = {
+        'id': null,
+        'taskId': null,
+        'date': null,
+        'isCompleted': null,
+        'completedAt': 'not-a-date',
+        'comment': null,
+        'mediaPath': null,
+        'createdAt': 'invalid',
+        'updatedAt': 'invalid',
+        'syncStatus': null,
+      };
+
+      final log = TaskLogModel.fromMap(map);
+      expect(log.id, equals(''));
+      expect(log.taskId, equals(''));
+      expect(log.date, equals(''));
+      expect(log.isCompleted, isFalse);
+      expect(log.completedAt, isNull);
+      expect(log.comment, isNull);
+      expect(log.mediaPath, isNull);
+      expect(log.createdAt, isA<DateTime>());
+      expect(log.updatedAt, isA<DateTime>());
+      expect(log.syncStatus, equals('pending'));
+    });
+
+    test('fromMap handles string boolean for isCompleted', () {
+      final map = {
+        'id': 'log-bool',
+        'taskId': 'task-1',
+        'date': '2024-06-15',
+        'isCompleted': '1',
+        'createdAt': '2024-06-15T10:00:00.000',
+        'updatedAt': '2024-06-15T10:00:00.000',
+      };
+
+      final log = TaskLogModel.fromMap(map);
+      expect(log.isCompleted, isTrue);
+    });
+
     test('comment can be empty string', () {
       final log = TaskLogModel(
         id: 'empty-comment',
@@ -231,6 +334,40 @@ void main() {
 
       final restored = DailyCompletionModel.fromMap(map);
       expect(restored.createdAt, isNull);
+    });
+
+    test('fromMap handles null and malformed fields safely', () {
+      final map = {
+        'id': null,
+        'date': 'not-a-date',
+        'totalTasks': null,
+        'completedTasks': null,
+        'completionRate': null,
+        'createdAt': 'invalid',
+      };
+
+      final completion = DailyCompletionModel.fromMap(map);
+      expect(completion.id, equals(''));
+      expect(completion.date, isA<DateTime>());
+      expect(completion.totalTasks, equals(0));
+      expect(completion.completedTasks, equals(0));
+      expect(completion.completionRate, equals(0.0));
+      expect(completion.createdAt, isNull);
+    });
+
+    test('fromMap handles string numbers', () {
+      final map = {
+        'id': 'str-num',
+        'date': '2024-06-15T00:00:00.000',
+        'totalTasks': '10',
+        'completedTasks': '7',
+        'completionRate': '0.7',
+      };
+
+      final completion = DailyCompletionModel.fromMap(map);
+      expect(completion.totalTasks, equals(10));
+      expect(completion.completedTasks, equals(7));
+      expect(completion.completionRate, closeTo(0.7, 0.001));
     });
 
     test('createdAt fallback in toMap when null', () {

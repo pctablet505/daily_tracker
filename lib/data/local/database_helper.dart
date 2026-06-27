@@ -6,12 +6,28 @@ import '../models/task_model.dart';
 import '../models/task_log_model.dart';
 import '../../core/utils/id_generator.dart';
 import '../../core/extensions/date_extensions.dart';
+import '../../core/utils/safe_parse.dart';
 import '../models/daily_completion_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
+
+  // Test injection: when set, [_initDatabase] uses this path instead of
+  // the application documents directory. Tests should call [setTestDatabasePath]
+  // before accessing the database and [resetTestDatabasePath] in tearDown.
+  static String? _testDatabasePath;
+
+  /// Sets a custom database file path for testing.
+  static void setTestDatabasePath(String path) {
+    _testDatabasePath = path;
+  }
+
+  /// Clears the test database path and forces the next access to reinitialize.
+  static void resetTestDatabasePath() {
+    _testDatabasePath = null;
+  }
 
   Database? _database;
 
@@ -21,8 +37,8 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    final documentsDirectory = await getApplicationDocumentsDirectory();
-    final path = join(documentsDirectory.path, 'daily_tracker.db');
+    final path = _testDatabasePath ??
+        join((await getApplicationDocumentsDirectory()).path, 'daily_tracker.db');
 
     return await openDatabase(
       path,
@@ -112,6 +128,13 @@ class DatabaseHelper {
   // ==================== TASKS ====================
 
   Future<String> insertTask(TaskModel task) async {
+    if (task.id.isEmpty) {
+      throw ArgumentError('Task id cannot be empty');
+    }
+    if (task.title.isEmpty) {
+      throw ArgumentError('Task title cannot be empty');
+    }
+
     final db = await database;
     final id = await db.insert('tasks', task.toMap(), conflictAlgorithm: ConflictAlgorithm.abort);
     if (id <= 0) {
@@ -213,7 +236,7 @@ class DatabaseHelper {
     return maps.map((m) => TaskModel.fromMap(m)).toList();
   }
 
-  Future<int> toggleTaskCompletion(String id, bool completed) async {
+  Future<int> updateTaskCompletion(TaskModel task) async {
     final db = await database;
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -221,30 +244,30 @@ class DatabaseHelper {
     final result = await db.update(
       'tasks',
       {
-        'isCompleted': completed ? 1 : 0,
-        'completedAt': completed ? now.toIso8601String() : null,
-        'updatedAt': now.toIso8601String(),
-        'syncStatus': 'pending',
+        'isCompleted': task.isCompleted ? 1 : 0,
+        'completedAt': task.completedAt?.toIso8601String(),
+        'updatedAt': task.updatedAt.toIso8601String(),
+        'syncStatus': task.syncStatus,
       },
       where: 'id = ?',
-      whereArgs: [id],
+      whereArgs: [task.id],
     );
 
     // Sync completion to today's task log
-    final existing = await getTaskLog(id, dateStr);
+    final existing = await getTaskLog(task.id, dateStr);
     if (existing != null) {
       await updateTaskLog(existing.copyWith(
-        isCompleted: completed,
-        completedAt: completed ? now : null,
+        isCompleted: task.isCompleted,
+        completedAt: task.completedAt,
         updatedAt: now,
       ));
     } else {
       await insertTaskLog(TaskLogModel(
         id: IdGenerator.generate(),
-        taskId: id,
+        taskId: task.id,
         date: dateStr,
-        isCompleted: completed,
-        completedAt: completed ? now : null,
+        isCompleted: task.isCompleted,
+        completedAt: task.completedAt,
         createdAt: now,
         updatedAt: now,
       ));
@@ -256,7 +279,10 @@ class DatabaseHelper {
 
   Future<void> _updateDailyCompletion(String dateStr) async {
     final db = await database;
-    final parts = dateStr.split('-').map(int.parse).toList();
+    final parts = dateStr.split('-').map(int.tryParse).whereType<int>().toList();
+    if (parts.length != 3) {
+      throw FormatException('Invalid date string for daily completion: $dateStr');
+    }
     final year = parts[0];
     final month = parts[1];
     final day = parts[2];
@@ -373,8 +399,9 @@ class DatabaseHelper {
     bool checkedToday = false;
 
     for (final row in completions) {
-      final date = DateTime.parse(row['date'] as String).dateOnly;
-      final rate = (row['completionRate'] as num).toDouble();
+      final date = DateTime.tryParse(row['date'] as String? ?? '')?.dateOnly;
+      if (date == null) continue;
+      final rate = (row['completionRate'] as num?)?.toDouble() ?? 0.0;
 
       if (!checkedToday) {
         if (date.isAtSameMomentAs(currentDate) || date.isAtSameMomentAs(currentDate.subtract(const Duration(days: 1)))) {
@@ -426,8 +453,9 @@ class DatabaseHelper {
     DateTime? previousDate;
 
     for (final row in completions) {
-      final date = DateTime.parse(row['date'] as String).dateOnly;
-      final rate = (row['completionRate'] as num).toDouble();
+      final date = DateTime.tryParse(row['date'] as String? ?? '')?.dateOnly;
+      if (date == null) continue;
+      final rate = (row['completionRate'] as num?)?.toDouble() ?? 0.0;
 
       if (rate >= 0.5) {
         if (previousDate == null || date.difference(previousDate).inDays == 1) {
@@ -457,12 +485,13 @@ class DatabaseHelper {
 
     final completedMap = {
       for (var row in completedResult)
-        (row['category'] ?? 'Other') as String: (row['completed'] as num?)?.toInt() ?? 0
+        SafeParse.string(row['category'], defaultValue: 'Other'):
+            SafeParse.integer(row['completed'])
     };
 
     return tasksResult.map((row) {
-      final category = (row['category'] ?? 'Other') as String;
-      final total = (row['total'] as num?)?.toInt() ?? 0;
+      final category = SafeParse.string(row['category'], defaultValue: 'Other');
+      final total = SafeParse.integer(row['total']);
       final completed = completedMap[category] ?? 0;
       return CategoryStat(category: category, total: total, completed: completed);
     }).toList();
@@ -502,6 +531,7 @@ class DatabaseHelper {
     final maps = await db.query(
       'task_logs',
       where: 'taskId = ?',
+      whereArgs: [taskId],
       orderBy: 'date DESC',
     );
     return maps.map((m) => TaskLogModel.fromMap(m)).toList();
