@@ -8,6 +8,8 @@ import '../../core/utils/id_generator.dart';
 import '../../core/extensions/date_extensions.dart';
 import '../../core/utils/safe_parse.dart';
 import '../models/daily_completion_model.dart';
+import '../models/task_template_model.dart';
+import '../models/badge_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -43,7 +45,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -127,6 +129,41 @@ class DatabaseHelper {
       await db.execute(
           'ALTER TABLE tasks ADD COLUMN taskType TEXT DEFAULT \'checklist\'');
     }
+    if (oldVersion < 4) {
+      // Add sort order column to tasks
+      await db.execute(
+          'ALTER TABLE tasks ADD COLUMN sortIndex INTEGER NOT NULL DEFAULT 0');
+      // Backfill sortIndex based on current ordering
+      final rows = await db.query('tasks',
+          orderBy: 'priority DESC, createdAt ASC', columns: ['id']);
+      for (var i = 0; i < rows.length; i++) {
+        await db.update('tasks', {'sortIndex': i},
+            where: 'id = ?', whereArgs: [rows[i]['id']]);
+      }
+      // Templates table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS task_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          icon TEXT,
+          isBuiltIn INTEGER NOT NULL DEFAULT 0,
+          tasksJson TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        )
+      ''');
+      // Badges table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS badges (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          threshold INTEGER NOT NULL,
+          title TEXT NOT NULL,
+          earnedAt TEXT
+        )
+      ''');
+    }
   }
 
   // ==================== TASKS ====================
@@ -170,8 +207,6 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
-    // Clean up orphaned logs for this task
-    await db.delete('task_logs', where: 'taskId = ?', whereArgs: [id]);
     // Recalculate today's completion stats since total task count changed
     final now = DateTime.now();
     final dateStr =
@@ -182,7 +217,27 @@ class DatabaseHelper {
 
   Future<int> permanentlyDeleteTask(String id) async {
     final db = await database;
+    await db.delete('task_logs', where: 'taskId = ?', whereArgs: [id]);
     return await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> restoreTask(String id) async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {
+        'isDeleted': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+        'syncStatus': 'pending',
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    // Recalculate stats for today since task count changed
+    final now = DateTime.now();
+    final dateStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    await _updateDailyCompletion(dateStr);
   }
 
   Future<TaskModel?> getTask(String id) async {
@@ -589,6 +644,66 @@ class DatabaseHelper {
     await db.delete('tasks');
     await db.delete('daily_completions');
     await db.delete('task_logs');
+  }
+
+  Future<List<DailyCompletionModel>> getDailyCompletionsInRange(
+      DateTime start, DateTime end) async {
+    final db = await database;
+    final startStr =
+        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final endStr =
+        '${end.year}-${end.month.toString().padLeft(2, '0')}-${end.day.toString().padLeft(2, '0')}';
+    final maps = await db.query(
+      'daily_completions',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [startStr, endStr],
+      orderBy: 'date ASC',
+    );
+    return maps.map((m) => DailyCompletionModel.fromMap(m)).toList();
+  }
+
+  // Template CRUD
+  Future<List<TaskTemplateModel>> getTemplates() async {
+    final db = await database;
+    final maps = await db.query('task_templates',
+        orderBy: 'isBuiltIn DESC, name ASC');
+    return maps.map((m) => TaskTemplateModel.fromMap(m)).toList();
+  }
+
+  Future<void> upsertTemplate(TaskTemplateModel t) async {
+    final db = await database;
+    await db.insert('task_templates', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteTemplate(String id) async {
+    final db = await database;
+    await db.delete('task_templates',
+        where: 'id = ? AND isBuiltIn = 0', whereArgs: [id]);
+  }
+
+  // Badge CRUD
+  Future<List<BadgeModel>> getBadges() async {
+    final db = await database;
+    final maps = await db.query('badges');
+    return maps.map((m) => BadgeModel.fromMap(m)).toList();
+  }
+
+  Future<void> upsertBadge(BadgeModel b) async {
+    final db = await database;
+    await db.insert('badges', b.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // Task ordering
+  Future<void> updateTaskOrder(List<String> orderedIds) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await txn.update('tasks', {'sortIndex': i},
+            where: 'id = ?', whereArgs: [orderedIds[i]]);
+      }
+    });
   }
 
   /// Atomically imports all data within a single SQLite transaction.

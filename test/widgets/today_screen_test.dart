@@ -124,7 +124,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilterChip, 'Work'));
+      // FilterChip label includes the pending count: "Work · N"
+      await tester.tap(find.widgetWithText(FilterChip, 'Work · 1'));
       await tester.pumpAndSettle();
 
       expect(find.text('Work task'), findsOneWidget);

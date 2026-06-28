@@ -99,7 +99,8 @@ void main() {
       expect(retrieved, isNull);
 
       final logs = await dbHelper.getTaskLogsForTask('task-delete');
-      expect(logs, isEmpty);
+      // deleteTask is a soft-delete; logs are preserved and not purged immediately.
+      expect(logs, hasLength(1));
     });
 
     test('updateTaskCompletion creates daily completion stats', () async {

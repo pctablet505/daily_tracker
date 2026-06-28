@@ -3,6 +3,9 @@ import '../../core/extensions/date_extensions.dart';
 import '../local/database_helper.dart';
 import '../models/task_model.dart';
 import '../models/task_log_model.dart';
+import '../models/task_template_model.dart';
+import '../models/badge_model.dart';
+import '../models/daily_completion_model.dart';
 
 class TaskRepository {
   final DatabaseHelper _db;
@@ -141,4 +144,29 @@ class TaskRepository {
   }
 
   Future<List<TaskLogModel>> getAllTaskLogs() => _db.getAllTaskLogs();
+
+  Future<void> restoreTask(String id) => _db.restoreTask(id);
+
+  Future<List<DailyCompletionModel>> getDailyCompletionsInRange(
+          DateTime start, DateTime end) =>
+      _db.getDailyCompletionsInRange(start, end);
+
+  Future<List<TaskTemplateModel>> getTemplates() => _db.getTemplates();
+
+  Future<void> upsertTemplate(TaskTemplateModel t) => _db.upsertTemplate(t);
+
+  Future<void> deleteTemplate(String id) => _db.deleteTemplate(id);
+
+  Future<List<BadgeModel>> getBadges() => _db.getBadges();
+
+  Future<void> earnBadge(BadgeModel b) => _db.upsertBadge(b);
+
+  Future<void> updateTaskOrder(List<String> orderedIds) =>
+      _db.updateTaskOrder(orderedIds);
+
+  Future<int> getStreakCount() => _db.getStreakCount();
+
+  Future<int> getBestStreakCount() => _db.getBestStreakCount();
+
+  Future<int> getTotalCompletedCount() => _db.getCompletedTasksCount();
 }

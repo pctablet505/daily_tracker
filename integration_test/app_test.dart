@@ -72,8 +72,15 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await _waitFor(find.text('Integration Test Task'), tester);
 
-      // Verify task appears on Today screen.
-      expect(find.text('Integration Test Task'), findsOneWidget);
+      // Verify task appears on Today screen (scope to the Today scroll view so
+      // the Hero flight shuttle doesn't count as a duplicate text widget).
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('today_tasks_scroll')),
+          matching: find.text('Integration Test Task'),
+        ),
+        findsOneWidget,
+      );
 
       // Complete the task by tapping the checkbox (ensure it's hittable).
       final taskCheckbox = find.byType(Checkbox).first;
@@ -91,16 +98,33 @@ void main() {
       await tester.tap(find.byIcon(Icons.calendar_today_outlined));
       await tester.pumpAndSettle();
 
-      expect(find.text('Integration Test Task'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('calendar_tasks_list')),
+          matching: find.text('Integration Test Task'),
+        ),
+        findsOneWidget,
+      );
 
       // Navigate back to Today and delete the task.
       await tester.tap(find.byIcon(Icons.check_circle_outline));
       await tester.pump(const Duration(seconds: 2));
-      await _waitFor(find.text('Integration Test Task'), tester);
+      await _waitFor(
+        find.descendant(
+          of: find.byKey(const Key('today_tasks_scroll')),
+          matching: find.text('Integration Test Task'),
+        ),
+        tester,
+      );
 
       // Swipe to delete (flutter_slidable) and confirm the dialog.
       await tester.drag(
-          find.text('Integration Test Task'), const Offset(-500, 0));
+        find.descendant(
+          of: find.byKey(const Key('today_tasks_scroll')),
+          matching: find.text('Integration Test Task'),
+        ),
+        const Offset(-500, 0),
+      );
       await tester.pumpAndSettle();
 
       // Tap the slidable Delete action to open the confirmation dialog.
@@ -110,9 +134,21 @@ void main() {
       // Confirm deletion in the AlertDialog (the Delete button is a FilledButton).
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pump(const Duration(seconds: 2));
-      await _waitUntilAbsent(find.text('Integration Test Task'), tester);
+      await _waitUntilAbsent(
+        find.descendant(
+          of: find.byKey(const Key('today_tasks_scroll')),
+          matching: find.text('Integration Test Task'),
+        ),
+        tester,
+      );
 
-      expect(find.text('Integration Test Task'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('today_tasks_scroll')),
+          matching: find.text('Integration Test Task'),
+        ),
+        findsNothing,
+      );
     });
   });
 }

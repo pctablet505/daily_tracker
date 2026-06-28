@@ -19,11 +19,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  late DateTime _focusedMonth;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay.dateOnly;
+    _focusedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   }
 
   Future<void> _onRefresh() async {
@@ -35,6 +37,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final monthMap = ref.watch(monthCompletionsProvider(_focusedMonth)).value ?? {};
     final tasksAsync = ref
         .watch(tasksForDateProvider(_selectedDay ?? DateTime.now().dateOnly));
 
@@ -57,7 +60,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             onFormatChanged: (format) {
               setState(() => _calendarFormat = format);
             },
-            onPageChanged: (focusedDay) => _focusedDay = focusedDay,
+            onPageChanged: (focusedDay) {
+              setState(() {
+                _focusedDay = focusedDay;
+                _focusedMonth = DateTime(focusedDay.year, focusedDay.month, 1);
+              });
+            },
             calendarStyle: CalendarStyle(
               todayDecoration: BoxDecoration(
                 color: colorScheme.primaryContainer,
@@ -82,6 +90,44 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               ),
               formatButtonTextStyle:
                   TextStyle(color: colorScheme.onPrimaryContainer),
+            ),
+            calendarBuilders: CalendarBuilders(
+              markerBuilder: (context, day, _) {
+                final key = DateTime(day.year, day.month, day.day);
+                final c = monthMap[key];
+                if (c == null || c.totalTasks == 0) return null;
+                final pct = c.completionRate;
+                final color = pct >= 1.0
+                    ? Colors.green
+                    : pct > 0
+                        ? Colors.amber
+                        : Theme.of(context).colorScheme.outlineVariant;
+                return Positioned(
+                  bottom: 4,
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration:
+                        BoxDecoration(color: color, shape: BoxShape.circle),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _LegendDot(color: Colors.green, label: 'Done'),
+                const SizedBox(width: 16),
+                _LegendDot(color: Colors.amber, label: 'Partial'),
+                const SizedBox(width: 16),
+                _LegendDot(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  label: 'Missed',
+                ),
+              ],
             ),
           ),
           const Divider(),
@@ -124,6 +170,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     );
                   }
                   return ListView.builder(
+                    key: const Key('calendar_tasks_list'),
                     padding: const EdgeInsets.all(16),
                     itemCount: tasks.length,
                     itemBuilder: (context, index) {
@@ -252,6 +299,31 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       width: 8,
       height: 8,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                )),
+      ],
     );
   }
 }

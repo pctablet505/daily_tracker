@@ -8,6 +8,9 @@ import '../../../data/models/daily_completion_model.dart';
 import '../../providers/task_provider.dart';
 import '../../widgets/common/section_title.dart';
 import '../../widgets/common/stat_card.dart';
+import '../../../core/constants/badge_catalog.dart';
+import '../../../data/models/badge_model.dart';
+import '../../../core/services/gamification_service.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
@@ -27,6 +30,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   List<CategoryStat> _categoryStats = [];
   int _todayTotal = 0;
   int _todayCompleted = 0;
+  List<BadgeModel> _badges = [];
+  // ignore: unused_field
+  List<BadgeModel> _newlyEarnedBadges = [];
 
   @override
   void initState() {
@@ -78,6 +84,18 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
         ));
       }
 
+      // Evaluate and fetch badges
+      final repo = ref.read(taskRepositoryProvider);
+      final gamification = GamificationService(
+        getStreak: repo.getStreakCount,
+        getBestStreak: repo.getBestStreakCount,
+        getTotalCompleted: repo.getTotalCompletedCount,
+        getBadges: repo.getBadges,
+        earnBadge: repo.earnBadge,
+      );
+      final newBadges = await gamification.evaluateBadges();
+      final allBadges = await repo.getBadges();
+
       if (mounted) {
         setState(() {
           _streak = streak;
@@ -90,7 +108,20 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
           _todayTotal = todayTotal;
           _todayCompleted = todayCompleted;
           _isLoading = false;
+          _badges = allBadges;
+          _newlyEarnedBadges = newBadges;
         });
+      }
+
+      if (newBadges.isNotEmpty && mounted) {
+        final names = newBadges.map((b) => b.title).join(', ');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Badge unlocked: $names! 🎉'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       // Ensure loading state is cleared so the error surfaces instead of
@@ -209,6 +240,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                             )
                           : _buildCategoryChart(colorScheme),
                     ),
+                    const SizedBox(height: 24),
+                    const SectionTitle('Achievements'),
+                    const SizedBox(height: 8),
+                    _buildAchievementsSection(),
                     const SizedBox(height: 24),
                     const SectionTitle('Activity History Log'),
                     const SizedBox(height: 12),
@@ -542,6 +577,72 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       },
     );
   }
+
+  Widget _buildAchievementsSection() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Find next badge to earn for "progress bar"
+    final earnedIds = _badges.where((b) => b.isEarned).map((b) => b.id).toSet();
+    final nextStreak = BadgeCatalog.all
+        .where((d) => d.type == 'streak' && !earnedIds.contains(d.id))
+        .toList();
+    nextStreak.sort((a, b) => a.threshold.compareTo(b.threshold));
+    final nextBadge = nextStreak.isNotEmpty ? nextStreak.first : null;
+    final streakProgress = nextBadge != null && nextBadge.threshold > 0
+        ? (_streak / nextBadge.threshold).clamp(0.0, 1.0)
+        : 1.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (nextBadge != null) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Next: ${nextBadge.emoji} ${nextBadge.title} — $_streak/${nextBadge.threshold} days',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: streakProgress,
+                    minHeight: 6,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: BadgeCatalog.all.map((def) {
+              final earned = earnedIds.contains(def.id);
+              return _BadgeTile(
+                emoji: def.emoji,
+                title: def.title,
+                description: def.description,
+                isEarned: earned,
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class DailyStat {
@@ -550,4 +651,60 @@ class DailyStat {
   final int total;
 
   DailyStat({required this.date, required this.completed, required this.total});
+}
+
+class _BadgeTile extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final String description;
+  final bool isEarned;
+
+  const _BadgeTile({
+    required this.emoji,
+    required this.title,
+    required this.description,
+    required this.isEarned,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedOpacity(
+      opacity: isEarned ? 1.0 : 0.35,
+      duration: const Duration(milliseconds: 300),
+      child: Tooltip(
+        message: description,
+        child: Container(
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isEarned
+                ? cs.primaryContainer
+                : cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+            border: isEarned
+                ? Border.all(color: cs.primary, width: 1.5)
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 24)),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight:
+                          isEarned ? FontWeight.bold : FontWeight.normal,
+                    ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

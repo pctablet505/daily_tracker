@@ -7,6 +7,9 @@ import '../../data/models/task_log_model.dart';
 import '../../data/repositories/task_repository.dart';
 import '../../services/notification/reminder_service.dart';
 import '../../services/media/media_service.dart';
+import '../../data/models/task_template_model.dart';
+import '../../data/models/badge_model.dart';
+import '../../data/models/daily_completion_model.dart';
 
 final taskRepositoryProvider = Provider<TaskRepository>((ref) {
   return TaskRepository(getIt<DatabaseHelper>());
@@ -75,6 +78,28 @@ final allTaskLogsProvider = FutureProvider<List<TaskLogModel>>((ref) async {
   return repository.getAllTaskLogs();
 });
 
+final templatesProvider = FutureProvider<List<TaskTemplateModel>>((ref) async {
+  final repo = ref.watch(taskRepositoryProvider);
+  return repo.getTemplates();
+});
+
+final badgesProvider = FutureProvider<List<BadgeModel>>((ref) async {
+  final repo = ref.watch(taskRepositoryProvider);
+  return repo.getBadges();
+});
+
+final monthCompletionsProvider = FutureProvider.family<
+    Map<DateTime, DailyCompletionModel>, DateTime>((ref, month) async {
+  final repo = ref.watch(taskRepositoryProvider);
+  final start = DateTime(month.year, month.month, 1);
+  final end = DateTime(month.year, month.month + 1, 0);
+  final list = await repo.getDailyCompletionsInRange(start, end);
+  return {
+    for (final c in list)
+      DateTime(c.date.year, c.date.month, c.date.day): c
+  };
+});
+
 final taskActionsProvider = Provider<TaskActions>((ref) {
   return TaskActions(ref);
 });
@@ -136,6 +161,12 @@ class TaskActions {
     await _runMediaCleanup();
   }
 
+  Future<void> restoreTask(String id) async {
+    final repository = ref.read(taskRepositoryProvider);
+    await repository.restoreTask(id);
+    refreshAllTaskProviders();
+  }
+
   Future<void> cleanupUnusedMedia() => _runMediaCleanup();
 
   Future<TaskModel> updateTask(
@@ -195,5 +226,6 @@ class TaskActions {
     ref.invalidate(pendingTasksProvider);
     ref.invalidate(completedTasksTodayProvider);
     ref.invalidate(tasksWithRemindersProvider);
+    ref.invalidate(templatesProvider);
   }
 }

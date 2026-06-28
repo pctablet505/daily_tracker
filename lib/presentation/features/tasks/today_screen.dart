@@ -118,38 +118,51 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
               Consumer(
                 builder: (context, ref, child) {
                   final completed = completedAsync.value?.length ?? 0;
-                  final total = (tasksAsync.value?.length ?? 0);
+                  final total = tasksAsync.value?.length ?? 0;
                   final progress = total > 0 ? completed / total : 0.0;
+                  final ringColor = Color.lerp(
+                    Theme.of(context).colorScheme.primary,
+                    Colors.green,
+                    progress,
+                  )!;
 
                   return Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: Center(
-                      child: SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              value: progress,
-                              strokeWidth: 5,
-                              strokeCap: StrokeCap.round,
-                              color: Theme.of(context).colorScheme.primary,
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: progress),
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, animValue, _) {
+                          return SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  value: animValue,
+                                  strokeWidth: 5,
+                                  strokeCap: StrokeCap.round,
+                                  color: ringColor,
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest,
+                                ),
+                                Text(
+                                  total == 0 ? '—' : '$completed/$total',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10,
+                                      ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              '${(progress * 100).toInt()}%',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ),
                   );
@@ -217,8 +230,24 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                         t.isCompleted)
                     .toList();
 
+                // Pending counts for filter chips
+                final pendingByCategory = <String, int>{};
+                for (final cat in AppConstants.categories) {
+                  pendingByCategory[cat] = filteredTasks
+                      .where((t) => t.category == cat && !t.isCompleted)
+                      .length;
+                }
+                final totalPending =
+                    filteredTasks.where((t) => !t.isCompleted).length;
+
                 return CustomScrollView(
+                  key: const Key('today_tasks_scroll'),
                   slivers: [
+                    // Greeting header
+                    SliverToBoxAdapter(
+                      child: _GreetingHeader(tasks: tasks),
+                    ),
+
                     // Category filter chips
                     SliverToBoxAdapter(
                       child: Padding(
@@ -229,7 +258,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                             children: [
                               FilterChip(
                                 label: Text(
-                                  'All',
+                                  'All · $totalPending',
                                   style: TextStyle(
                                     fontWeight: selectedCategory == null
                                         ? FontWeight.w600
@@ -238,6 +267,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                 ),
                                 selected: selectedCategory == null,
                                 onSelected: (_) {
+                                  HapticFeedback.selectionClick();
                                   ref
                                       .read(selectedCategoryProvider.notifier)
                                       .state = null;
@@ -257,7 +287,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                   padding: const EdgeInsets.only(right: 8),
                                   child: FilterChip(
                                     label: Text(
-                                      cat,
+                                      '$cat · ${pendingByCategory[cat] ?? 0}',
                                       style: TextStyle(
                                         fontWeight: isSelected
                                             ? FontWeight.w600
@@ -266,6 +296,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                                     ),
                                     selected: isSelected,
                                     onSelected: (_) {
+                                      HapticFeedback.selectionClick();
                                       ref
                                           .read(
                                               selectedCategoryProvider.notifier)
@@ -404,6 +435,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
               children: [
                 SlidableAction(
                   onPressed: (_) async {
+                    HapticFeedback.lightImpact();
                     final actions = ref.read(taskActionsProvider);
                     final wasCompleted = task.isCompleted;
                     await actions.toggleCompletion(task);
@@ -454,8 +486,30 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                       ),
                     );
                     if (confirmed == true && context.mounted) {
-                      final actions = ref.read(taskActionsProvider);
-                      await actions.deleteTask(task.id);
+                      final deletedTask = task;
+                      HapticFeedback.mediumImpact();
+                      await ref
+                          .read(taskActionsProvider)
+                          .deleteTask(deletedTask.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 5),
+                              content: Text('Deleted "${deletedTask.title}"'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () {
+                                  ref
+                                      .read(taskActionsProvider)
+                                      .restoreTask(deletedTask.id);
+                                },
+                              ),
+                            ),
+                          );
+                      }
                     }
                   },
                   backgroundColor: Theme.of(context).colorScheme.error,
@@ -549,26 +603,29 @@ class _TaskCardState extends ConsumerState<TaskCard> {
       scale: widget.isCompleted ? 0.98 : 1.0,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: InkWell(
-          onTap: () => _openTaskDetail(),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (task.taskType == 'checklist')
-                      GestureDetector(
-                        onTap: _toggleChecklist,
-                        behavior: HitTestBehavior.opaque,
-                        child: AbsorbPointer(
-                          child: Checkbox(
-                            value: task.isCompleted,
-                            onChanged: (_) {},
+      child: AnimatedOpacity(
+        opacity: widget.task.isCompleted ? 0.65 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            onTap: () => _openTaskDetail(),
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (task.taskType == 'checklist')
+                        GestureDetector(
+                          onTap: _toggleChecklist,
+                          behavior: HitTestBehavior.opaque,
+                          child: AbsorbPointer(
+                            child: Checkbox(
+                              value: task.isCompleted,
+                              onChanged: (_) {},
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(6)),
                           ),
@@ -584,17 +641,23 @@ class _TaskCardState extends ConsumerState<TaskCard> {
                             tag: 'task-title-${task.id}',
                             child: Material(
                               type: MaterialType.transparency,
-                              child: Text(
-                                task.title,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  decoration: widget.isCompleted
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                style: (Theme.of(context).textTheme.bodyLarge ??
+                                        const TextStyle())
+                                    .copyWith(
+                                  decoration: widget.task.isCompleted
                                       ? TextDecoration.lineThrough
-                                      : null,
-                                  color: widget.isCompleted
-                                      ? colorScheme.onSurfaceVariant
-                                      : colorScheme.onSurface,
+                                      : TextDecoration.none,
+                                  color: widget.task.isCompleted
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.4)
+                                      : Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: FontWeight.w500,
                                 ),
+                                child: Text(widget.task.title),
                               ),
                             ),
                           ),
@@ -648,6 +711,7 @@ class _TaskCardState extends ConsumerState<TaskCard> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1122,6 +1186,47 @@ class _LoadingState extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _GreetingHeader extends StatelessWidget {
+  final List<dynamic> tasks;
+  const _GreetingHeader({required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    final pending = tasks.where((t) => !(t.isCompleted as bool)).length;
+    final subtitle = pending == 0
+        ? 'All done — nice work! 🎉'
+        : '$pending task${pending == 1 ? '' : 's'} left today';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            greeting,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
       ),
     );
   }
