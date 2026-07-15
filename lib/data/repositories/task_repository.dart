@@ -87,8 +87,13 @@ class TaskRepository {
 
   Future<TaskModel?> getTask(String id) => _db.getTask(id);
 
-  Future<List<TaskModel>> getTasksForDate(DateTime date) =>
-      _db.getTasksForDate(date);
+  Future<List<TaskModel>> getTasksForDate(DateTime date) async {
+    // The recurrence rule is stored as an encoded string, so filtering must be
+    // done Dart-side. Non-recurring tasks still appear on every day.
+    final tasks = await _db.getAllActiveTasks();
+    final target = date.dateOnly;
+    return tasks.where((t) => _taskOccursOnDate(t, target)).toList();
+  }
 
   Future<List<TaskModel>> getAllActiveTasks() => _db.getAllActiveTasks();
 
@@ -108,6 +113,11 @@ class TaskRepository {
     final today = DateTime.now().dateOnly;
 
     for (final task in recurring) {
+      final rule = task.recurrenceRuleModel;
+      if (!rule.occursOn(today, anchor: task.createdAt.dateOnly)) {
+        continue;
+      }
+
       if (task.isCompleted && task.completedAt != null) {
         final completedDate = task.completedAt!.dateOnly;
         if (!completedDate.isAtSameMomentAs(today)) {
@@ -169,4 +179,9 @@ class TaskRepository {
   Future<int> getBestStreakCount() => _db.getBestStreakCount();
 
   Future<int> getTotalCompletedCount() => _db.getCompletedTasksCount();
+
+  bool _taskOccursOnDate(TaskModel task, DateTime target) {
+    final rule = task.recurrenceRuleModel;
+    return rule.occursOn(target, anchor: task.createdAt.dateOnly);
+  }
 }

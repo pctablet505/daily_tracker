@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/extensions/date_extensions.dart';
 import '../../../core/utils/id_generator.dart';
+import '../../../domain/entities/recurrence_rule.dart';
 import '../../../data/models/task_log_model.dart';
 import '../../providers/task_provider.dart';
 import '../../../services/media/media_service.dart';
@@ -30,6 +31,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
   final _commentController = TextEditingController();
   DateTime? _reminderTime;
   bool _isRecurring = false;
+  RecurrenceRule _recurrenceRule = const RecurrenceRule.none();
   String? _category;
   String? _taskType = 'checklist';
   int _priority = 0;
@@ -54,7 +56,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
         _titleController.text = task.title;
         _descriptionController.text = task.description ?? '';
         _reminderTime = task.reminderTime;
-        _isRecurring = task.isRecurring;
+        _recurrenceRule = task.recurrenceRuleModel;
+        _isRecurring = _recurrenceRule.type != RecurrenceType.none;
         _category = task.category;
         _taskType = task.taskType;
         _priority = task.priority;
@@ -167,22 +170,67 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
                         : const Icon(Icons.chevron_right),
                     onTap: _pickReminderTime,
                   ),
-                  if (_reminderTime != null) ...[
-                    const Divider(height: 1),
-                    SwitchListTile(
-                      secondary: Icon(
-                        Icons.repeat,
-                        color: _isRecurring
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                      title: const Text('Repeat Daily'),
-                      subtitle: const Text('Reset this task every day'),
-                      value: _isRecurring,
-                      onChanged: (value) =>
-                          setState(() => _isRecurring = value),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DropdownButtonFormField<RecurrenceType>(
+                          value: _recurrenceRule.type,
+                          decoration: const InputDecoration(
+                            labelText: 'Repeat',
+                            prefixIcon: Icon(Icons.repeat),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: RecurrenceType.none,
+                              child: Text('Does not repeat'),
+                            ),
+                            DropdownMenuItem(
+                              value: RecurrenceType.daily,
+                              child: Text('Daily'),
+                            ),
+                            DropdownMenuItem(
+                              value: RecurrenceType.weekly,
+                              child: Text('Weekly'),
+                            ),
+                            DropdownMenuItem(
+                              value: RecurrenceType.timesPerWeek,
+                              child: Text('Times per week'),
+                            ),
+                            DropdownMenuItem(
+                              value: RecurrenceType.everyNDays,
+                              child: Text('Every N days'),
+                            ),
+                          ],
+                          onChanged: (type) {
+                            if (type == null) return;
+                            setState(() {
+                              _recurrenceRule = _defaultRuleForType(type);
+                              _isRecurring =
+                                  type != RecurrenceType.none;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _recurrenceRule.describe(),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (_recurrenceRule.type == RecurrenceType.weekly)
+                          _buildWeekdayChips(),
+                        if (_recurrenceRule.type ==
+                            RecurrenceType.timesPerWeek)
+                          _buildTimesPerWeekStepper(),
+                        if (_recurrenceRule.type ==
+                            RecurrenceType.everyNDays)
+                          _buildEveryNDaysStepper(),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -459,6 +507,127 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
     );
   }
 
+  RecurrenceRule _defaultRuleForType(RecurrenceType type) {
+    switch (type) {
+      case RecurrenceType.none:
+        return const RecurrenceRule.none();
+      case RecurrenceType.daily:
+        return const RecurrenceRule.daily();
+      case RecurrenceType.weekly:
+        final days = _recurrenceRule.type == RecurrenceType.weekly
+            ? _recurrenceRule.weekdays
+            : const <int>{1, 2, 3, 4, 5};
+        return RecurrenceRule.weekly(days);
+      case RecurrenceType.timesPerWeek:
+        final count = _recurrenceRule.type == RecurrenceType.timesPerWeek
+            ? _recurrenceRule.count ?? 3
+            : 3;
+        return RecurrenceRule.timesPerWeek(count);
+      case RecurrenceType.everyNDays:
+        final interval = _recurrenceRule.type == RecurrenceType.everyNDays
+            ? _recurrenceRule.interval ?? 2
+            : 2;
+        return RecurrenceRule.everyNDays(interval);
+    }
+  }
+
+  Widget _buildWeekdayChips() {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Wrap(
+        spacing: 8,
+        children: List.generate(7, (index) {
+          final weekday = index + 1;
+          final selected = _recurrenceRule.weekdays.contains(weekday);
+          return FilterChip(
+            label: Text(labels[index]),
+            selected: selected,
+            onSelected: (_) {
+              setState(() {
+                final updated = Set<int>.from(_recurrenceRule.weekdays);
+                if (updated.contains(weekday)) {
+                  updated.remove(weekday);
+                } else {
+                  updated.add(weekday);
+                }
+                _recurrenceRule = RecurrenceRule.weekly(updated);
+              });
+            },
+            selectedColor: colorScheme.secondaryContainer,
+            checkmarkColor: colorScheme.onSecondaryContainer,
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildTimesPerWeekStepper() {
+    final count = _recurrenceRule.count ?? 1;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: count > 1
+                ? () => setState(() => _recurrenceRule =
+                    RecurrenceRule.timesPerWeek(count - 1))
+                : null,
+          ),
+          Expanded(
+            child: Text(
+              '$count per week',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: count < 7
+                ? () => setState(() => _recurrenceRule =
+                    RecurrenceRule.timesPerWeek(count + 1))
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEveryNDaysStepper() {
+    final interval = _recurrenceRule.interval ?? 1;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: interval > 1
+                ? () => setState(() => _recurrenceRule =
+                    RecurrenceRule.everyNDays(interval - 1))
+                : null,
+          ),
+          Expanded(
+            child: Text(
+              interval == 1 ? 'Every day' : 'Every $interval days',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: () => setState(() => _recurrenceRule =
+                RecurrenceRule.everyNDays(interval + 1)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickReminderTime() async {
     final now = DateTime.now();
     // Pick date first, then time
@@ -506,7 +675,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               : _descriptionController.text.trim(),
           reminderTime: _reminderTime,
           isRecurring: _isRecurring,
-          recurrenceRule: _isRecurring ? 'daily' : null,
+          recurrenceRule: _isRecurring ? _recurrenceRule.encode() : null,
           category: _category,
           taskType: _taskType,
           priority: _priority,
@@ -526,7 +695,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               : _descriptionController.text.trim(),
           reminderTime: _reminderTime,
           isRecurring: _isRecurring,
-          recurrenceRule: _isRecurring ? 'daily' : null,
+          recurrenceRule: _isRecurring ? _recurrenceRule.encode() : null,
           category: _category,
           taskType: _taskType,
           priority: _priority,

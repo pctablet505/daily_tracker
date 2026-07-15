@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import '../../core/utils/safe_parse.dart';
+import '../../domain/entities/recurrence_rule.dart';
 
 class _NullableSentinel {
   const _NullableSentinel();
@@ -17,6 +18,11 @@ class TaskModel extends Equatable {
   final bool isCompleted;
   final bool isRecurring;
   final String? recurrenceRule;
+
+  /// Parsed [RecurrenceRule] view of [recurrenceRule]. Falls back to
+  /// [RecurrenceRule.none] for null or malformed stored values.
+  RecurrenceRule get recurrenceRuleModel => RecurrenceRule.decode(recurrenceRule);
+
   final String? category;
   final String? taskType;
   final int priority;
