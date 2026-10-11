@@ -84,6 +84,13 @@ final class Ledger {
 
   Entry? entryOf(String habitId, DayKey day) => _byHabit[habitId]?[day];
 
+  /// All entries of one habit, oldest first.
+  List<Entry> entriesOf(String habitId) {
+    final days = _byHabit[habitId];
+    if (days == null) return const [];
+    return days.values.toList()..sort((a, b) => a.day.compareTo(b.day));
+  }
+
   /// The app was opened (or a check-in answered) that day, or something was logged.
   bool wasSeen(DayKey day) => _seen.contains(day) || _entryDays.contains(day);
 

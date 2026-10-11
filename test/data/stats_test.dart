@@ -282,4 +282,12 @@ void main() {
       expect(habitRate(l, s, mon, sun), const Ratio(2, 3));
     });
   });
+
+  group('Ledger.entriesOf', () {
+    test('lists one habit\'s entries, oldest first, and nothing for an unknown habit', () {
+      final l = ledger([habit('a'), habit('b')], [entry('a', wed), entry('b', tue), entry('a', mon)]);
+      expect(l.entriesOf('a').map((e) => e.day), [mon, wed]);
+      expect(l.entriesOf('zzz'), isEmpty);
+    });
+  });
 }

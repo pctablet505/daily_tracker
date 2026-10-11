@@ -6,13 +6,26 @@ enum RowKind { todo, partial, done, skipped, onTrack, slipped }
 
 /// One habit on one day, as the Today list shows it.
 final class HabitRow {
-  const HabitRow({required this.habit, required this.entry, required this.kind, required this.streak});
+  const HabitRow({
+    required this.habit,
+    required this.entry,
+    required this.kind,
+    required this.streak,
+    this.lastValue,
+    this.photoCount = 0,
+  });
   final Habit habit;
   final Entry? entry;
   final RowKind kind;
 
   /// The habit's current streak as of the day shown.
   final int streak;
+
+  /// The most recent number logged on an earlier day (number habits).
+  final double? lastValue;
+
+  /// Photos logged up to and including the day shown (photo habits).
+  final int photoCount;
 }
 
 /// What the Today screen lists for one day.
@@ -83,7 +96,19 @@ TodayView buildTodayView(
       EntryState.partial => RowKind.partial,
       _ => RowKind.todo,
     };
-    final row = HabitRow(habit: h, entry: e, kind: kind, streak: habitStreak(l, h, day).current);
+    final history = l.entriesOf(h.id);
+    final row = HabitRow(
+      habit: h,
+      entry: e,
+      kind: kind,
+      streak: habitStreak(l, h, day).current,
+      lastValue: h.logType == LogType.number
+          ? history.where((x) => x.day < day && x.value != null).lastOrNull?.value
+          : null,
+      photoCount: h.logType == LogType.photo
+          ? history.where((x) => x.day <= day && x.photoPath != null).length
+          : 0,
+    );
     (kind == RowKind.done || kind == RowKind.skipped ? finished : toDo).add(row);
   }
   toDo.sort(_byPartThenOrder);

@@ -149,4 +149,26 @@ void main() {
       expect(buildTodayView(l, thu).stayClear.single.streak, 2);
     });
   });
+
+  group('what a row remembers', () {
+    test('a number habit knows the last amount from an earlier day', () {
+      final w = habit('w', logType: LogType.number);
+      final l = ledger([w], [entry('w', mon, EntryState.done, 75.9), entry('w', tue, EntryState.done, 75.5)]);
+      expect(buildTodayView(l, wed).toDo.single.lastValue, 75.5);
+      expect(buildTodayView(l, tue).finished.single.lastValue, 75.9, reason: 'today is not "last"');
+      expect(buildTodayView(l, mon).finished.single.lastValue, isNull);
+    });
+
+    test('a photo habit counts its photos up to the day shown', () {
+      final p = habit('p', logType: LogType.photo);
+      final l = ledger([p], [
+        Entry(habitId: 'p', day: mon, state: EntryState.done, photoPath: 'a.jpg', loggedAt: DateTime.utc(2026)),
+        Entry(habitId: 'p', day: wed, state: EntryState.done, photoPath: 'b.jpg', loggedAt: DateTime.utc(2026)),
+        Entry(habitId: 'p', day: thu, state: EntryState.done, loggedAt: DateTime.utc(2026)), // no photo
+      ]);
+      expect(buildTodayView(l, wed).finished.single.photoCount, 2);
+      expect(buildTodayView(l, tue).toDo.single.photoCount, 1);
+      expect(buildTodayView(l, fri).toDo.single.photoCount, 2);
+    });
+  });
 }
