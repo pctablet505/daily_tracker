@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: Auto Backup to the user's Google account.
+     Habits and entries live in the database; settings in shared preferences.
+     Progress photos (files/media) stay on the device by design. -->
+<full-backup-content>
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+</full-backup-content>

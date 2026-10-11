@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and newer. Cloud backup carries habits, entries and settings only.
+     Progress photos never go to the cloud; a direct phone-to-phone transfer may carry them. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="media" />
+    </device-transfer>
+</data-extraction-rules>
