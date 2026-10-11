@@ -190,7 +190,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   ButtonSegment(value: ThemeChoice.light, label: Text('Light')),
                   ButtonSegment(
                     value: ThemeChoice.system,
-                    label: Text('Match phone'),
+                    label: Text('System'),
                   ),
                   ButtonSegment(value: ThemeChoice.dark, label: Text('Dark')),
                 ],
