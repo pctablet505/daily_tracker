@@ -22,28 +22,34 @@ String monthTitle(DayKey d) => _month.format(d.date);
 /// One-letter weekday: M T W T F S S.
 String weekdayLetter(DayKey d) => _letter.format(d.date);
 
-/// 75.0 -> "75", 75.5 -> "75.5", 0.25 -> "0.25". Never trailing zeros.
+final _grouped = NumberFormat('#,##0', 'en');
+
+/// 75.0 -> "75", 75.5 -> "75.5", 0.25 -> "0.25", 10000 -> "10,000". Never trailing zeros.
 String formatAmount(double v) {
-  if (v == v.roundToDouble()) return v.round().toString();
   var s = v.toStringAsFixed(2);
-  s = s.replaceFirst(RegExp(r'0+$'), '');
-  return s.endsWith('.') ? s.substring(0, s.length - 1) : s;
+  s = s.replaceFirst(RegExp(r'\.?0+$'), '');
+  final dot = s.indexOf('.');
+  final whole = double.parse(dot < 0 ? s : s.substring(0, dot));
+  final grouped = _grouped.format(whole);
+  return dot < 0 ? grouped : '$grouped${s.substring(dot)}';
 }
 
-String formatAmountUnit(double v, String? unit) => unit == null || unit.isEmpty ? formatAmount(v) : '${formatAmount(v)} $unit';
+String formatAmountUnit(double v, String? unit) =>
+    unit == null || unit.isEmpty ? formatAmount(v) : '${formatAmount(v)} $unit';
 
 String dayPartName(DayPart p) => switch (p) {
-      DayPart.morning => 'Morning',
-      DayPart.afternoon => 'Afternoon',
-      DayPart.evening => 'Evening',
-      DayPart.anytime => 'Anytime',
-    };
+  DayPart.morning => 'Morning',
+  DayPart.afternoon => 'Afternoon',
+  DayPart.evening => 'Evening',
+  DayPart.anytime => 'Anytime',
+};
 
 /// "8:00 AM" or "08:00" depending on [use24h].
 String formatMinutes(int minutes, {required bool use24h}) {
   final h = minutes ~/ 60;
   final m = minutes % 60;
-  if (use24h) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  if (use24h)
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
   final h12 = h % 12 == 0 ? 12 : h % 12;
   return '$h12:${m.toString().padLeft(2, '0')} ${h < 12 ? 'AM' : 'PM'}';
 }
@@ -55,14 +61,23 @@ String scheduleSummary(int mask) {
   if (mask == Habit.everyDay) return 'Every day';
   if (mask == Habit.weekdaysOnly) return 'Weekdays';
   if (mask == 96) return 'Weekends';
-  final days = [for (var i = 0; i < 7; i++) if ((mask >> i) & 1 == 1) _dayLetters[i]];
+  final days = [
+    for (var i = 0; i < 7; i++)
+      if ((mask >> i) & 1 == 1) _dayLetters[i],
+  ];
   return days.isEmpty ? 'Never' : days.join(', ');
 }
 
-String plural(int n, String one, [String? many]) => n == 1 ? '$n $one' : '$n ${many ?? '${one}s'}';
+String plural(int n, String one, [String? many]) =>
+    n == 1 ? '$n $one' : '$n ${many ?? '${one}s'}';
 
 /// The grey line under a to-do title.
-String habitMeta(Habit h, {Entry? entry, double? lastValue, int photoCount = 0}) {
+String habitMeta(
+  Habit h, {
+  Entry? entry,
+  double? lastValue,
+  int photoCount = 0,
+}) {
   final parts = <String>[dayPartName(h.dayPart)];
   switch (h.logType) {
     case LogType.number:
@@ -86,8 +101,9 @@ String habitMeta(Habit h, {Entry? entry, double? lastValue, int photoCount = 0})
 
 /// The label on a row's action button.
 String logActionLabel(Habit h) => switch (h.logType) {
-      LogType.number => 'Log ${h.unit == null || h.unit!.isEmpty ? 'amount' : h.unit}',
-      LogType.note => 'Add note',
-      LogType.photo => 'Take photo',
-      LogType.tick => 'Done',
-    };
+  LogType.number =>
+    'Log ${h.unit == null || h.unit!.isEmpty ? 'amount' : h.unit}',
+  LogType.note => 'Add note',
+  LogType.photo => 'Take photo',
+  LogType.tick => 'Done',
+};

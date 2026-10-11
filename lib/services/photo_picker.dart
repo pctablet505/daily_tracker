@@ -8,11 +8,15 @@ typedef PhotoPicker = Future<String?> Function(PhotoSource source);
 
 Future<String?> _pickWithImagePicker(PhotoSource source) async {
   final file = await ImagePicker().pickImage(
-    source: source == PhotoSource.camera ? ImageSource.camera : ImageSource.gallery,
+    source: source == PhotoSource.camera
+        ? ImageSource.camera
+        : ImageSource.gallery,
     maxWidth: 2048,
     imageQuality: 85,
   );
   return file?.path;
 }
 
-final photoPickerProvider = Provider<PhotoPicker>((ref) => _pickWithImagePicker);
+final photoPickerProvider = Provider<PhotoPicker>(
+  (ref) => _pickWithImagePicker,
+);

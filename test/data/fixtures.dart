@@ -13,7 +13,8 @@ const sun = DayKey(2026, 10, 11);
 final _logged = DateTime.utc(2026, 10, 11, 12);
 
 /// Bit mask for the given weekdays (1 = Monday ... 7 = Sunday).
-int daysOf(Iterable<int> weekdays) => weekdays.fold(0, (m, w) => m | (1 << (w - 1)));
+int daysOf(Iterable<int> weekdays) =>
+    weekdays.fold(0, (m, w) => m | (1 << (w - 1)));
 
 Habit habit(
   String id, {
@@ -25,24 +26,34 @@ Habit habit(
   LogType logType = LogType.tick,
   double? goal,
   String? area,
-}) =>
-    Habit(
-      id: id,
-      name: 'Habit $id',
-      createdDay: created,
-      endDay: end,
-      kind: kind,
-      avoidMode: avoidMode,
-      daysMask: mask,
-      logType: logType,
-      goal: goal,
-      area: area,
-    );
+}) => Habit(
+  id: id,
+  name: 'Habit $id',
+  createdDay: created,
+  endDay: end,
+  kind: kind,
+  avoidMode: avoidMode,
+  daysMask: mask,
+  logType: logType,
+  goal: goal,
+  area: area,
+);
 
 Habit stayClear(String id, {DayKey created = mon, DayKey? end}) =>
     habit(id, kind: HabitKind.avoid, created: created, end: end);
 
-Entry entry(String habitId, DayKey day, [EntryState state = EntryState.done, double? value]) =>
-    Entry(habitId: habitId, day: day, state: state, loggedAt: _logged, value: value);
+Entry entry(
+  String habitId,
+  DayKey day, [
+  EntryState state = EntryState.done,
+  double? value,
+]) => Entry(
+  habitId: habitId,
+  day: day,
+  state: state,
+  loggedAt: _logged,
+  value: value,
+);
 
-Entry slip(String habitId, DayKey day) => entry(habitId, day, EntryState.slipped);
+Entry slip(String habitId, DayKey day) =>
+    entry(habitId, day, EntryState.slipped);

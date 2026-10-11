@@ -18,9 +18,11 @@ analyzer:
 
 linter:
   rules:
-    - avoid_print
-    - unawaited_futures
-    - prefer_relative_imports
-    - prefer_final_locals
-    - sort_child_properties_last
-    - use_super_parameters
+    avoid_print: true
+    unawaited_futures: true
+    prefer_relative_imports: true
+    prefer_final_locals: true
+    sort_child_properties_last: true
+    use_super_parameters: true
+    # The Dart formatter puts a long `if (...)` body on its own line; braces would only add noise.
+    curly_braces_in_flow_control_structures: false

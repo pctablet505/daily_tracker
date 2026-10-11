@@ -81,12 +81,16 @@ TodayView buildTodayView(
     final e = l.entryOf(h.id, day);
     if (h.tracksSlips) {
       if (!h.isActiveOn(day) || !_matches(h, q)) continue;
-      stayClear.add(HabitRow(
-        habit: h,
-        entry: e,
-        kind: e?.state == EntryState.slipped ? RowKind.slipped : RowKind.onTrack,
-        streak: habitStreak(l, h, day).current,
-      ));
+      stayClear.add(
+        HabitRow(
+          habit: h,
+          entry: e,
+          kind: e?.state == EntryState.slipped
+              ? RowKind.slipped
+              : RowKind.onTrack,
+          streak: habitStreak(l, h, day).current,
+        ),
+      );
       continue;
     }
     if (!(h.isScheduledOn(day) || e != null) || !_matches(h, q)) continue;
@@ -103,13 +107,18 @@ TodayView buildTodayView(
       kind: kind,
       streak: habitStreak(l, h, day).current,
       lastValue: h.logType == LogType.number
-          ? history.where((x) => x.day < day && x.value != null).lastOrNull?.value
+          ? history
+                .where((x) => x.day < day && x.value != null)
+                .lastOrNull
+                ?.value
           : null,
       photoCount: h.logType == LogType.photo
           ? history.where((x) => x.day <= day && x.photoPath != null).length
           : 0,
     );
-    (kind == RowKind.done || kind == RowKind.skipped ? finished : toDo).add(row);
+    (kind == RowKind.done || kind == RowKind.skipped ? finished : toDo).add(
+      row,
+    );
   }
   toDo.sort(_byPartThenOrder);
   stayClear.sort(_byPartThenOrder);

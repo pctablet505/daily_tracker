@@ -6,7 +6,8 @@ final class DayKey implements Comparable<DayKey> {
   const DayKey(this.year, this.month, this.day);
 
   /// The local calendar day of [date].
-  factory DayKey.fromDate(DateTime date) => DayKey(date.year, date.month, date.day);
+  factory DayKey.fromDate(DateTime date) =>
+      DayKey(date.year, date.month, date.day);
 
   /// Parses `YYYY-MM-DD`. Throws [FormatException] for anything else, including
   /// impossible dates such as `2026-02-30`.
@@ -40,11 +41,21 @@ final class DayKey implements Comparable<DayKey> {
     return DayKey(d.year, d.month, d.day);
   }
 
+  /// The first day of the month [n] months after this day's month (before, when negative).
+  DayKey monthStartPlus(int n) {
+    final d = DateTime.utc(year, month + n, 1);
+    return DayKey(d.year, d.month, 1);
+  }
+
+  /// The last day of this day's month.
+  DayKey get monthEnd => monthStartPlus(1).addDays(-1);
+
   /// Whole calendar days from this day to [other] (negative when [other] is earlier).
-  int daysUntil(DayKey other) =>
-      DateTime.utc(other.year, other.month, other.day)
-          .difference(DateTime.utc(year, month, day))
-          .inDays;
+  int daysUntil(DayKey other) => DateTime.utc(
+    other.year,
+    other.month,
+    other.day,
+  ).difference(DateTime.utc(year, month, day)).inDays;
 
   /// Every day from this day to [last], both included. Empty when [last] is earlier.
   Iterable<DayKey> through(DayKey last) sync* {
@@ -67,7 +78,10 @@ final class DayKey implements Comparable<DayKey> {
 
   @override
   bool operator ==(Object other) =>
-      other is DayKey && other.year == year && other.month == month && other.day == day;
+      other is DayKey &&
+      other.year == year &&
+      other.month == month &&
+      other.day == day;
 
   @override
   int get hashCode => Object.hash(year, month, day);

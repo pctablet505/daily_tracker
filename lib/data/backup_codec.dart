@@ -39,7 +39,9 @@ String encodeBackup(
     'app': appVersion,
     'habits': [for (final h in snapshot.habits) h.toMap()],
     'entries': [for (final e in snapshot.entries) e.toMap()],
-    'seenDays': [for (final d in snapshot.seenDays.toList()..sort()) d.toString()],
+    'seenDays': [
+      for (final d in snapshot.seenDays.toList()..sort()) d.toString(),
+    ],
     'settings': settings,
   });
 }
@@ -57,21 +59,34 @@ BackupData decodeBackup(String text) {
     throw const FormatException('This is not a Daily Tracker backup.');
   }
   final version = root['version'];
-  if (version is! int) throw const FormatException('The backup has no version number.');
+  if (version is! int)
+    throw const FormatException('The backup has no version number.');
   if (version > backupVersion) {
-    throw const FormatException('This backup was made by a newer version of the app. Update the app and try again.');
+    throw const FormatException(
+      'This backup was made by a newer version of the app. Update the app and try again.',
+    );
   }
   const damaged = FormatException('The backup file is damaged.');
   try {
-    final habits = [for (final m in _list(root['habits'])) Habit.fromMap(_map(m))];
-    final entries = [for (final m in _list(root['entries'])) Entry.fromMap(_map(m))];
-    final seen = {for (final d in _list(root['seenDays'] ?? const <Object?>[])) DayKey.parse(d! as String)};
-    final snapshot = Snapshot(habits: habits, entries: entries, seenDays: seen)..validate();
+    final habits = [
+      for (final m in _list(root['habits'])) Habit.fromMap(_map(m)),
+    ];
+    final entries = [
+      for (final m in _list(root['entries'])) Entry.fromMap(_map(m)),
+    ];
+    final seen = {
+      for (final d in _list(root['seenDays'] ?? const <Object?>[]))
+        DayKey.parse(d! as String),
+    };
+    final snapshot = Snapshot(habits: habits, entries: entries, seenDays: seen)
+      ..validate();
     final exported = root['exportedAt'];
     return BackupData(
       snapshot: snapshot,
       settings: _settings(root['settings']),
-      exportedAt: (exported is String ? DateTime.tryParse(exported) : null) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      exportedAt:
+          (exported is String ? DateTime.tryParse(exported) : null) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       appVersion: root['app'] as String?,
     );
   } on TypeError {
@@ -79,7 +94,9 @@ BackupData decodeBackup(String text) {
   } on FormatException catch (e) {
     // validate() explains an entry without a habit; anything else is damage.
     if (e.message.contains('habit') && e.message.contains('not in the data')) {
-      throw const FormatException('An entry in the backup belongs to a habit that is not in it.');
+      throw const FormatException(
+        'An entry in the backup belongs to a habit that is not in it.',
+      );
     }
     throw damaged;
   }
@@ -92,6 +109,7 @@ Map<String, Object> _settings(Object? raw) {
   if (raw is! Map<String, Object?>) return const {};
   return {
     for (final e in raw.entries)
-      if (e.value is bool || e.value is num || e.value is String) e.key: e.value!,
+      if (e.value is bool || e.value is num || e.value is String)
+        e.key: e.value!,
   };
 }

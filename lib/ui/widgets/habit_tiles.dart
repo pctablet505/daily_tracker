@@ -7,11 +7,11 @@ import '../theme/tokens.dart';
 import 'common.dart';
 
 IconData logIcon(LogType t) => switch (t) {
-      LogType.number => Icons.straighten_rounded,
-      LogType.note => Icons.edit_note_rounded,
-      LogType.photo => Icons.photo_camera_outlined,
-      LogType.tick => Icons.check_rounded,
-    };
+  LogType.number => Icons.straighten_rounded,
+  LogType.note => Icons.edit_note_rounded,
+  LogType.photo => Icons.photo_camera_outlined,
+  LogType.tick => Icons.check_rounded,
+};
 
 /// The round control at the start of a to-do row.
 class _Mark extends StatelessWidget {
@@ -33,7 +33,11 @@ class _Mark extends StatelessWidget {
         return Container(
           width: 28,
           height: 28,
-          decoration: BoxDecoration(color: c.sunken, shape: BoxShape.circle, border: Border.all(color: c.border2)),
+          decoration: BoxDecoration(
+            color: c.sunken,
+            shape: BoxShape.circle,
+            border: Border.all(color: c.border2),
+          ),
           child: Icon(Icons.remove_rounded, size: 16, color: c.muted),
         );
       case RowKind.partial:
@@ -50,14 +54,20 @@ class _Mark extends StatelessWidget {
           return Container(
             width: 28,
             height: 28,
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.border2, width: 2)),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: c.border2, width: 2),
+            ),
             child: Icon(logIcon(row.habit.logType), size: 15, color: c.muted),
           );
         }
         return Container(
           width: 28,
           height: 28,
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.border2, width: 2)),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: c.border2, width: 2),
+          ),
         );
     }
   }
@@ -95,12 +105,21 @@ class HabitTile extends StatelessWidget {
     final finished = row.kind == RowKind.done || row.kind == RowKind.skipped;
     final meta = row.kind == RowKind.skipped
         ? 'Skipped today'
-        : habitMeta(h, entry: row.entry, lastValue: row.lastValue, photoCount: row.photoCount);
+        : habitMeta(
+            h,
+            entry: row.entry,
+            lastValue: row.lastValue,
+            photoCount: row.photoCount,
+          );
     final markLabel = isTick
-        ? (row.kind == RowKind.done ? 'Done: ${h.name}. Tap to undo' : 'Mark done: ${h.name}')
+        ? (row.kind == RowKind.done
+              ? 'Done: ${h.name}. Tap to undo'
+              : 'Mark done: ${h.name}')
         : '${h.name}. ${logActionLabel(h)}';
     return DecoratedBox(
-      decoration: BoxDecoration(border: showDivider ? Border(top: BorderSide(color: c.border)) : null),
+      decoration: BoxDecoration(
+        border: showDivider ? Border(top: BorderSide(color: c.border)) : null,
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 58),
         child: Row(
@@ -112,7 +131,11 @@ class HabitTile extends StatelessWidget {
               child: InkResponse(
                 onTap: isTick ? onToggle : onLog,
                 radius: 28,
-                child: SizedBox(width: 56, height: 56, child: Center(child: _Mark(row: row))),
+                child: SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: Center(child: _Mark(row: row)),
+                ),
               ),
             ),
             Expanded(
@@ -128,17 +151,26 @@ class HabitTile extends StatelessWidget {
                         h.name,
                         style: AppType.body.copyWith(
                           color: finished ? c.muted : c.ink,
-                          decoration: row.kind == RowKind.done ? TextDecoration.lineThrough : null,
+                          decoration: row.kind == RowKind.done
+                              ? TextDecoration.lineThrough
+                              : null,
                           decorationColor: c.faint,
                         ),
                       ),
-                      Text(meta, style: AppType.caption.copyWith(color: c.faint)),
+                      Text(
+                        meta,
+                        style: AppType.caption.copyWith(color: c.faint),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
-            if (row.streak >= 2 && isTick) Padding(padding: const EdgeInsets.only(left: 6), child: StreakChip(label: '${row.streak}')),
+            if (row.streak >= 2 && isTick)
+              Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: StreakChip(label: '${row.streak}'),
+              ),
             if (!isTick && !finished)
               Padding(
                 padding: const EdgeInsets.only(left: 6),
@@ -159,7 +191,13 @@ class HabitTile extends StatelessWidget {
 
 /// One stay-clear habit: starts on track, with a Slipped button.
 class StayClearTile extends StatelessWidget {
-  const StayClearTile({super.key, required this.row, required this.onSlip, required this.onMore, this.showDivider = true});
+  const StayClearTile({
+    super.key,
+    required this.row,
+    required this.onSlip,
+    required this.onMore,
+    this.showDivider = true,
+  });
 
   final HabitRow row;
   final VoidCallback onSlip;
@@ -172,7 +210,9 @@ class StayClearTile extends StatelessWidget {
     final slipped = row.kind == RowKind.slipped;
     final name = row.habit.name;
     return DecoratedBox(
-      decoration: BoxDecoration(border: showDivider ? Border(top: BorderSide(color: c.border)) : null),
+      decoration: BoxDecoration(
+        border: showDivider ? Border(top: BorderSide(color: c.border)) : null,
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 52),
         child: Row(
@@ -181,8 +221,15 @@ class StayClearTile extends StatelessWidget {
             Container(
               width: 26,
               height: 26,
-              decoration: BoxDecoration(color: c.indigoSoft, shape: BoxShape.circle),
-              child: Icon(slipped ? Icons.remove_rounded : Icons.check_rounded, size: 16, color: c.indigo),
+              decoration: BoxDecoration(
+                color: c.indigoSoft,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                slipped ? Icons.remove_rounded : Icons.check_rounded,
+                size: 16,
+                color: c.indigo,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -197,7 +244,13 @@ class StayClearTile extends StatelessWidget {
             if (!slipped && row.streak > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 6, right: 8),
-                child: Text('Day ${row.streak}', style: AppType.caption.copyWith(color: c.indigo, fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Day ${row.streak}',
+                  style: AppType.caption.copyWith(
+                    color: c.indigo,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             Padding(
               padding: const EdgeInsets.only(right: 10),
@@ -205,7 +258,9 @@ class StayClearTile extends StatelessWidget {
                 label: slipped ? 'Undo slip' : 'Slipped',
                 outlined: true,
                 onPressed: onSlip,
-                semanticLabel: slipped ? 'Undo the slip: $name' : 'Log a slip: $name',
+                semanticLabel: slipped
+                    ? 'Undo the slip: $name'
+                    : 'Log a slip: $name',
               ),
             ),
           ],

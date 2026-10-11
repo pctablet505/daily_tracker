@@ -36,10 +36,23 @@ abstract interface class ReminderScheduler {
   Future<String?> launchPayload();
 }
 
-const _doneAction = AndroidNotificationAction('done', 'Done', showsUserInterface: false, cancelNotification: true);
-const _snoozeAction = AndroidNotificationAction('snooze', 'In 1 hour', showsUserInterface: false, cancelNotification: true);
+const _doneAction = AndroidNotificationAction(
+  'done',
+  'Done',
+  showsUserInterface: false,
+  cancelNotification: true,
+);
+const _snoozeAction = AndroidNotificationAction(
+  'snooze',
+  'In 1 hour',
+  showsUserInterface: false,
+  cancelNotification: true,
+);
 
-AndroidNotificationDetails _androidDetails(ReminderKind kind, {bool withActions = false}) {
+AndroidNotificationDetails _androidDetails(
+  ReminderKind kind, {
+  bool withActions = false,
+}) {
   final habit = kind == ReminderKind.habit;
   return AndroidNotificationDetails(
     habit ? 'habit_reminders' : 'check_in',
@@ -54,10 +67,13 @@ AndroidNotificationDetails _androidDetails(ReminderKind kind, {bool withActions 
   );
 }
 
-const _initSettings = InitializationSettings(android: AndroidInitializationSettings('ic_notification'));
+const _initSettings = InitializationSettings(
+  android: AndroidInitializationSettings('ic_notification'),
+);
 
 final class LocalNotificationsScheduler implements ReminderScheduler {
-  LocalNotificationsScheduler([FlutterLocalNotificationsPlugin? plugin]) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  LocalNotificationsScheduler([FlutterLocalNotificationsPlugin? plugin])
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
   final _taps = StreamController<String>.broadcast();
@@ -65,8 +81,10 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
   @override
   Stream<String> get taps => _taps.stream;
 
-  AndroidFlutterLocalNotificationsPlugin? get _android =>
-      _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  AndroidFlutterLocalNotificationsPlugin? get _android => _plugin
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
 
   @override
   Future<void> init() async {
@@ -91,11 +109,14 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
   @override
   Future<String?> launchPayload() async {
     final d = await _plugin.getNotificationAppLaunchDetails();
-    return d != null && d.didNotificationLaunchApp ? d.notificationResponse?.payload : null;
+    return d != null && d.didNotificationLaunchApp
+        ? d.notificationResponse?.payload
+        : null;
   }
 
   @override
-  Future<bool> hasPermission() async => await _android?.areNotificationsEnabled() ?? false;
+  Future<bool> hasPermission() async =>
+      await _android?.areNotificationsEnabled() ?? false;
 
   @override
   Future<bool> requestPermission() async {
@@ -112,7 +133,9 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
         title: r.title,
         body: r.body,
         scheduledDate: tz.TZDateTime.from(r.when, tz.local),
-        notificationDetails: NotificationDetails(android: _androidDetails(r.kind, withActions: r.markable)),
+        notificationDetails: NotificationDetails(
+          android: _androidDetails(r.kind, withActions: r.markable),
+        ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         payload: r.payload,
       );
@@ -122,11 +145,20 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
 
 /// Marks a tick habit done for [day] straight in the database. Used by the
 /// notification's Done button, which runs without the app open.
-Future<bool> markDoneFromNotification(Database db, String habitId, DayKey day, DateTime now) async {
+Future<bool> markDoneFromNotification(
+  Database db,
+  String habitId,
+  DayKey day,
+  DateTime now,
+) async {
   final repo = HabitRepository(db);
   final habit = (await repo.habits()).where((h) => h.id == habitId).firstOrNull;
   if (habit == null || habit.logType != LogType.tick) return false;
-  final existing = (await repo.entries(habitId: habitId, from: day, to: day)).firstOrNull;
+  final existing = (await repo.entries(
+    habitId: habitId,
+    from: day,
+    to: day,
+  )).firstOrNull;
   if (existing?.state == EntryState.done) return true;
   final next = tickEntry(habit, day, existing, now);
   if (next == null) return false;
@@ -143,9 +175,17 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
   try {
     if (r.actionId == 'done') {
       final dir = await getDatabasesPath();
-      final db = await openAppDatabase(databaseFactory, p.join(dir, databaseFileName));
+      final db = await openAppDatabase(
+        databaseFactory,
+        p.join(dir, databaseFileName),
+      );
       try {
-        await markDoneFromNotification(db, habitId, DayKey.fromDate(DateTime.now()), DateTime.now());
+        await markDoneFromNotification(
+          db,
+          habitId,
+          DayKey.fromDate(DateTime.now()),
+          DateTime.now(),
+        );
       } finally {
         await db.close();
       }
@@ -157,7 +197,9 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
         title: 'Reminder',
         body: 'You snoozed this one.',
         scheduledDate: tz.TZDateTime.now(tz.UTC).add(const Duration(hours: 1)),
-        notificationDetails: NotificationDetails(android: _androidDetails(ReminderKind.habit, withActions: true)),
+        notificationDetails: NotificationDetails(
+          android: _androidDetails(ReminderKind.habit, withActions: true),
+        ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         payload: payload,
       );

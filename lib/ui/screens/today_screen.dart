@@ -41,10 +41,14 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   void _toast(String message, {String? undoLabel, VoidCallback? onUndo}) {
     final m = ScaffoldMessenger.of(context);
     m.hideCurrentSnackBar();
-    m.showSnackBar(SnackBar(
-      content: Text(message),
-      action: onUndo == null ? null : SnackBarAction(label: undoLabel ?? 'Undo', onPressed: onUndo),
-    ));
+    m.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: onUndo == null
+            ? null
+            : SnackBarAction(label: undoLabel ?? 'Undo', onPressed: onUndo),
+      ),
+    );
   }
 
   DayKey get _day => ref.read(shownDayProvider);
@@ -73,7 +77,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       await ref.read(actionsProvider).slip(h, day);
       if (mounted) {
         _toast(
-          wasSlipped ? 'Slip removed' : 'Logged a slip on ${h.name}. Tomorrow is a fresh start.',
+          wasSlipped
+              ? 'Slip removed'
+              : 'Logged a slip on ${h.name}. Tomorrow is a fresh start.',
           onUndo: () => _guard(() => ref.read(actionsProvider).slip(h, day)),
         );
       }
@@ -89,20 +95,47 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       case LogType.tick:
         return _toggle(row);
       case LogType.number:
-        final v = await showNumberSheet(context, habit: h, day: day, today: today, current: row.entry?.value, lastValue: row.lastValue);
+        final v = await showNumberSheet(
+          context,
+          habit: h,
+          day: day,
+          today: today,
+          current: row.entry?.value,
+          lastValue: row.lastValue,
+        );
         if (v != null) await _guard(() => actions.logNumber(h, day, v));
       case LogType.note:
-        final t = await showNoteSheet(context, habit: h, day: day, today: today, current: row.entry?.note);
+        final t = await showNoteSheet(
+          context,
+          habit: h,
+          day: day,
+          today: today,
+          current: row.entry?.note,
+        );
         if (t != null) await _guard(() => actions.logNote(h, day, t));
       case LogType.photo:
-        final choice = await showPhotoSheet(context, habit: h, hasPhoto: row.entry?.photoPath != null);
+        final choice = await showPhotoSheet(
+          context,
+          habit: h,
+          hasPhoto: row.entry?.photoPath != null,
+        );
         if (choice == null) return;
-        if (choice == PhotoChoice.remove) return _guard(() => actions.clear(h, day));
+        if (choice == PhotoChoice.remove)
+          return _guard(() => actions.clear(h, day));
         try {
-          final path = await ref.read(photoPickerProvider)(choice == PhotoChoice.camera ? PhotoSource.camera : PhotoSource.gallery);
+          final path = await ref.read(photoPickerProvider)(
+            choice == PhotoChoice.camera
+                ? PhotoSource.camera
+                : PhotoSource.gallery,
+          );
           if (path != null) await _guard(() => actions.logPhoto(h, day, path));
         } catch (e) {
-          if (mounted) _toast(choice == PhotoChoice.camera ? 'The camera is not available. Choose from the gallery instead.' : 'Could not open the gallery.');
+          if (mounted)
+            _toast(
+              choice == PhotoChoice.camera
+                  ? 'The camera is not available. Choose from the gallery instead.'
+                  : 'Could not open the gallery.',
+            );
         }
     }
   }
@@ -111,7 +144,12 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final h = row.habit;
     final day = _day;
     final today = _today;
-    final action = await showHabitMenu(context, habit: h, skipped: row.kind == RowKind.skipped, canSkip: !h.tracksSlips);
+    final action = await showHabitMenu(
+      context,
+      habit: h,
+      skipped: row.kind == RowKind.skipped,
+      canSkip: !h.tracksSlips,
+    );
     if (action == null || !mounted) return;
     final actions = ref.read(actionsProvider);
     switch (action) {
@@ -124,11 +162,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
         await context.push('/habit/${h.id}');
       case HabitMenuAction.archive:
         await _guard(() => actions.archive(h, today));
-        if (mounted) _toast('Archived ${h.name}. Find it under Habits > Archived.');
+        if (mounted)
+          _toast('Archived ${h.name}. Find it under Habits > Archived.');
     }
   }
 
-  void _celebrateIfPerfect(AsyncValue<TodayView>? before, AsyncValue<TodayView> after) {
+  void _celebrateIfPerfect(
+    AsyncValue<TodayView>? before,
+    AsyncValue<TodayView> after,
+  ) {
     final b = before?.value;
     final a = after.value;
     if (a == null || b == null || a.day != _today || b.day != a.day) return;
@@ -147,7 +189,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final today = ref.watch(todayProvider);
     final view = ref.watch(todayViewProvider);
     final ledger = ref.watch(ledgerProvider).value;
-    final threshold = ref.watch(settingsProvider.select((s) => s.streakThreshold));
+    final threshold = ref.watch(
+      settingsProvider.select((s) => s.streakThreshold),
+    );
     final isToday = day == today;
 
     return SafeArea(
@@ -177,22 +221,36 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   days: _weekDots(ledger, day, today, threshold),
                   selected: day,
                   today: today,
-                  onSelect: (d) => ref.read(selectedDayProvider.notifier).select(d == today ? null : d),
+                  onSelect: (d) => ref
+                      .read(selectedDayProvider.notifier)
+                      .select(d == today ? null : d),
                 ),
               if (!isToday)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                  child: _PastBanner(day: day, onBack: () => ref.read(selectedDayProvider.notifier).select(null)),
+                  child: _PastBanner(
+                    day: day,
+                    onBack: () =>
+                        ref.read(selectedDayProvider.notifier).select(null),
+                  ),
                 ),
               ...view.when(
                 data: (v) => _body(context, v, ledger, today, threshold),
-                loading: () => const [Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))],
+                loading: () => const [
+                  Padding(
+                    padding: EdgeInsets.all(48),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
                 error: (e, _) => [
                   EmptyState(
                     icon: Icons.error_outline_rounded,
                     title: 'Could not load your habits',
                     message: 'Your data is safe on this phone.',
-                    action: FilledButton(onPressed: () => ref.invalidate(ledgerProvider), child: const Text('Try again')),
+                    action: FilledButton(
+                      onPressed: () => ref.invalidate(ledgerProvider),
+                      child: const Text('Try again'),
+                    ),
                   ),
                 ],
               ),
@@ -216,11 +274,21 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final monday = shown.addDays(-(shown.weekday - 1));
     return [
       for (final d in monday.through(monday.addDays(6)))
-        DayDot(day: d, fraction: summarizeDay(l, d, threshold: threshold).fraction, isFuture: d > today),
+        DayDot(
+          day: d,
+          fraction: summarizeDay(l, d, threshold: threshold).fraction,
+          isFuture: d > today,
+        ),
     ];
   }
 
-  List<Widget> _body(BuildContext context, TodayView v, Ledger? ledger, DayKey today, int threshold) {
+  List<Widget> _body(
+    BuildContext context,
+    TodayView v,
+    Ledger? ledger,
+    DayKey today,
+    int threshold,
+  ) {
     final c = context.colors;
     if (!v.hasAnyHabit) {
       return [
@@ -230,9 +298,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           message: 'Start with a few habits you want to keep. You can change all of it later.',
           action: Column(
             children: [
-              FilledButton(onPressed: () => context.push('/habits/packs'), child: const Text('Pick starter habits')),
+              FilledButton(
+                onPressed: () => context.push('/habits/packs'),
+                child: const Text('Pick starter habits'),
+              ),
               const SizedBox(height: 8),
-              TextButton(onPressed: () => context.push('/habit/new'), child: const Text('Add my own')),
+              TextButton(
+                onPressed: () => context.push('/habit/new'),
+                child: const Text('Add my own'),
+              ),
             ],
           ),
         ),
@@ -240,9 +314,17 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     }
     final searching = ref.watch(searchQueryProvider).trim().isNotEmpty;
     if (v.isEmpty && searching) {
-      return [const EmptyState(icon: Icons.search_off_rounded, title: 'No habits match', message: 'Try a different word.')];
+      return [
+        const EmptyState(
+          icon: Icons.search_off_rounded,
+          title: 'No habits match',
+          message: 'Try a different word.',
+        ),
+      ];
     }
-    final streak = ledger == null ? 0 : currentStreak(ledger, today, threshold: threshold);
+    final streak = ledger == null
+        ? 0
+        : currentStreak(ledger, today, threshold: threshold);
     final widgets = <Widget>[
       if (!searching) _SummaryCard(view: v, streak: streak),
       if (v.isEmpty)
@@ -255,69 +337,100 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     if (v.toDo.isNotEmpty) {
       widgets
         ..add(SectionHeader('To do', trailing: '${v.toDo.length} left'))
-        ..add(_card([
-          for (var i = 0; i < v.toDo.length; i++)
-            HabitTile(
-              key: ValueKey('todo-${v.toDo[i].habit.id}'),
-              row: v.toDo[i],
-              showDivider: i > 0,
-              onToggle: () => _toggle(v.toDo[i]),
-              onLog: () => _log(v.toDo[i]),
-              onMore: () => _more(v.toDo[i]),
-            ),
-        ]));
-    } else if (!v.isEmpty && v.summary.planned > 0 && v.summary.perfect && !searching) {
-      widgets.add(Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-        child: Text('Everything planned is done. Nice work.', style: AppType.body.copyWith(color: c.accentInk)),
-      ));
+        ..add(
+          _card([
+            for (var i = 0; i < v.toDo.length; i++)
+              HabitTile(
+                key: ValueKey('todo-${v.toDo[i].habit.id}'),
+                row: v.toDo[i],
+                showDivider: i > 0,
+                onToggle: () => _toggle(v.toDo[i]),
+                onLog: () => _log(v.toDo[i]),
+                onMore: () => _more(v.toDo[i]),
+              ),
+          ]),
+        );
+    } else if (!v.isEmpty &&
+        v.summary.planned > 0 &&
+        v.summary.perfect &&
+        !searching) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: Text(
+            'Everything planned is done. Nice work.',
+            style: AppType.body.copyWith(color: c.accentInk),
+          ),
+        ),
+      );
     }
     if (v.stayClear.isNotEmpty) {
       widgets
-        ..add(const SectionHeader('Staying clear', trailing: 'tap Slipped if it happened'))
-        ..add(_card([
-          for (var i = 0; i < v.stayClear.length; i++)
-            StayClearTile(
-              key: ValueKey('clear-${v.stayClear[i].habit.id}'),
-              row: v.stayClear[i],
-              showDivider: i > 0,
-              onSlip: () => _slip(v.stayClear[i]),
-              onMore: () => _more(v.stayClear[i]),
-            ),
-        ]));
+        ..add(
+          const SectionHeader(
+            'Staying clear',
+            trailing: 'tap Slipped if it happened',
+          ),
+        )
+        ..add(
+          _card([
+            for (var i = 0; i < v.stayClear.length; i++)
+              StayClearTile(
+                key: ValueKey('clear-${v.stayClear[i].habit.id}'),
+                row: v.stayClear[i],
+                showDivider: i > 0,
+                onSlip: () => _slip(v.stayClear[i]),
+                onMore: () => _more(v.stayClear[i]),
+              ),
+          ]),
+        );
     }
     if (v.finished.isNotEmpty) {
       widgets
-        ..add(Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: _FinishedToggle(count: v.finished.length, open: _showFinished, onTap: () => setState(() => _showFinished = !_showFinished)),
-        ))
-        ..add(AnimatedSize(
-          duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180),
-          alignment: Alignment.topCenter,
-          child: _showFinished
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: _cardBox([
-                    for (var i = 0; i < v.finished.length; i++)
-                      HabitTile(
-                        key: ValueKey('done-${v.finished[i].habit.id}'),
-                        row: v.finished[i],
-                        showDivider: i > 0,
-                        onToggle: () => _toggle(v.finished[i]),
-                        onLog: () => _log(v.finished[i]),
-                        onMore: () => _more(v.finished[i]),
-                      ),
-                  ]),
-                )
-              : const SizedBox(width: double.infinity),
-        ));
+        ..add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: _FinishedToggle(
+              count: v.finished.length,
+              open: _showFinished,
+              onTap: () => setState(() => _showFinished = !_showFinished),
+            ),
+          ),
+        )
+        ..add(
+          AnimatedSize(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            alignment: Alignment.topCenter,
+            child: _showFinished
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: _cardBox([
+                      for (var i = 0; i < v.finished.length; i++)
+                        HabitTile(
+                          key: ValueKey('done-${v.finished[i].habit.id}'),
+                          row: v.finished[i],
+                          showDivider: i > 0,
+                          onToggle: () => _toggle(v.finished[i]),
+                          onLog: () => _log(v.finished[i]),
+                          onMore: () => _more(v.finished[i]),
+                        ),
+                    ]),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        );
     }
     return widgets;
   }
 
-  Widget _card(List<Widget> rows) => Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _cardBox(rows));
-  Widget _cardBox(List<Widget> rows) => SurfaceCard(child: Column(children: rows));
+  Widget _card(List<Widget> rows) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20),
+    child: _cardBox(rows),
+  );
+  Widget _cardBox(List<Widget> rows) =>
+      SurfaceCard(child: Column(children: rows));
 }
 
 class _Header extends StatelessWidget {
@@ -351,14 +464,23 @@ class _Header extends StatelessWidget {
                     autofocus: true,
                     onChanged: onQuery,
                     textInputAction: TextInputAction.search,
-                    decoration: const InputDecoration(hintText: 'Search habits', prefixIcon: Icon(Icons.search_rounded)),
+                    decoration: const InputDecoration(
+                      hintText: 'Search habits',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Semantics(
                         header: true,
-                        child: Text(weekdayName(day).toUpperCase(), style: AppType.overline.copyWith(color: c.muted, letterSpacing: 1)),
+                        child: Text(
+                          weekdayName(day).toUpperCase(),
+                          style: AppType.overline.copyWith(
+                            color: c.muted,
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ),
                       Text(longDate(day), style: AppType.display),
                     ],
@@ -386,12 +508,23 @@ class _PastBanner extends StatelessWidget {
     final c = context.colors;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
-      decoration: BoxDecoration(color: c.indigoSoft, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+        color: c.indigoSoft,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
         children: [
           Icon(Icons.history_rounded, size: 18, color: c.indigo),
           const SizedBox(width: 8),
-          Expanded(child: Text('Editing ${shortDate(day)}', style: AppType.small.copyWith(color: c.indigo, fontWeight: FontWeight.w700))),
+          Expanded(
+            child: Text(
+              'Editing ${shortDate(day)}',
+              style: AppType.small.copyWith(
+                color: c.indigo,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
           TextButton(
             onPressed: onBack,
             style: TextButton.styleFrom(foregroundColor: c.indigo),
@@ -414,8 +547,12 @@ class _SummaryCard extends StatelessWidget {
     final s = view.summary;
     final frac = s.fraction ?? 0;
     final clearTotal = view.stayClear.length;
-    final clearOk = view.stayClear.where((r) => r.kind == RowKind.onTrack).length;
-    final headline = s.planned == 0 ? 'Nothing planned' : '${s.done} of ${s.planned} done';
+    final clearOk = view.stayClear
+        .where((r) => r.kind == RowKind.onTrack)
+        .length;
+    final headline = s.planned == 0
+        ? 'Nothing planned'
+        : '${s.done} of ${s.planned} done';
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: MergeSemantics(
@@ -428,7 +565,10 @@ class _SummaryCard extends StatelessWidget {
                 value: frac,
                 size: 68,
                 strokeWidth: 7,
-                child: Text(s.planned == 0 ? '–' : '${(frac * 100).round()}%', style: AppType.heading.copyWith(fontWeight: FontWeight.w800)),
+                child: Text(
+                  s.planned == 0 ? '–' : '${(frac * 100).round()}%',
+                  style: AppType.heading.copyWith(fontWeight: FontWeight.w800),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -439,12 +579,18 @@ class _SummaryCard extends StatelessWidget {
                     if (clearTotal > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text('Staying clear: $clearOk of $clearTotal on track', style: AppType.small.copyWith(color: c.muted)),
+                        child: Text(
+                          'Staying clear: $clearOk of $clearTotal on track',
+                          style: AppType.small.copyWith(color: c.muted),
+                        ),
                       ),
                     if (streak >= 2)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
-                        child: StreakChip(label: '$streak-day streak', semanticLabel: '$streak day streak'),
+                        child: StreakChip(
+                          label: '$streak-day streak',
+                          semanticLabel: '$streak day streak',
+                        ),
                       ),
                   ],
                 ),
@@ -458,7 +604,11 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _FinishedToggle extends StatelessWidget {
-  const _FinishedToggle({required this.count, required this.open, required this.onTap});
+  const _FinishedToggle({
+    required this.count,
+    required this.open,
+    required this.onTap,
+  });
   final int count;
   final bool open;
   final VoidCallback onTap;
@@ -469,7 +619,7 @@ class _FinishedToggle extends StatelessWidget {
     return Semantics(
       button: true,
       expanded: open,
-      label: 'Done today, $count',
+      label: 'Done, $count',
       excludeSemantics: true,
       child: Material(
         color: c.sunken,
@@ -489,12 +639,26 @@ class _FinishedToggle extends StatelessWidget {
                     constraints: const BoxConstraints(minWidth: 22),
                     height: 22,
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    decoration: BoxDecoration(color: c.accent, borderRadius: BorderRadius.circular(11)),
+                    decoration: BoxDecoration(
+                      color: c.accent,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
                     alignment: Alignment.center,
-                    child: Text('$count', style: AppType.caption.copyWith(color: c.onAccent, fontWeight: FontWeight.w800)),
+                    child: Text(
+                      '$count',
+                      style: AppType.caption.copyWith(
+                        color: c.onAccent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                   const Spacer(),
-                  Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: c.muted),
+                  Icon(
+                    open
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: c.muted,
+                  ),
                 ],
               ),
             ),

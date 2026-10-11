@@ -27,8 +27,15 @@ final class PlannedReminder {
   /// A tick habit can be finished from the notification's Done button.
   final bool markable;
 
-  PlannedReminder withId(int newId) =>
-      PlannedReminder(id: newId, when: when, kind: kind, title: title, body: body, habitId: habitId, markable: markable);
+  PlannedReminder withId(int newId) => PlannedReminder(
+    id: newId,
+    when: when,
+    kind: kind,
+    title: title,
+    body: body,
+    habitId: habitId,
+    markable: markable,
+  );
 
   /// What the notification opens when tapped.
   String get payload => habitId == null ? 'today' : 'habit:$habitId';
@@ -42,7 +49,9 @@ final class PlannedReminder {
   final end = s.quietEndMinutes;
   if (start == end) return (minutes: minutes, nextDay: false);
   if (start < end) {
-    return minutes >= start && minutes < end ? (minutes: end, nextDay: false) : (minutes: minutes, nextDay: false);
+    return minutes >= start && minutes < end
+        ? (minutes: end, nextDay: false)
+        : (minutes: minutes, nextDay: false);
   }
   // The window crosses midnight: [start, 24:00) and [00:00, end).
   if (minutes >= start) return (minutes: end, nextDay: true);
@@ -65,12 +74,36 @@ List<PlannedReminder> planReminders(
   final today = DayKey.fromDate(now);
   final out = <PlannedReminder>[];
 
-  void add(DayKey day, int minutes, ReminderKind kind, String title, String body, String? habitId, {bool markable = false}) {
+  void add(
+    DayKey day,
+    int minutes,
+    ReminderKind kind,
+    String title,
+    String body,
+    String? habitId, {
+    bool markable = false,
+  }) {
     final shifted = _shiftOutOfQuiet(minutes, settings);
     final target = shifted.nextDay ? day.addDays(1) : day;
-    final when = DateTime(target.year, target.month, target.day, shifted.minutes ~/ 60, shifted.minutes % 60);
+    final when = DateTime(
+      target.year,
+      target.month,
+      target.day,
+      shifted.minutes ~/ 60,
+      shifted.minutes % 60,
+    );
     if (!when.isAfter(now)) return;
-    out.add(PlannedReminder(id: 0, when: when, kind: kind, title: title, body: body, habitId: habitId, markable: markable));
+    out.add(
+      PlannedReminder(
+        id: 0,
+        when: when,
+        kind: kind,
+        title: title,
+        body: body,
+        habitId: habitId,
+        markable: markable,
+      ),
+    );
   }
 
   for (var i = 0; i < horizonDays; i++) {
@@ -80,11 +113,28 @@ List<PlannedReminder> planReminders(
       if (at == null || h.tracksSlips || !h.isScheduledOn(day)) continue;
       final state = ledger.entryOf(h.id, day)?.state;
       if (state == EntryState.done || state == EntryState.skipped) continue;
-      add(day, at, ReminderKind.habit, h.name, h.kind == HabitKind.avoid ? 'Did you stay clear today?' : 'Time for this one.', h.id,
-          markable: h.logType == LogType.tick);
+      add(
+        day,
+        at,
+        ReminderKind.habit,
+        h.name,
+        h.kind == HabitKind.avoid
+            ? 'Did you stay clear today?'
+            : 'Time for this one.',
+        h.id,
+        markable: h.logType == LogType.tick,
+      );
     }
-    if (settings.eveningCheckInOn && ledger.habits.any((h) => h.tracksSlips && h.isActiveOn(day))) {
-      add(day, settings.eveningCheckInMinutes, ReminderKind.checkIn, 'How did today go?', 'Tap to log a slip, or just open the app to keep your day on track.', null);
+    if (settings.eveningCheckInOn &&
+        ledger.habits.any((h) => h.tracksSlips && h.isActiveOn(day))) {
+      add(
+        day,
+        settings.eveningCheckInMinutes,
+        ReminderKind.checkIn,
+        'How did today go?',
+        'Tap to log a slip, or just open the app to keep your day on track.',
+        null,
+      );
     }
   }
   out.sort((a, b) => a.when.compareTo(b.when));

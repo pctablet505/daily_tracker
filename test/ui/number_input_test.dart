@@ -71,12 +71,15 @@ void main() {
   });
 
   group('step', () {
-    test('is 1 for whole amounts and 0.1 when the amount or goal has decimals', () {
-      expect(stepFor(goal: 8, lastValue: null, current: null), 1);
-      expect(stepFor(goal: null, lastValue: 75.9, current: null), 0.1);
-      expect(stepFor(goal: 2.5, lastValue: null, current: null), 0.1);
-      expect(stepFor(goal: null, lastValue: null, current: 75.5), 0.1);
-      expect(stepFor(goal: null, lastValue: null, current: null), 1);
-    });
+    test(
+      'is 1 for whole amounts and 0.1 when the amount or goal has decimals',
+      () {
+        expect(stepFor(goal: 8, lastValue: null, current: null), 1);
+        expect(stepFor(goal: null, lastValue: 75.9, current: null), 0.1);
+        expect(stepFor(goal: 2.5, lastValue: null, current: null), 0.1);
+        expect(stepFor(goal: null, lastValue: null, current: 75.5), 0.1);
+        expect(stepFor(goal: null, lastValue: null, current: null), 1);
+      },
+    );
   });
 }

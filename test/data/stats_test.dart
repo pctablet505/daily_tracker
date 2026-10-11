@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures.dart';
 
-Ledger ledger(List<Habit> habits, [List<Entry> entries = const [], List<DayKey> seen = const []]) =>
-    Ledger(habits: habits, entries: entries, seenDays: seen);
+Ledger ledger(
+  List<Habit> habits, [
+  List<Entry> entries = const [],
+  List<DayKey> seen = const [],
+]) => Ledger(habits: habits, entries: entries, seenDays: seen);
 
 void main() {
   group('summarizeDay: the 60% rule', () {
@@ -23,7 +26,9 @@ void main() {
       (1, 20, DayStatus.good),
     ]) {
       test('${c.$1} of 5 done at ${c.$2}% is ${c.$3.name}', () {
-        final l = ledger(five, [for (var i = 1; i <= c.$1; i++) entry('h$i', mon)]);
+        final l = ledger(five, [
+          for (var i = 1; i <= c.$1; i++) entry('h$i', mon),
+        ]);
         final s = summarizeDay(l, mon, threshold: c.$2);
         expect(s.status, c.$3);
         expect((s.done, s.planned), (c.$1, 5));
@@ -37,35 +42,51 @@ void main() {
     });
 
     test('only the scheduled weekdays plan anything', () {
-      final l = ledger([habit('a', mask: daysOf([1, 3, 5]))]);
+      final l = ledger([
+        habit('a', mask: daysOf([1, 3, 5])),
+      ]);
       expect(summarizeDay(l, mon).planned, 1);
       expect(summarizeDay(l, tue).planned, 0);
       expect(summarizeDay(l, tue).status, DayStatus.neutral);
       expect(summarizeDay(l, wed).planned, 1);
     });
 
-    test('nothing is planned before a habit exists; the end day is included', () {
-      final l = ledger([habit('a', created: wed, end: fri)]);
-      expect(summarizeDay(l, tue).planned, 0);
-      expect(summarizeDay(l, wed).planned, 1);
-      expect(summarizeDay(l, fri).planned, 1);
-      expect(summarizeDay(l, sat).planned, 0);
-    });
+    test(
+      'nothing is planned before a habit exists; the end day is included',
+      () {
+        final l = ledger([habit('a', created: wed, end: fri)]);
+        expect(summarizeDay(l, tue).planned, 0);
+        expect(summarizeDay(l, wed).planned, 1);
+        expect(summarizeDay(l, fri).planned, 1);
+        expect(summarizeDay(l, sat).planned, 0);
+      },
+    );
 
     test('a habit done on a day it was not planned still counts as done', () {
-      final l = ledger([habit('a', mask: daysOf([1]))], [entry('a', tue)]);
+      final l = ledger(
+        [
+          habit('a', mask: daysOf([1])),
+        ],
+        [entry('a', tue)],
+      );
       final s = summarizeDay(l, tue);
       expect((s.done, s.planned, s.status), (1, 1, DayStatus.good));
     });
 
     test('a skipped day is left out of the count', () {
-      final l = ledger([habit('a'), habit('b')], [entry('a', mon), entry('b', mon, EntryState.skipped)]);
+      final l = ledger(
+        [habit('a'), habit('b')],
+        [entry('a', mon), entry('b', mon, EntryState.skipped)],
+      );
       final s = summarizeDay(l, mon);
       expect((s.done, s.planned, s.perfect), (1, 1, true));
     });
 
     test('a number habit short of its goal is planned but not done', () {
-      final l = ledger([habit('w', logType: LogType.number, goal: 8)], [entry('w', mon, EntryState.partial, 3)]);
+      final l = ledger(
+        [habit('w', logType: LogType.number, goal: 8)],
+        [entry('w', mon, EntryState.partial, 3)],
+      );
       final s = summarizeDay(l, mon);
       expect((s.done, s.planned, s.status), (0, 1, DayStatus.missed));
     });
@@ -74,8 +95,14 @@ void main() {
       final c = habit('c', kind: HabitKind.avoid, avoidMode: AvoidMode.confirm);
       expect(summarizeDay(ledger([c]), mon).planned, 1);
       expect(summarizeDay(ledger([c]), mon).status, DayStatus.missed);
-      expect(summarizeDay(ledger([c], [entry('c', mon)]), mon).status, DayStatus.good);
-      expect(summarizeDay(ledger([c], [slip('c', mon)]), mon).status, DayStatus.missed);
+      expect(
+        summarizeDay(ledger([c], [entry('c', mon)]), mon).status,
+        DayStatus.good,
+      );
+      expect(
+        summarizeDay(ledger([c], [slip('c', mon)]), mon).status,
+        DayStatus.missed,
+      );
     });
   });
 
@@ -96,14 +123,26 @@ void main() {
     });
 
     test('logging anything that day counts as the app being seen', () {
-      final l = ledger([s, habit('a', mask: daysOf([2]))], [entry('a', mon)]);
+      final l = ledger(
+        [
+          s,
+          habit('a', mask: daysOf([2])),
+        ],
+        [entry('a', mon)],
+      );
       expect(summarizeDay(l, mon).planned, 1); // bonus entry makes it a Do day
       final l2 = ledger([s], [entry('other', mon)]);
       expect(summarizeDay(l2, mon).status, DayStatus.good);
     });
 
     test('before the habit existed it does not make a day good', () {
-      expect(summarizeDay(ledger([stayClear('s', created: wed)], [], [mon]), mon).status, DayStatus.neutral);
+      expect(
+        summarizeDay(
+          ledger([stayClear('s', created: wed)], [], [mon]),
+          mon,
+        ).status,
+        DayStatus.neutral,
+      );
     });
 
     test('once Do habits are planned they decide the day, not the slips', () {
@@ -121,7 +160,10 @@ void main() {
     });
 
     test('counts good days back from today', () {
-      final l = ledger([a], [entry('a', fri), entry('a', sat), entry('a', sun)]);
+      final l = ledger(
+        [a],
+        [entry('a', fri), entry('a', sat), entry('a', sun)],
+      );
       expect(currentStreak(l, sun), 3);
     });
 
@@ -131,7 +173,10 @@ void main() {
     });
 
     test('a missed day before today ends the run', () {
-      final l = ledger([a], [entry('a', thu), entry('a', sat), entry('a', sun)]);
+      final l = ledger(
+        [a],
+        [entry('a', thu), entry('a', sat), entry('a', sun)],
+      );
       expect(currentStreak(l, sun), 2); // fri missed
     });
 
@@ -142,17 +187,33 @@ void main() {
 
     test('days with nothing planned are passed over', () {
       final weekdays = habit('w', mask: Habit.weekdaysOnly);
-      final l = ledger([weekdays], [entry('w', thu), entry('w', fri), entry('w', const DayKey(2026, 10, 12))]);
-      expect(currentStreak(l, const DayKey(2026, 10, 12)), 3); // Sat and Sun are neutral
+      final l = ledger(
+        [weekdays],
+        [
+          entry('w', thu),
+          entry('w', fri),
+          entry('w', const DayKey(2026, 10, 12)),
+        ],
+      );
+      expect(
+        currentStreak(l, const DayKey(2026, 10, 12)),
+        3,
+      ); // Sat and Sun are neutral
     });
 
     test('does not reach back before anything existed', () {
-      final l = ledger([habit('n', created: sat)], [entry('n', sat), entry('n', sun)]);
+      final l = ledger(
+        [habit('n', created: sat)],
+        [entry('n', sat), entry('n', sun)],
+      );
       expect(currentStreak(l, sun), 2);
     });
 
     test('a skipped day neither counts nor breaks', () {
-      final l = ledger([a], [entry('a', fri), entry('a', sat, EntryState.skipped), entry('a', sun)]);
+      final l = ledger(
+        [a],
+        [entry('a', fri), entry('a', sat, EntryState.skipped), entry('a', sun)],
+      );
       expect(currentStreak(l, sun), 2);
     });
 
@@ -167,35 +228,64 @@ void main() {
     final a = habit('a');
 
     test('is the longest run, not the latest', () {
-      final l = ledger([a], [entry('a', mon), entry('a', tue), entry('a', wed), entry('a', fri), entry('a', sat)]);
+      final l = ledger(
+        [a],
+        [
+          entry('a', mon),
+          entry('a', tue),
+          entry('a', wed),
+          entry('a', fri),
+          entry('a', sat),
+        ],
+      );
       expect(bestStreak(l, sun), 3);
     });
 
     test('an open today does not cut the final run', () {
-      final l = ledger([a], [entry('a', thu), entry('a', fri), entry('a', sat)]);
+      final l = ledger(
+        [a],
+        [entry('a', thu), entry('a', fri), entry('a', sat)],
+      );
       expect(bestStreak(l, sun), 3);
     });
 
     test('is never below the current streak', () {
-      final l = ledger([a], [entry('a', fri), entry('a', sat), entry('a', sun)]);
+      final l = ledger(
+        [a],
+        [entry('a', fri), entry('a', sat), entry('a', sun)],
+      );
       expect(bestStreak(l, sun), greaterThanOrEqualTo(currentStreak(l, sun)));
     });
   });
 
   group('rateOver', () {
-    test('adds planned and done across days instead of averaging day rates', () {
-      // Monday 1 of 1, Tuesday 0 of 4: 1/5 summed, not the 50% a mean of day rates gives.
-      final l = ledger(
-        [habit('a'), habit('b', mask: daysOf([2])), habit('c', mask: daysOf([2])), habit('d', mask: daysOf([2]))],
-        [entry('a', mon)],
-      );
-      final r = rateOver(l, mon, mon.addDays(1));
-      expect(r, const Ratio(1, 5)); // Tuesday plans a, b, c, d; only Monday's a is done
-      expect(r.fraction, closeTo(0.2, 1e-9));
-    });
+    test(
+      'adds planned and done across days instead of averaging day rates',
+      () {
+        // Monday 1 of 1, Tuesday 0 of 4: 1/5 summed, not the 50% a mean of day rates gives.
+        final l = ledger(
+          [
+            habit('a'),
+            habit('b', mask: daysOf([2])),
+            habit('c', mask: daysOf([2])),
+            habit('d', mask: daysOf([2])),
+          ],
+          [entry('a', mon)],
+        );
+        final r = rateOver(l, mon, mon.addDays(1));
+        expect(
+          r,
+          const Ratio(1, 5),
+        ); // Tuesday plans a, b, c, d; only Monday's a is done
+        expect(r.fraction, closeTo(0.2, 1e-9));
+      },
+    );
 
     test('days before a habit existed add nothing', () {
-      final l = ledger([habit('a', created: fri)], [entry('a', fri), entry('a', sat), entry('a', sun)]);
+      final l = ledger(
+        [habit('a', created: fri)],
+        [entry('a', fri), entry('a', sat), entry('a', sun)],
+      );
       expect(rateOver(l, mon, sun), const Ratio(3, 3));
     });
 
@@ -205,40 +295,61 @@ void main() {
   });
 
   group('perfectDays', () {
-    test('counts days with every planned Do habit done, and not empty days', () {
-      final l = ledger(
-        [habit('a'), habit('b')],
-        [entry('a', mon), entry('b', mon), entry('a', tue), entry('a', wed), entry('b', wed)],
-      );
-      expect(perfectDays(l, mon, sun), 2); // Mon and Wed
-    });
+    test(
+      'counts days with every planned Do habit done, and not empty days',
+      () {
+        final l = ledger(
+          [habit('a'), habit('b')],
+          [
+            entry('a', mon),
+            entry('b', mon),
+            entry('a', tue),
+            entry('a', wed),
+            entry('b', wed),
+          ],
+        );
+        expect(perfectDays(l, mon, sun), 2); // Mon and Wed
+      },
+    );
   });
 
   group('habitStreak: a Do habit', () {
     test('counts planned days done; an open today does not break it', () {
       final a = habit('a');
-      final l = ledger([a], [
-        entry('a', mon), entry('a', tue), entry('a', wed), // 3
-        entry('a', fri), entry('a', sat), // thu missed -> 2
-      ]);
+      final l = ledger(
+        [a],
+        [
+          entry('a', mon), entry('a', tue), entry('a', wed), // 3
+          entry('a', fri), entry('a', sat), // thu missed -> 2
+        ],
+      );
       expect(habitStreak(l, a, sun), const HabitStreak(current: 2, best: 3));
     });
 
     test('days it is not planned for do not break it', () {
       final a = habit('a', mask: daysOf([1, 3, 5]));
-      final l = ledger([a], [entry('a', mon), entry('a', wed), entry('a', fri)]);
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', wed), entry('a', fri)],
+      );
       expect(habitStreak(l, a, sun), const HabitStreak(current: 3, best: 3));
     });
 
     test('a skipped day is passed over', () {
       final a = habit('a');
-      final l = ledger([a], [entry('a', mon), entry('a', tue, EntryState.skipped), entry('a', wed)]);
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue, EntryState.skipped), entry('a', wed)],
+      );
       expect(habitStreak(l, a, wed), const HabitStreak(current: 2, best: 2));
     });
 
     test('an archived habit stops at its last day', () {
       final a = habit('a', end: wed);
-      final l = ledger([a], [entry('a', mon), entry('a', tue), entry('a', wed)]);
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue), entry('a', wed)],
+      );
       expect(habitStreak(l, a, sun), const HabitStreak(current: 3, best: 3));
     });
 
@@ -264,7 +375,15 @@ void main() {
     });
 
     test('a slip today starts again at 0', () {
-      final l = ledger([s], [slip('s', sun)], [mon, tue, wed, thu, fri, sat, sun]);
+      final l = ledger([s], [slip('s', sun)], [
+        mon,
+        tue,
+        wed,
+        thu,
+        fri,
+        sat,
+        sun,
+      ]);
       expect(habitStreak(l, s, sun), const HabitStreak(current: 0, best: 6));
     });
   });
@@ -272,8 +391,14 @@ void main() {
   group('habitRate', () {
     test('Do habit: done over planned, skipped days left out', () {
       final a = habit('a');
-      final l = ledger([a], [entry('a', mon), entry('a', tue), entry('a', wed, EntryState.skipped)]);
-      expect(habitRate(l, a, mon, fri), const Ratio(2, 4)); // mon, tue done; thu, fri missed
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue), entry('a', wed, EntryState.skipped)],
+      );
+      expect(
+        habitRate(l, a, mon, fri),
+        const Ratio(2, 4),
+      ); // mon, tue done; thu, fri missed
     });
 
     test('stay-clear habit: slip-free seen days over seen days', () {
@@ -285,7 +410,10 @@ void main() {
 
   group('Ledger.entriesOf', () {
     test('lists one habit\'s entries, oldest first, and nothing for an unknown habit', () {
-      final l = ledger([habit('a'), habit('b')], [entry('a', wed), entry('b', tue), entry('a', mon)]);
+      final l = ledger(
+        [habit('a'), habit('b')],
+        [entry('a', wed), entry('b', tue), entry('a', mon)],
+      );
       expect(l.entriesOf('a').map((e) => e.day), [mon, wed]);
       expect(l.entriesOf('zzz'), isEmpty);
     });

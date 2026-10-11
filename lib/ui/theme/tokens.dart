@@ -127,7 +127,13 @@ extension AppColorsOf on BuildContext {
 
 /// Plus Jakarta Sans is a variable font; the weight is set on both the
 /// `FontWeight` and the `wght` axis so every weight renders distinctly.
-TextStyle appText(double size, int weight, {double? height, double? letterSpacing, Color? color}) {
+TextStyle appText(
+  double size,
+  int weight, {
+  double? height,
+  double? letterSpacing,
+  Color? color,
+}) {
   final w = FontWeight.values[((weight ~/ 100) - 1).clamp(0, 8)];
   return TextStyle(
     fontFamily: 'PlusJakartaSans',
@@ -142,7 +148,12 @@ TextStyle appText(double size, int weight, {double? height, double? letterSpacin
 
 /// The type scale. Colours come from the surrounding theme.
 abstract final class AppType {
-  static final display = appText(28, 800, height: 34 / 28, letterSpacing: -0.28);
+  static final display = appText(
+    28,
+    800,
+    height: 34 / 28,
+    letterSpacing: -0.28,
+  );
   static final title = appText(20, 800, height: 24 / 20);
   static final heading = appText(17, 700, height: 22 / 17);
   static final body = appText(16, 600, height: 20 / 16);

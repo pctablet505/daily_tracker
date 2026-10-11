@@ -25,7 +25,9 @@ final class HabitActions {
   /// Stores [next] (or clears the day when null) and removes a photo file the
   /// day no longer points at.
   Future<void> _apply(Habit h, DayKey day, Entry? next, Entry? before) async {
-    final Entry? replaced = next == null ? await repo.clearEntry(h.id, day) : await repo.setEntry(next);
+    final Entry? replaced = next == null
+        ? await repo.clearEntry(h.id, day)
+        : await repo.setEntry(next);
     final old = replaced?.photoPath ?? before?.photoPath;
     if (old != null && old != next?.photoPath) await photos.delete(old);
   }
@@ -37,12 +39,22 @@ final class HabitActions {
 
   Future<void> logNumber(Habit h, DayKey day, double value) async {
     final before = await _existing(h, day);
-    await _apply(h, day, numberEntry(h, day, value, _now(), existing: before), before);
+    await _apply(
+      h,
+      day,
+      numberEntry(h, day, value, _now(), existing: before),
+      before,
+    );
   }
 
   Future<void> logNote(Habit h, DayKey day, String text) async {
     final before = await _existing(h, day);
-    await _apply(h, day, noteEntry(h, day, text, _now(), existing: before), before);
+    await _apply(
+      h,
+      day,
+      noteEntry(h, day, text, _now(), existing: before),
+      before,
+    );
   }
 
   /// Copies the picked photo into the app's folder, then records it. If
@@ -51,7 +63,12 @@ final class HabitActions {
     final name = await photos.importFile(sourcePath);
     try {
       final before = await _existing(h, day);
-      await _apply(h, day, photoEntry(h, day, name, _now(), existing: before), before);
+      await _apply(
+        h,
+        day,
+        photoEntry(h, day, name, _now(), existing: before),
+        before,
+      );
     } catch (_) {
       await photos.delete(name);
       rethrow;
@@ -68,7 +85,8 @@ final class HabitActions {
     await _apply(h, day, skipEntry(h, day, before, _now()), before);
   }
 
-  Future<void> clear(Habit h, DayKey day) async => _apply(h, day, null, await _existing(h, day));
+  Future<void> clear(Habit h, DayKey day) async =>
+      _apply(h, day, null, await _existing(h, day));
 
   // Habits
 
@@ -94,8 +112,13 @@ final class HabitActions {
 
   Future<void> updateHabit(Habit h) => repo.updateHabit(h);
 
+  /// Puts the habits in the order of [ids]; any habit not named goes after them.
+  Future<void> reorder(List<String> ids, Iterable<String> allIds) =>
+      repo.reorder([...ids, ...allIds.where((id) => !ids.contains(id))]);
+
   /// Takes the habit off the lists from today on; its history stays.
-  Future<void> archive(Habit h, DayKey today) => repo.archive(h.id, today.addDays(-1));
+  Future<void> archive(Habit h, DayKey today) =>
+      repo.archive(h.id, today.addDays(-1));
 
   Future<Habit> startAgain(Habit archived, DayKey today) =>
       repo.startAgain(archived, newId: _newId(), today: today);

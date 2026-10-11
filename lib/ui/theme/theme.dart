@@ -18,9 +18,13 @@ ThemeData buildTheme(Brightness brightness) {
     outline: c.border2,
     outlineVariant: c.border,
   );
-  final base = ThemeData(useMaterial3: true, colorScheme: scheme, fontFamily: 'PlusJakartaSans');
+  final base = ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    fontFamily: 'PlusJakartaSans',
+  );
+  // Colours are applied last: the AppType styles carry none of their own.
   final text = base.textTheme
-      .apply(fontFamily: 'PlusJakartaSans', bodyColor: c.ink, displayColor: c.ink)
       .copyWith(
         bodyLarge: AppType.body,
         bodyMedium: AppType.bodyLight,
@@ -32,7 +36,8 @@ ThemeData buildTheme(Brightness brightness) {
         labelMedium: AppType.caption,
         labelSmall: AppType.caption,
         headlineMedium: AppType.display,
-      );
+      )
+      .apply(bodyColor: c.ink, displayColor: c.ink);
   return base.copyWith(
     extensions: [c],
     scaffoldBackgroundColor: c.bg,
@@ -53,7 +58,9 @@ ThemeData buildTheme(Brightness brightness) {
       modalBackgroundColor: c.surface,
       showDragHandle: true,
       dragHandleColor: c.border2,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: c.surface,
@@ -65,24 +72,47 @@ ThemeData buildTheme(Brightness brightness) {
       behavior: SnackBarBehavior.floating,
       backgroundColor: c.ink,
       contentTextStyle: AppType.body.copyWith(color: c.bg),
-      actionTextColor: brightness == Brightness.dark ? AppColors.light.accent : AppColors.dark.accent,
+      actionTextColor: brightness == Brightness.dark
+          ? AppColors.light.accent
+          : AppColors.dark.accent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.onAccent : c.border2),
-      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.accent : c.sunken),
-      trackOutlineColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.accent : c.border2),
+      thumbColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? c.onAccent : c.border2,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? c.accent : c.sunken,
+      ),
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? c.accent : c.border2,
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: c.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       hintStyle: AppType.bodyLight.copyWith(color: c.faint),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c.border2)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c.border2)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c.accent, width: 2)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c.danger, width: 2)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c.danger, width: 2)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: c.border2),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: c.border2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: c.accent, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: c.danger, width: 2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: c.danger, width: 2),
+      ),
       errorStyle: AppType.small.copyWith(color: c.danger),
     ),
     filledButtonTheme: FilledButtonThemeData(

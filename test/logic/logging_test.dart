@@ -14,7 +14,10 @@ void main() {
   group('tapping a tick habit', () {
     test('marks it done', () {
       final e = tickEntry(tick, mon, null, now);
-      expect((e?.state, e?.habitId, e?.day, e?.loggedAt), (EntryState.done, 't', mon, now));
+      expect(
+        (e?.state, e?.habitId, e?.day, e?.loggedAt),
+        (EntryState.done, 't', mon, now),
+      );
     });
 
     test('taps off what was done', () {
@@ -22,12 +25,18 @@ void main() {
     });
 
     test('a skipped day becomes done', () {
-      expect(tickEntry(tick, mon, entry('t', mon, EntryState.skipped), now)?.state, EntryState.done);
+      expect(
+        tickEntry(tick, mon, entry('t', mon, EntryState.skipped), now)?.state,
+        EntryState.done,
+      );
     });
 
     test('a slipped confirm-mode habit becomes done', () {
       final c = habit('c', kind: HabitKind.avoid, avoidMode: AvoidMode.confirm);
-      expect(tickEntry(c, mon, entry('c', mon, EntryState.slipped), now)?.state, EntryState.done);
+      expect(
+        tickEntry(c, mon, entry('c', mon, EntryState.slipped), now)?.state,
+        EntryState.done,
+      );
     });
   });
 
@@ -51,18 +60,31 @@ void main() {
 
   group('logging a note', () {
     test('keeps the trimmed text and marks the day done', () {
-      final e = noteEntry(habit('j', logType: LogType.note), mon, '  walked by the river \n', now);
+      final e = noteEntry(
+        habit('j', logType: LogType.note),
+        mon,
+        '  walked by the river \n',
+        now,
+      );
       expect((e?.state, e?.note), (EntryState.done, 'walked by the river'));
     });
 
     test('blank text clears it', () {
-      expect(noteEntry(habit('j', logType: LogType.note), mon, '  \n', now), isNull);
+      expect(
+        noteEntry(habit('j', logType: LogType.note), mon, '  \n', now),
+        isNull,
+      );
     });
   });
 
   group('logging a photo', () {
     test('stores the file name and marks the day done', () {
-      final e = photoEntry(habit('p', logType: LogType.photo), mon, 'a1.jpg', now);
+      final e = photoEntry(
+        habit('p', logType: LogType.photo),
+        mon,
+        'a1.jpg',
+        now,
+      );
       expect((e.state, e.photoPath), (EntryState.done, 'a1.jpg'));
     });
   });
@@ -75,7 +97,10 @@ void main() {
     });
 
     test('a slip keeps a note about what happened', () {
-      expect(slipEntry(s, mon, null, now, note: ' after dinner ')?.note, 'after dinner');
+      expect(
+        slipEntry(s, mon, null, now, note: ' after dinner ')?.note,
+        'after dinner',
+      );
       expect(slipEntry(s, mon, null, now, note: '  ')?.note, isNull);
     });
   });
@@ -99,15 +124,37 @@ void main() {
         photoPath: 'x.jpg',
         loggedAt: now,
       );
-      final e = numberEntry(water, mon, 8, now.add(const Duration(hours: 3)), existing: before);
-      expect((e?.note, e?.photoPath, e?.state), ('before lunch', 'x.jpg', EntryState.done));
+      final e = numberEntry(
+        water,
+        mon,
+        8,
+        now.add(const Duration(hours: 3)),
+        existing: before,
+      );
+      expect(
+        (e?.note, e?.photoPath, e?.state),
+        ('before lunch', 'x.jpg', EntryState.done),
+      );
     });
 
     test('a photo keeps the note, and a note keeps the photo', () {
-      final before = Entry(habitId: 'p', day: mon, state: EntryState.done, note: 'sunrise', photoPath: 'old.jpg', loggedAt: now);
+      final before = Entry(
+        habitId: 'p',
+        day: mon,
+        state: EntryState.done,
+        note: 'sunrise',
+        photoPath: 'old.jpg',
+        loggedAt: now,
+      );
       final p = habit('p', logType: LogType.photo);
-      expect(photoEntry(p, mon, 'new.jpg', now, existing: before).note, 'sunrise');
-      expect(noteEntry(p, mon, 'cloudy', now, existing: before)?.photoPath, 'old.jpg');
+      expect(
+        photoEntry(p, mon, 'new.jpg', now, existing: before).note,
+        'sunrise',
+      );
+      expect(
+        noteEntry(p, mon, 'cloudy', now, existing: before)?.photoPath,
+        'old.jpg',
+      );
     });
   });
 }

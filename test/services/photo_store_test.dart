@@ -36,11 +36,15 @@ void main() {
   });
 
   test('two photos get two names', () async {
-    expect(await store.importFile(source.path), isNot(await store.importFile(source.path)));
+    expect(
+      await store.importFile(source.path),
+      isNot(await store.importFile(source.path)),
+    );
   });
 
   test('a source with no usable extension is stored as .jpg', () async {
-    final bare = File(p.join(root.path, 'cache', 'photo'))..writeAsBytesSync([9]);
+    final bare = File(p.join(root.path, 'cache', 'photo'))
+      ..writeAsBytesSync([9]);
     expect(await store.importFile(bare.path), endsWith('.jpg'));
   });
 
@@ -57,8 +61,14 @@ void main() {
     }
   });
 
-  test('importing a file that does not exist fails and leaves nothing behind', () async {
-    await expectLater(store.importFile(p.join(root.path, 'nope.jpg')), throwsA(isA<FileSystemException>()));
-    expect(media.existsSync() ? media.listSync() : [], isEmpty);
-  });
+  test(
+    'importing a file that does not exist fails and leaves nothing behind',
+    () async {
+      await expectLater(
+        store.importFile(p.join(root.path, 'nope.jpg')),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(media.existsSync() ? media.listSync() : [], isEmpty);
+    },
+  );
 }

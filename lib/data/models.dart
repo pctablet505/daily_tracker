@@ -76,13 +76,15 @@ final class Habit {
   bool get isArchived => endDay != null;
 
   /// An avoid habit whose days start on track and where only slips are logged.
-  bool get tracksSlips => kind == HabitKind.avoid && avoidMode == AvoidMode.track;
+  bool get tracksSlips =>
+      kind == HabitKind.avoid && avoidMode == AvoidMode.track;
 
   /// Whether the schedule includes [weekday] (1 = Monday ... 7 = Sunday).
   bool runsOn(int weekday) => (daysMask >> (weekday - 1)) & 1 == 1;
 
   /// The habit exists on [day]: from the day it was made to its last day.
-  bool isActiveOn(DayKey day) => day >= createdDay && (endDay == null || day <= endDay!);
+  bool isActiveOn(DayKey day) =>
+      day >= createdDay && (endDay == null || day <= endDay!);
 
   /// The habit is planned for [day].
   bool isScheduledOn(DayKey day) => isActiveOn(day) && runsOn(day.weekday);
@@ -102,52 +104,56 @@ final class Habit {
     int? sortOrder,
     DayKey? createdDay,
     DayKey? Function()? endDay,
-  }) =>
-      Habit(
-        id: id,
-        name: name ?? this.name,
-        description: description != null ? description() : this.description,
-        kind: kind ?? this.kind,
-        logType: logType ?? this.logType,
-        unit: unit != null ? unit() : this.unit,
-        goal: goal != null ? goal() : this.goal,
-        daysMask: daysMask ?? this.daysMask,
-        dayPart: dayPart ?? this.dayPart,
-        reminderMinutes: reminderMinutes != null ? reminderMinutes() : this.reminderMinutes,
-        area: area != null ? area() : this.area,
-        avoidMode: avoidMode ?? this.avoidMode,
-        sortOrder: sortOrder ?? this.sortOrder,
-        createdDay: createdDay ?? this.createdDay,
-        endDay: endDay != null ? endDay() : this.endDay,
-      );
+  }) => Habit(
+    id: id,
+    name: name ?? this.name,
+    description: description != null ? description() : this.description,
+    kind: kind ?? this.kind,
+    logType: logType ?? this.logType,
+    unit: unit != null ? unit() : this.unit,
+    goal: goal != null ? goal() : this.goal,
+    daysMask: daysMask ?? this.daysMask,
+    dayPart: dayPart ?? this.dayPart,
+    reminderMinutes: reminderMinutes != null
+        ? reminderMinutes()
+        : this.reminderMinutes,
+    area: area != null ? area() : this.area,
+    avoidMode: avoidMode ?? this.avoidMode,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdDay: createdDay ?? this.createdDay,
+    endDay: endDay != null ? endDay() : this.endDay,
+  );
 
   Map<String, Object?> toMap() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'kind': kind.name,
-        'logType': logType.name,
-        'unit': unit,
-        'goal': goal,
-        'daysMask': daysMask,
-        'dayPart': dayPart.name,
-        'reminderMinutes': reminderMinutes,
-        'area': area,
-        'avoidMode': avoidMode.name,
-        'sortOrder': sortOrder,
-        'createdDay': createdDay.toString(),
-        'endDay': endDay?.toString(),
-      };
+    'id': id,
+    'name': name,
+    'description': description,
+    'kind': kind.name,
+    'logType': logType.name,
+    'unit': unit,
+    'goal': goal,
+    'daysMask': daysMask,
+    'dayPart': dayPart.name,
+    'reminderMinutes': reminderMinutes,
+    'area': area,
+    'avoidMode': avoidMode.name,
+    'sortOrder': sortOrder,
+    'createdDay': createdDay.toString(),
+    'endDay': endDay?.toString(),
+  };
 
   /// Throws [FormatException] when a required field is missing or malformed,
   /// so a corrupt backup is rejected instead of half-imported.
   factory Habit.fromMap(Map<String, Object?> m) {
     final id = m['id'];
     final name = m['name'];
-    if (id is! String || id.isEmpty) throw const FormatException('Habit without id');
-    if (name is! String || name.trim().isEmpty) throw FormatException('Habit without name', id);
+    if (id is! String || id.isEmpty)
+      throw const FormatException('Habit without id');
+    if (name is! String || name.trim().isEmpty)
+      throw FormatException('Habit without name', id);
     final created = m['createdDay'];
-    if (created is! String) throw FormatException('Habit without createdDay', id);
+    if (created is! String)
+      throw FormatException('Habit without createdDay', id);
     final end = m['endDay'];
     return Habit(
       id: id,
@@ -169,9 +175,22 @@ final class Habit {
   }
 
   Object get _key => (
-        id, name, description, kind, logType, unit, goal, daysMask, dayPart,
-        reminderMinutes, area, avoidMode, sortOrder, createdDay, endDay,
-      );
+    id,
+    name,
+    description,
+    kind,
+    logType,
+    unit,
+    goal,
+    daysMask,
+    dayPart,
+    reminderMinutes,
+    area,
+    avoidMode,
+    sortOrder,
+    createdDay,
+    endDay,
+  );
 
   @override
   bool operator ==(Object other) => other is Habit && other._key == _key;
@@ -209,31 +228,31 @@ final class Entry {
     String? Function()? note,
     String? Function()? photoPath,
     DateTime? loggedAt,
-  }) =>
-      Entry(
-        habitId: habitId,
-        day: day,
-        state: state ?? this.state,
-        value: value != null ? value() : this.value,
-        note: note != null ? note() : this.note,
-        photoPath: photoPath != null ? photoPath() : this.photoPath,
-        loggedAt: loggedAt ?? this.loggedAt,
-      );
+  }) => Entry(
+    habitId: habitId,
+    day: day,
+    state: state ?? this.state,
+    value: value != null ? value() : this.value,
+    note: note != null ? note() : this.note,
+    photoPath: photoPath != null ? photoPath() : this.photoPath,
+    loggedAt: loggedAt ?? this.loggedAt,
+  );
 
   Map<String, Object?> toMap() => {
-        'habitId': habitId,
-        'day': day.toString(),
-        'state': state.name,
-        'value': value,
-        'note': note,
-        'photoPath': photoPath,
-        'loggedAt': loggedAt.toUtc().toIso8601String(),
-      };
+    'habitId': habitId,
+    'day': day.toString(),
+    'state': state.name,
+    'value': value,
+    'note': note,
+    'photoPath': photoPath,
+    'loggedAt': loggedAt.toUtc().toIso8601String(),
+  };
 
   factory Entry.fromMap(Map<String, Object?> m) {
     final habitId = m['habitId'];
     final day = m['day'];
-    if (habitId is! String || habitId.isEmpty) throw const FormatException('Entry without habitId');
+    if (habitId is! String || habitId.isEmpty)
+      throw const FormatException('Entry without habitId');
     if (day is! String) throw FormatException('Entry without day', habitId);
     final logged = m['loggedAt'];
     return Entry(
@@ -243,7 +262,9 @@ final class Entry {
       value: (m['value'] as num?)?.toDouble(),
       note: m['note'] as String?,
       photoPath: m['photoPath'] as String?,
-      loggedAt: (logged is String ? DateTime.tryParse(logged) : null) ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      loggedAt:
+          (logged is String ? DateTime.tryParse(logged) : null) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
 

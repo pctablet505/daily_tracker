@@ -59,46 +59,52 @@ final class Settings {
   ];
 
   static ThemeChoice _theme(Object? v) =>
-      ThemeChoice.values.where((t) => t.name == v).firstOrNull ?? ThemeChoice.system;
+      ThemeChoice.values.where((t) => t.name == v).firstOrNull ??
+      ThemeChoice.system;
 
   static bool _bool(Object? v, bool fallback) => v is bool ? v : fallback;
   static int _threshold(Object? v) => v is int ? v.clamp(1, 100) : 60;
-  static int _minutes(Object? v, int fallback) => v is int && v >= 0 && v < 1440 ? v : fallback;
-  static int _lockAfter(Object? v) => v is int && v >= 0 ? v : _defaultLockAfter;
+  static int _minutes(Object? v, int fallback) =>
+      v is int && v >= 0 && v < 1440 ? v : fallback;
+  static int _lockAfter(Object? v) =>
+      v is int && v >= 0 ? v : _defaultLockAfter;
 
   factory Settings.fromMap(Map<String, Object?> m) => Settings(
-        theme: _theme(m['theme']),
-        streakThreshold: _threshold(m['streakThreshold']),
-        remindersOn: _bool(m['remindersOn'], true),
-        quietHoursOn: _bool(m['quietHoursOn'], false),
-        quietStartMinutes: _minutes(m['quietStartMinutes'], _defaultQuietStart),
-        quietEndMinutes: _minutes(m['quietEndMinutes'], _defaultQuietEnd),
-        eveningCheckInOn: _bool(m['eveningCheckInOn'], true),
-        eveningCheckInMinutes: _minutes(m['eveningCheckInMinutes'], _defaultCheckIn),
-        lockOn: _bool(m['lockOn'], false),
-        lockBiometric: _bool(m['lockBiometric'], true),
-        lockAfterSeconds: _lockAfter(m['lockAfterSeconds']),
-        onboardingDone: _bool(m['onboardingDone'], false),
-        wifiOnlyBackup: _bool(m['wifiOnlyBackup'], true),
-        wifiOnlyUpdate: _bool(m['wifiOnlyUpdate'], false),
-      );
+    theme: _theme(m['theme']),
+    streakThreshold: _threshold(m['streakThreshold']),
+    remindersOn: _bool(m['remindersOn'], true),
+    quietHoursOn: _bool(m['quietHoursOn'], false),
+    quietStartMinutes: _minutes(m['quietStartMinutes'], _defaultQuietStart),
+    quietEndMinutes: _minutes(m['quietEndMinutes'], _defaultQuietEnd),
+    eveningCheckInOn: _bool(m['eveningCheckInOn'], true),
+    eveningCheckInMinutes: _minutes(
+      m['eveningCheckInMinutes'],
+      _defaultCheckIn,
+    ),
+    lockOn: _bool(m['lockOn'], false),
+    lockBiometric: _bool(m['lockBiometric'], true),
+    lockAfterSeconds: _lockAfter(m['lockAfterSeconds']),
+    onboardingDone: _bool(m['onboardingDone'], false),
+    wifiOnlyBackup: _bool(m['wifiOnlyBackup'], true),
+    wifiOnlyUpdate: _bool(m['wifiOnlyUpdate'], false),
+  );
 
   Map<String, Object> toMap() => {
-        'theme': theme.name,
-        'streakThreshold': streakThreshold,
-        'remindersOn': remindersOn,
-        'quietHoursOn': quietHoursOn,
-        'quietStartMinutes': quietStartMinutes,
-        'quietEndMinutes': quietEndMinutes,
-        'eveningCheckInOn': eveningCheckInOn,
-        'eveningCheckInMinutes': eveningCheckInMinutes,
-        'lockOn': lockOn,
-        'lockBiometric': lockBiometric,
-        'lockAfterSeconds': lockAfterSeconds,
-        'onboardingDone': onboardingDone,
-        'wifiOnlyBackup': wifiOnlyBackup,
-        'wifiOnlyUpdate': wifiOnlyUpdate,
-      };
+    'theme': theme.name,
+    'streakThreshold': streakThreshold,
+    'remindersOn': remindersOn,
+    'quietHoursOn': quietHoursOn,
+    'quietStartMinutes': quietStartMinutes,
+    'quietEndMinutes': quietEndMinutes,
+    'eveningCheckInOn': eveningCheckInOn,
+    'eveningCheckInMinutes': eveningCheckInMinutes,
+    'lockOn': lockOn,
+    'lockBiometric': lockBiometric,
+    'lockAfterSeconds': lockAfterSeconds,
+    'onboardingDone': onboardingDone,
+    'wifiOnlyBackup': wifiOnlyBackup,
+    'wifiOnlyUpdate': wifiOnlyUpdate,
+  };
 
   /// Reads a stored value of the right type, or null (so a wrong-typed key
   /// from an old build does not throw).
@@ -111,7 +117,9 @@ final class Settings {
       }
     }
 
-    return Settings.fromMap({for (final k in const Settings().toMap().keys) k: get(k)});
+    return Settings.fromMap({
+      for (final k in const Settings().toMap().keys) k: get(k),
+    });
   }
 
   Future<void> write(SharedPreferences p) async {
@@ -137,7 +145,11 @@ final class Settings {
   /// value of the wrong type or out of range is ignored and the current one kept.
   Settings withImported(Map<String, Object> m) {
     final current = toMap();
-    final cleaned = Settings.fromMap({...current, for (final k in _exported) if (m.containsKey(k)) k: m[k]}).toMap();
+    final cleaned = Settings.fromMap({
+      ...current,
+      for (final k in _exported)
+        if (m.containsKey(k)) k: m[k],
+    }).toMap();
     return Settings.fromMap({
       ...current,
       for (final k in _exported)
@@ -160,26 +172,26 @@ final class Settings {
     bool? onboardingDone,
     bool? wifiOnlyBackup,
     bool? wifiOnlyUpdate,
-  }) =>
-      Settings(
-        theme: theme ?? this.theme,
-        streakThreshold: streakThreshold ?? this.streakThreshold,
-        remindersOn: remindersOn ?? this.remindersOn,
-        quietHoursOn: quietHoursOn ?? this.quietHoursOn,
-        quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
-        quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
-        eveningCheckInOn: eveningCheckInOn ?? this.eveningCheckInOn,
-        eveningCheckInMinutes: eveningCheckInMinutes ?? this.eveningCheckInMinutes,
-        lockOn: lockOn ?? this.lockOn,
-        lockBiometric: lockBiometric ?? this.lockBiometric,
-        lockAfterSeconds: lockAfterSeconds ?? this.lockAfterSeconds,
-        onboardingDone: onboardingDone ?? this.onboardingDone,
-        wifiOnlyBackup: wifiOnlyBackup ?? this.wifiOnlyBackup,
-        wifiOnlyUpdate: wifiOnlyUpdate ?? this.wifiOnlyUpdate,
-      );
+  }) => Settings(
+    theme: theme ?? this.theme,
+    streakThreshold: streakThreshold ?? this.streakThreshold,
+    remindersOn: remindersOn ?? this.remindersOn,
+    quietHoursOn: quietHoursOn ?? this.quietHoursOn,
+    quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
+    quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
+    eveningCheckInOn: eveningCheckInOn ?? this.eveningCheckInOn,
+    eveningCheckInMinutes: eveningCheckInMinutes ?? this.eveningCheckInMinutes,
+    lockOn: lockOn ?? this.lockOn,
+    lockBiometric: lockBiometric ?? this.lockBiometric,
+    lockAfterSeconds: lockAfterSeconds ?? this.lockAfterSeconds,
+    onboardingDone: onboardingDone ?? this.onboardingDone,
+    wifiOnlyBackup: wifiOnlyBackup ?? this.wifiOnlyBackup,
+    wifiOnlyUpdate: wifiOnlyUpdate ?? this.wifiOnlyUpdate,
+  );
 
   @override
-  bool operator ==(Object other) => other is Settings && _eq(other.toMap(), toMap());
+  bool operator ==(Object other) =>
+      other is Settings && _eq(other.toMap(), toMap());
 
   static bool _eq(Map<String, Object> a, Map<String, Object> b) {
     if (a.length != b.length) return false;
@@ -190,5 +202,6 @@ final class Settings {
   }
 
   @override
-  int get hashCode => Object.hashAll(toMap().entries.map((e) => Object.hash(e.key, e.value)));
+  int get hashCode =>
+      Object.hashAll(toMap().entries.map((e) => Object.hash(e.key, e.value)));
 }

@@ -13,7 +13,10 @@ final class NumberInput {
   double? get value => double.tryParse(text);
 
   NumberInput press(String key) {
-    if (key == 'back') return NumberInput(text.isEmpty ? '' : text.substring(0, text.length - 1));
+    if (key == 'back')
+      return NumberInput(
+        text.isEmpty ? '' : text.substring(0, text.length - 1),
+      );
     if (key == '.') {
       if (text.contains('.')) return this;
       return NumberInput(text.isEmpty ? '0.' : '$text.');
@@ -21,7 +24,9 @@ final class NumberInput {
     if (key.length != 1 || !'0123456789'.contains(key)) return this;
     final dot = text.indexOf('.');
     if (dot >= 0) {
-      return text.length - dot - 1 >= maxDecimals ? this : NumberInput('$text$key');
+      return text.length - dot - 1 >= maxDecimals
+          ? this
+          : NumberInput('$text$key');
     }
     if (text.length >= maxDigits) return this;
     return NumberInput(text == '0' ? key : '$text$key');
@@ -35,7 +40,13 @@ final class NumberInput {
 }
 
 /// The size of the plus/minus buttons: 0.1 when amounts carry decimals, else 1.
-double stepFor({required double? goal, required double? lastValue, required double? current}) {
+double stepFor({
+  required double? goal,
+  required double? lastValue,
+  required double? current,
+}) {
   bool hasDecimals(double? v) => v != null && v != v.roundToDouble();
-  return hasDecimals(goal) || hasDecimals(lastValue) || hasDecimals(current) ? 0.1 : 1;
+  return hasDecimals(goal) || hasDecimals(lastValue) || hasDecimals(current)
+      ? 0.1
+      : 1;
 }

@@ -41,7 +41,8 @@ void main() {
   final t0 = DateTime.utc(2026, 10, 11, 9);
   var ids = 0;
 
-  Future<Entry?> entryOn(String id, DayKey d) async => (await repo.entries(habitId: id, from: d, to: d)).firstOrNull;
+  Future<Entry?> entryOn(String id, DayKey d) async =>
+      (await repo.entries(habitId: id, from: d, to: d)).firstOrNull;
 
   setUp(() async {
     final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
@@ -49,7 +50,12 @@ void main() {
     repo = HabitRepository(db);
     photos = FakePhotos();
     ids = 0;
-    act = HabitActions(repo: repo, photos: photos, now: () => t0, newId: () => 'id${ids++}');
+    act = HabitActions(
+      repo: repo,
+      photos: photos,
+      now: () => t0,
+      newId: () => 'id${ids++}',
+    );
   });
 
   group('logging', () {
@@ -68,15 +74,20 @@ void main() {
       expect(await entryOn('a', sun), isNull);
     });
 
-    test('a number short of the goal is partial, then done at the goal', () async {
-      final h = await repo.addHabit(habit('w', logType: LogType.number, goal: 8));
-      await act.logNumber(h, mon, 3);
-      expect((await entryOn('w', mon))?.state, EntryState.partial);
-      await act.logNumber(h, mon, 8);
-      expect((await entryOn('w', mon))?.state, EntryState.done);
-      await act.logNumber(h, mon, 0);
-      expect(await entryOn('w', mon), isNull);
-    });
+    test(
+      'a number short of the goal is partial, then done at the goal',
+      () async {
+        final h = await repo.addHabit(
+          habit('w', logType: LogType.number, goal: 8),
+        );
+        await act.logNumber(h, mon, 3);
+        expect((await entryOn('w', mon))?.state, EntryState.partial);
+        await act.logNumber(h, mon, 8);
+        expect((await entryOn('w', mon))?.state, EntryState.done);
+        await act.logNumber(h, mon, 0);
+        expect(await entryOn('w', mon), isNull);
+      },
+    );
 
     test('a note is stored; blank clears', () async {
       final h = await repo.addHabit(habit('j', logType: LogType.note));
@@ -108,12 +119,15 @@ void main() {
   });
 
   group('photos', () {
-    test('a photo is copied into the store and the entry keeps its name', () async {
-      final h = await repo.addHabit(habit('p', logType: LogType.photo));
-      await act.logPhoto(h, mon, '/cache/scaled_1.jpg');
-      expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
-      expect(photos.stored, {'ph0.jpg'});
-    });
+    test(
+      'a photo is copied into the store and the entry keeps its name',
+      () async {
+        final h = await repo.addHabit(habit('p', logType: LogType.photo));
+        await act.logPhoto(h, mon, '/cache/scaled_1.jpg');
+        expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
+        expect(photos.stored, {'ph0.jpg'});
+      },
+    );
 
     test('replacing the photo removes the old file', () async {
       final h = await repo.addHabit(habit('p', logType: LogType.photo));
@@ -138,20 +152,35 @@ void main() {
       expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
     });
 
-    test('if the entry cannot be saved the copied photo is removed again', () async {
-      final ghost = habit('ghost', logType: LogType.photo); // never added: the entry is refused
-      await expectLater(act.logPhoto(ghost, mon, '/c/1.jpg'), throwsA(anything));
-      expect(photos.stored, isEmpty);
-    });
+    test(
+      'if the entry cannot be saved the copied photo is removed again',
+      () async {
+        final ghost = habit(
+          'ghost',
+          logType: LogType.photo,
+        ); // never added: the entry is refused
+        await expectLater(
+          act.logPhoto(ghost, mon, '/c/1.jpg'),
+          throwsA(anything),
+        );
+        expect(photos.stored, isEmpty);
+      },
+    );
   });
 
   group('habits', () {
-    test('adding gives the habit an id from the generator when it has none', () async {
-      final h = await act.addHabit(habit('x').copyWith(name: '  Walk '), today: sun);
-      expect(h.id, 'id0');
-      expect(h.createdDay, sun);
-      expect((await repo.habits()).single.name, 'Walk');
-    });
+    test(
+      'adding gives the habit an id from the generator when it has none',
+      () async {
+        final h = await act.addHabit(
+          habit('x').copyWith(name: '  Walk '),
+          today: sun,
+        );
+        expect(h.id, 'id0');
+        expect(h.createdDay, sun);
+        expect((await repo.habits()).single.name, 'Walk');
+      },
+    );
 
     test('archiving ends the habit yesterday, so it leaves today', () async {
       final h = await repo.addHabit(habit('a', created: mon));
@@ -162,22 +191,37 @@ void main() {
       expect(back.isActiveOn(sat), isTrue);
     });
 
-    test('delete can be undone, and only finishing it removes the photos', () async {
-      final h = await repo.addHabit(habit('p', logType: LogType.photo));
-      await act.logPhoto(h, mon, '/c/1.jpg');
-      final gone = await act.deleteHabit('p');
-      expect(photos.stored, {'ph0.jpg'}, reason: 'photo kept during the undo window');
-      await act.undoDelete(gone);
-      expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
-      final again = await act.deleteHabit('p');
-      await act.finishDelete(again);
-      expect(photos.stored, isEmpty);
-    });
+    test(
+      'delete can be undone, and only finishing it removes the photos',
+      () async {
+        final h = await repo.addHabit(habit('p', logType: LogType.photo));
+        await act.logPhoto(h, mon, '/c/1.jpg');
+        final gone = await act.deleteHabit('p');
+        expect(photos.stored, {
+          'ph0.jpg',
+        }, reason: 'photo kept during the undo window');
+        await act.undoDelete(gone);
+        expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
+        final again = await act.deleteHabit('p');
+        await act.finishDelete(again);
+        expect(photos.stored, isEmpty);
+      },
+    );
 
     test('start again makes a new habit beginning today', () async {
       final h = await repo.addHabit(habit('a', created: mon, end: tue));
       final fresh = await act.startAgain(h, sun);
       expect((fresh.id, fresh.createdDay, fresh.endDay), ('id0', sun, null));
+    });
+  });
+
+  group('order', () {
+    test('the named habits come first in the given order, the rest keep their order after', () async {
+      for (final id in ['a', 'b', 'c', 'd']) {
+        await repo.addHabit(habit(id));
+      }
+      await act.reorder(['c', 'a'], ['a', 'b', 'c', 'd']);
+      expect((await repo.habits()).map((h) => h.id), ['c', 'a', 'b', 'd']);
     });
   });
 

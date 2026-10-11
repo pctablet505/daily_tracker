@@ -9,16 +9,22 @@ import '../core/day_key.dart';
 import '../data/repository.dart';
 import '../data/stats.dart';
 import '../logic/today_view.dart';
+import '../services/notifications.dart';
 import '../services/photo_store.dart';
 import 'actions.dart';
 import 'settings.dart';
 
 /// Set in `main` (and in tests) before anything reads them.
-final databaseProvider = Provider<Database>((ref) => throw UnimplementedError('databaseProvider is not set'));
-final sharedPrefsProvider =
-    Provider<SharedPreferences>((ref) => throw UnimplementedError('sharedPrefsProvider is not set'));
+final databaseProvider = Provider<Database>(
+  (ref) => throw UnimplementedError('databaseProvider is not set'),
+);
+final sharedPrefsProvider = Provider<SharedPreferences>(
+  (ref) => throw UnimplementedError('sharedPrefsProvider is not set'),
+);
 
-final photoStoreProvider = Provider<PhotoStore>((ref) => throw UnimplementedError('photoStoreProvider is not set'));
+final photoStoreProvider = Provider<PhotoStore>(
+  (ref) => throw UnimplementedError('photoStoreProvider is not set'),
+);
 
 /// The current time. Tests replace it.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -31,7 +37,9 @@ class RevisionNotifier extends Notifier<int> {
   void bump() => state++;
 }
 
-final revisionProvider = NotifierProvider<RevisionNotifier, int>(RevisionNotifier.new);
+final revisionProvider = NotifierProvider<RevisionNotifier, int>(
+  RevisionNotifier.new,
+);
 
 final repositoryProvider = Provider<HabitRepository>((ref) {
   return HabitRepository(
@@ -59,7 +67,10 @@ class TodayNotifier extends Notifier<DayKey> {
   void _schedule(DateTime now) {
     _timer?.cancel();
     final nextMidnight = DateTime(now.year, now.month, now.day + 1);
-    _timer = Timer(nextMidnight.difference(now) + const Duration(seconds: 1), refresh);
+    _timer = Timer(
+      nextMidnight.difference(now) + const Duration(seconds: 1),
+      refresh,
+    );
   }
 
   void refresh() {
@@ -70,7 +81,9 @@ class TodayNotifier extends Notifier<DayKey> {
   }
 }
 
-final todayProvider = NotifierProvider<TodayNotifier, DayKey>(TodayNotifier.new);
+final todayProvider = NotifierProvider<TodayNotifier, DayKey>(
+  TodayNotifier.new,
+);
 
 class SettingsNotifier extends Notifier<Settings> {
   @override
@@ -84,7 +97,9 @@ class SettingsNotifier extends Notifier<Settings> {
   }
 }
 
-final settingsProvider = NotifierProvider<SettingsNotifier, Settings>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, Settings>(
+  SettingsNotifier.new,
+);
 
 /// Everything stored, ready for the counting functions. Rebuilt after every write.
 final ledgerProvider = FutureProvider<Ledger>((ref) async {
@@ -104,10 +119,14 @@ class SelectedDayNotifier extends Notifier<DayKey?> {
   void select(DayKey? day) => state = day;
 }
 
-final selectedDayProvider = NotifierProvider<SelectedDayNotifier, DayKey?>(SelectedDayNotifier.new);
+final selectedDayProvider = NotifierProvider<SelectedDayNotifier, DayKey?>(
+  SelectedDayNotifier.new,
+);
 
 /// The day the Today screen shows.
-final shownDayProvider = Provider<DayKey>((ref) => ref.watch(selectedDayProvider) ?? ref.watch(todayProvider));
+final shownDayProvider = Provider<DayKey>(
+  (ref) => ref.watch(selectedDayProvider) ?? ref.watch(todayProvider),
+);
 
 class SearchQueryNotifier extends Notifier<String> {
   @override
@@ -116,13 +135,21 @@ class SearchQueryNotifier extends Notifier<String> {
   void set(String query) => state = query;
 }
 
-final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(SearchQueryNotifier.new);
+final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(
+  SearchQueryNotifier.new,
+);
 
 final todayViewProvider = Provider<AsyncValue<TodayView>>((ref) {
   final day = ref.watch(shownDayProvider);
   final query = ref.watch(searchQueryProvider);
-  final threshold = ref.watch(settingsProvider.select((s) => s.streakThreshold));
-  return ref.watch(ledgerProvider).whenData((l) => buildTodayView(l, day, query: query, threshold: threshold));
+  final threshold = ref.watch(
+    settingsProvider.select((s) => s.streakThreshold),
+  );
+  return ref
+      .watch(ledgerProvider)
+      .whenData(
+        (l) => buildTodayView(l, day, query: query, threshold: threshold),
+      );
 });
 
 final actionsProvider = Provider<HabitActions>((ref) {
@@ -133,3 +160,8 @@ final actionsProvider = Provider<HabitActions>((ref) {
     newId: () => const Uuid().v4(),
   );
 });
+
+/// Set in `main`; tests replace it with a fake.
+final reminderSchedulerProvider = Provider<ReminderScheduler>(
+  (ref) => throw UnimplementedError('reminderSchedulerProvider is not set'),
+);

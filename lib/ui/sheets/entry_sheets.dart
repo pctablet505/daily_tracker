@@ -7,7 +7,9 @@ import '../format.dart';
 import '../number_input.dart';
 import '../theme/tokens.dart';
 
-String _forDay(DayKey day, DayKey today) => day == today ? 'Logging for today, ${longDate(day)}' : 'Logging for ${shortDate(day)}';
+String _forDay(DayKey day, DayKey today) => day == today
+    ? 'Logging for today, ${longDate(day)}'
+    : 'Logging for ${shortDate(day)}';
 
 /// Asks for an amount. Returns the amount to save, `0` to clear the day, or
 /// null when dismissed.
@@ -21,14 +23,27 @@ Future<double?> showNumberSheet(
 }) {
   return showModalBottomSheet<double>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _NumberSheet(habit: habit, day: day, today: today, current: current, lastValue: lastValue),
+    builder: (_) => _NumberSheet(
+      habit: habit,
+      day: day,
+      today: today,
+      current: current,
+      lastValue: lastValue,
+    ),
   );
 }
 
 class _NumberSheet extends StatefulWidget {
-  const _NumberSheet({required this.habit, required this.day, required this.today, this.current, this.lastValue});
+  const _NumberSheet({
+    required this.habit,
+    required this.day,
+    required this.today,
+    this.current,
+    this.lastValue,
+  });
   final Habit habit;
   final DayKey day;
   final DayKey today;
@@ -40,8 +55,14 @@ class _NumberSheet extends StatefulWidget {
 }
 
 class _NumberSheetState extends State<_NumberSheet> {
-  late NumberInput input = NumberInput(widget.current == null ? '' : formatAmount(widget.current!));
-  late final double step = stepFor(goal: widget.habit.goal, lastValue: widget.lastValue, current: widget.current);
+  late NumberInput input = NumberInput(
+    widget.current == null ? '' : formatAmount(widget.current!),
+  );
+  late final double step = stepFor(
+    goal: widget.habit.goal,
+    lastValue: widget.lastValue,
+    current: widget.current,
+  );
 
   void _press(String key) {
     HapticFeedback.selectionClick();
@@ -70,7 +91,10 @@ class _NumberSheetState extends State<_NumberSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(h.name, style: AppType.title),
-                      Text(_forDay(widget.day, widget.today), style: AppType.small.copyWith(color: c.muted)),
+                      Text(
+                        _forDay(widget.day, widget.today),
+                        style: AppType.small.copyWith(color: c.muted),
+                      ),
                     ],
                   ),
                 ),
@@ -84,7 +108,9 @@ class _NumberSheetState extends State<_NumberSheet> {
             const SizedBox(height: 12),
             Semantics(
               liveRegion: true,
-              label: input.text.isEmpty ? 'No amount yet' : '${input.text} $unit',
+              label: input.text.isEmpty
+                  ? 'No amount yet'
+                  : '${input.text} $unit',
               child: ExcludeSemantics(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -94,22 +120,39 @@ class _NumberSheetState extends State<_NumberSheet> {
                     Flexible(
                       child: Text(
                         input.text.isEmpty ? '0' : input.text,
-                        style: appText(56, 800, height: 1.1).copyWith(color: input.text.isEmpty ? c.faint : c.ink),
+                        style: appText(
+                          56,
+                          800,
+                          height: 1.1,
+                        ).copyWith(color: input.text.isEmpty ? c.faint : c.ink),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (unit.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      Text(unit, style: AppType.heading.copyWith(color: c.muted)),
+                      Text(
+                        unit,
+                        style: AppType.heading.copyWith(color: c.muted),
+                      ),
                     ],
                   ],
                 ),
               ),
             ),
             if (h.goal != null)
-              Center(child: Text('Goal ${formatAmountUnit(h.goal!, h.unit)}', style: AppType.small.copyWith(color: c.faint))),
+              Center(
+                child: Text(
+                  'Goal ${formatAmountUnit(h.goal!, h.unit)}',
+                  style: AppType.small.copyWith(color: c.faint),
+                ),
+              ),
             if (widget.lastValue != null)
-              Center(child: Text('Last time ${formatAmountUnit(widget.lastValue!, h.unit)}', style: AppType.small.copyWith(color: c.faint))),
+              Center(
+                child: Text(
+                  'Last time ${formatAmountUnit(widget.lastValue!, h.unit)}',
+                  style: AppType.small.copyWith(color: c.faint),
+                ),
+              ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -126,7 +169,10 @@ class _NumberSheetState extends State<_NumberSheet> {
                 ),
                 if (widget.lastValue != null)
                   OutlinedButton(
-                    onPressed: () => setState(() => input = NumberInput(formatAmount(widget.lastValue!))),
+                    onPressed: () => setState(
+                      () =>
+                          input = NumberInput(formatAmount(widget.lastValue!)),
+                    ),
                     child: const Text('Same as last time'),
                   ),
               ],
@@ -139,12 +185,21 @@ class _NumberSheetState extends State<_NumberSheet> {
                 if (widget.current != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: OutlinedButton(onPressed: () => Navigator.pop(context, 0.0), child: const Text('Clear')),
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, 0.0),
+                      child: const Text('Clear'),
+                    ),
                   ),
                 Expanded(
                   child: FilledButton(
-                    onPressed: canSave ? () => Navigator.pop(context, value) : null,
-                    child: Text(canSave ? 'Save ${formatAmountUnit(value, h.unit)}' : 'Save'),
+                    onPressed: canSave
+                        ? () => Navigator.pop(context, value)
+                        : null,
+                    child: Text(
+                      canSave
+                          ? 'Save ${formatAmountUnit(value, h.unit)}'
+                          : 'Save',
+                    ),
                   ),
                 ),
               ],
@@ -160,7 +215,20 @@ class _Keypad extends StatelessWidget {
   const _Keypad({required this.onKey});
   final ValueChanged<String> onKey;
 
-  static const _keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'];
+  static const _keys = [
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '.',
+    '0',
+    'back',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -176,7 +244,9 @@ class _Keypad extends StatelessWidget {
         for (final k in _keys)
           Semantics(
             button: true,
-            label: k == 'back' ? 'Delete last digit' : (k == '.' ? 'Decimal point' : 'Digit $k'),
+            label: k == 'back'
+                ? 'Delete last digit'
+                : (k == '.' ? 'Decimal point' : 'Digit $k'),
             excludeSemantics: true,
             child: Material(
               color: c.sunken,
@@ -207,14 +277,21 @@ Future<String?> showNoteSheet(
 }) {
   return showModalBottomSheet<String>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _NoteSheet(habit: habit, day: day, today: today, current: current),
+    builder: (_) =>
+        _NoteSheet(habit: habit, day: day, today: today, current: current),
   );
 }
 
 class _NoteSheet extends StatefulWidget {
-  const _NoteSheet({required this.habit, required this.day, required this.today, this.current});
+  const _NoteSheet({
+    required this.habit,
+    required this.day,
+    required this.today,
+    this.current,
+  });
   final Habit habit;
   final DayKey day;
   final DayKey today;
@@ -237,14 +314,22 @@ class _NoteSheetState extends State<_NoteSheet> {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        16 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(widget.habit.name, style: AppType.title),
-            Text(_forDay(widget.day, widget.today), style: AppType.small.copyWith(color: c.muted)),
+            Text(
+              _forDay(widget.day, widget.today),
+              style: AppType.small.copyWith(color: c.muted),
+            ),
             const SizedBox(height: 14),
             TextField(
               controller: controller,
@@ -261,13 +346,18 @@ class _NoteSheetState extends State<_NoteSheet> {
                 if (widget.current != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: OutlinedButton(onPressed: () => Navigator.pop(context, ''), child: const Text('Clear')),
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, ''),
+                      child: const Text('Clear'),
+                    ),
                   ),
                 Expanded(
                   child: ListenableBuilder(
                     listenable: controller,
                     builder: (_, _) => FilledButton(
-                      onPressed: controller.text.trim().isEmpty ? null : () => Navigator.pop(context, controller.text),
+                      onPressed: controller.text.trim().isEmpty
+                          ? null
+                          : () => Navigator.pop(context, controller.text),
                       child: const Text('Save note'),
                     ),
                   ),
@@ -283,9 +373,14 @@ class _NoteSheetState extends State<_NoteSheet> {
 
 enum PhotoChoice { camera, gallery, remove }
 
-Future<PhotoChoice?> showPhotoSheet(BuildContext context, {required Habit habit, required bool hasPhoto}) {
+Future<PhotoChoice?> showPhotoSheet(
+  BuildContext context, {
+  required Habit habit,
+  required bool hasPhoto,
+}) {
   return showModalBottomSheet<PhotoChoice>(
     context: context,
+    useRootNavigator: true,
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -294,7 +389,10 @@ Future<PhotoChoice?> showPhotoSheet(BuildContext context, {required Habit habit,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text(habit.name, style: AppType.title)),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(habit.name, style: AppType.title),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
@@ -308,8 +406,14 @@ Future<PhotoChoice?> showPhotoSheet(BuildContext context, {required Habit habit,
             ),
             if (hasPhoto)
               ListTile(
-                leading: Icon(Icons.delete_outline_rounded, color: ctx.colors.danger),
-                title: Text('Remove this photo', style: TextStyle(color: ctx.colors.danger)),
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: ctx.colors.danger,
+                ),
+                title: Text(
+                  'Remove this photo',
+                  style: TextStyle(color: ctx.colors.danger),
+                ),
                 onTap: () => Navigator.pop(ctx, PhotoChoice.remove),
               ),
           ],
@@ -322,9 +426,15 @@ Future<PhotoChoice?> showPhotoSheet(BuildContext context, {required Habit habit,
 enum HabitMenuAction { skip, unskip, edit, details, archive }
 
 /// The long-press menu for a habit on a day.
-Future<HabitMenuAction?> showHabitMenu(BuildContext context, {required Habit habit, required bool skipped, required bool canSkip}) {
+Future<HabitMenuAction?> showHabitMenu(
+  BuildContext context, {
+  required Habit habit,
+  required bool skipped,
+  required bool canSkip,
+}) {
   return showModalBottomSheet<HabitMenuAction>(
     context: context,
+    useRootNavigator: true,
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -333,14 +443,24 @@ Future<HabitMenuAction?> showHabitMenu(BuildContext context, {required Habit hab
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Align(alignment: Alignment.centerLeft, child: Text(habit.name, style: AppType.title)),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(habit.name, style: AppType.title),
+              ),
             ),
             if (canSkip)
               ListTile(
-                leading: Icon(skipped ? Icons.undo_rounded : Icons.event_busy_outlined),
+                leading: Icon(
+                  skipped ? Icons.undo_rounded : Icons.event_busy_outlined,
+                ),
                 title: Text(skipped ? 'Count this day again' : 'Skip this day'),
-                subtitle: skipped ? null : const Text('Left out of your rate. Your streak is kept.'),
-                onTap: () => Navigator.pop(ctx, skipped ? HabitMenuAction.unskip : HabitMenuAction.skip),
+                subtitle: skipped
+                    ? null
+                    : const Text('Left out of your rate. Your streak is kept.'),
+                onTap: () => Navigator.pop(
+                  ctx,
+                  skipped ? HabitMenuAction.unskip : HabitMenuAction.skip,
+                ),
               ),
             ListTile(
               leading: const Icon(Icons.show_chart_rounded),

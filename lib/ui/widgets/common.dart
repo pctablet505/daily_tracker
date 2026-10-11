@@ -42,7 +42,12 @@ class ProgressRing extends StatelessWidget {
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter({required this.value, required this.stroke, required this.color, required this.track});
+  _RingPainter({
+    required this.value,
+    required this.stroke,
+    required this.color,
+    required this.track,
+  });
   final double value;
   final double stroke;
   final Color color;
@@ -50,23 +55,41 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset(stroke / 2, stroke / 2) & Size(size.width - stroke, size.height - stroke);
+    final rect =
+        Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
     canvas.drawArc(rect, 0, math.pi * 2, false, paint..color = track);
-    if (value > 0) canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * value, false, paint..color = color);
+    if (value > 0)
+      canvas.drawArc(
+        rect,
+        -math.pi / 2,
+        math.pi * 2 * value,
+        false,
+        paint..color = color,
+      );
   }
 
   @override
   bool shouldRepaint(_RingPainter old) =>
-      old.value != value || old.stroke != stroke || old.color != color || old.track != track;
+      old.value != value ||
+      old.stroke != stroke ||
+      old.color != color ||
+      old.track != track;
 }
 
 /// A white (surface) rounded block with a hairline border. Holds a list of rows.
 class SurfaceCard extends StatelessWidget {
-  const SurfaceCard({super.key, required this.child, this.padding, this.radius = 18, this.color});
+  const SurfaceCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.radius = 18,
+    this.color,
+  });
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final double radius;
@@ -90,7 +113,12 @@ class SurfaceCard extends StatelessWidget {
 
 /// Small caps label above a block, with an optional note at the other end.
 class SectionHeader extends StatelessWidget {
-  const SectionHeader(this.title, {super.key, this.trailing, this.padding = const EdgeInsets.fromLTRB(24, 16, 24, 6)});
+  const SectionHeader(
+    this.title, {
+    super.key,
+    this.trailing,
+    this.padding = const EdgeInsets.fromLTRB(24, 16, 24, 6),
+  });
   final String title;
   final String? trailing;
   final EdgeInsetsGeometry padding;
@@ -107,10 +135,20 @@ class SectionHeader extends StatelessWidget {
           Expanded(
             child: Semantics(
               header: true,
-              child: Text(title.toUpperCase(), style: AppType.overline.copyWith(color: c.muted)),
+              child: Text(
+                title.toUpperCase(),
+                style: AppType.overline.copyWith(color: c.muted),
+              ),
             ),
           ),
-          if (trailing != null) Text(trailing!, style: AppType.small.copyWith(color: c.faint, fontWeight: FontWeight.w600)),
+          if (trailing != null)
+            Text(
+              trailing!,
+              style: AppType.small.copyWith(
+                color: c.faint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
         ],
       ),
     );
@@ -131,13 +169,26 @@ class StreakChip extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.fromLTRB(6, 3, 8, 3),
-        decoration: BoxDecoration(color: c.amberSoft, borderRadius: BorderRadius.circular(10)),
+        decoration: BoxDecoration(
+          color: c.amberSoft,
+          borderRadius: BorderRadius.circular(10),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.local_fire_department_rounded, size: 15, color: c.amberInk),
+            Icon(
+              Icons.local_fire_department_rounded,
+              size: 15,
+              color: c.amberInk,
+            ),
             const SizedBox(width: 3),
-            Text(label, style: AppType.caption.copyWith(color: c.amberInk, fontWeight: FontWeight.w700)),
+            Text(
+              label,
+              style: AppType.caption.copyWith(
+                color: c.amberInk,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),
@@ -172,7 +223,9 @@ class PillButton extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: outlined ? Colors.transparent : c.accentSoft,
-        shape: StadiumBorder(side: outlined ? BorderSide(color: c.border2) : BorderSide.none),
+        shape: StadiumBorder(
+          side: outlined ? BorderSide(color: c.border2) : BorderSide.none,
+        ),
         child: InkWell(
           customBorder: const StadiumBorder(),
           onTap: onPressed,
@@ -184,8 +237,20 @@ class PillButton extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (icon != null) ...[Icon(icon, size: 17, color: fg), const SizedBox(width: 6)],
-                  Flexible(child: Text(label, style: AppType.small.copyWith(color: fg, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
+                  if (icon != null) ...[
+                    Icon(icon, size: 17, color: fg),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: AppType.small.copyWith(
+                        color: fg,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -198,7 +263,13 @@ class PillButton extends StatelessWidget {
 
 /// Shown when a list has nothing to show. Says what to do next.
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.title, this.message, this.action});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.message,
+    this.action,
+  });
   final IconData icon;
   final String title;
   final String? message;
@@ -215,14 +286,21 @@ class EmptyState extends StatelessWidget {
           Container(
             width: 72,
             height: 72,
-            decoration: BoxDecoration(color: c.accentSoft, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: c.accentSoft,
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, size: 34, color: c.accentInk),
           ),
           const SizedBox(height: 16),
           Text(title, textAlign: TextAlign.center, style: AppType.title),
           if (message != null) ...[
             const SizedBox(height: 8),
-            Text(message!, textAlign: TextAlign.center, style: AppType.bodyLight.copyWith(color: c.muted, height: 1.4)),
+            Text(
+              message!,
+              textAlign: TextAlign.center,
+              style: AppType.bodyLight.copyWith(color: c.muted, height: 1.4),
+            ),
           ],
           if (action != null) ...[const SizedBox(height: 20), action!],
         ],
@@ -233,7 +311,12 @@ class EmptyState extends StatelessWidget {
 
 /// A big round-cornered icon button, 44 px.
 class RoundIconButton extends StatelessWidget {
-  const RoundIconButton({super.key, required this.icon, required this.tooltip, required this.onPressed});
+  const RoundIconButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
@@ -253,7 +336,10 @@ class RoundIconButton extends StatelessWidget {
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onPressed,
-            child: SizedBox.square(dimension: 48, child: Icon(icon, size: 22, color: c.ink)),
+            child: SizedBox.square(
+              dimension: 48,
+              child: Icon(icon, size: 22, color: c.ink),
+            ),
           ),
         ),
       ),

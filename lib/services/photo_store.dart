@@ -17,13 +17,15 @@ abstract interface class PhotoStore {
 }
 
 final class DiskPhotoStore implements PhotoStore {
-  DiskPhotoStore(this.directory, {String Function()? newId}) : _newId = newId ?? _timeId;
+  DiskPhotoStore(this.directory, {String Function()? newId})
+    : _newId = newId ?? _timeId;
 
   final Directory directory;
   final String Function() _newId;
 
   static int _n = 0;
-  static String _timeId() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${(_n++).toRadixString(36)}';
+  static String _timeId() =>
+      '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${(_n++).toRadixString(36)}';
 
   @override
   Future<String> importFile(String sourcePath) async {
@@ -38,7 +40,11 @@ final class DiskPhotoStore implements PhotoStore {
   @override
   File fileFor(String name) {
     if (name != p.basename(name) || name.isEmpty || name.startsWith('.')) {
-      throw ArgumentError.value(name, 'name', 'not a file name inside the photo folder');
+      throw ArgumentError.value(
+        name,
+        'name',
+        'not a file name inside the photo folder',
+      );
     }
     return File(p.join(directory.path, name));
   }

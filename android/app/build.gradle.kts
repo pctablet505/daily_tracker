@@ -19,7 +19,8 @@ val releaseStoreFile = signingValue("storeFile", "KEYSTORE_FILE")
 
 android {
     namespace = "com.dailytracker.daily_tracker"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android needs API 37; AGP 9.1 only recommends up to 36, hence the flag in gradle.properties.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

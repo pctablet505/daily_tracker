@@ -13,14 +13,21 @@ import '../data/fixtures.dart';
 void main() {
   sqfliteFfiInit();
 
-  Future<ProviderContainer> makeContainer({DateTime Function()? clock, Map<String, Object> prefs = const {}}) async {
+  Future<ProviderContainer> makeContainer({
+    DateTime Function()? clock,
+    Map<String, Object> prefs = const {},
+  }) async {
     SharedPreferences.setMockInitialValues(prefs);
     final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
-    final c = ProviderContainer(overrides: [
-      databaseProvider.overrideWithValue(db),
-      sharedPrefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
-      if (clock != null) clockProvider.overrideWithValue(clock),
-    ]);
+    final c = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        sharedPrefsProvider.overrideWithValue(
+          await SharedPreferences.getInstance(),
+        ),
+        if (clock != null) clockProvider.overrideWithValue(clock),
+      ],
+    );
     addTearDown(() async {
       c.dispose();
       await db.close();
@@ -30,7 +37,9 @@ void main() {
 
   group('today', () {
     test('is the local calendar day of the clock', () async {
-      final c = await makeContainer(clock: () => DateTime(2026, 10, 11, 23, 59));
+      final c = await makeContainer(
+        clock: () => DateTime(2026, 10, 11, 23, 59),
+      );
       expect(c.read(todayProvider), sun);
     });
 
@@ -38,7 +47,9 @@ void main() {
       fakeAsync((async) {
         final start = DateTime(2026, 10, 11, 23, 59, 30);
         final clock = async.getClock(start);
-        final c = ProviderContainer(overrides: [clockProvider.overrideWithValue(clock.now)]);
+        final c = ProviderContainer(
+          overrides: [clockProvider.overrideWithValue(clock.now)],
+        );
         addTearDown(c.dispose);
         final seen = <DayKey>[];
         c.listen(todayProvider, (_, d) => seen.add(d), fireImmediately: true);
@@ -56,7 +67,9 @@ void main() {
 
     test('refresh picks up a clock that changed while no timer ran', () {
       var now = DateTime(2026, 10, 11, 12);
-      final c = ProviderContainer(overrides: [clockProvider.overrideWithValue(() => now)]);
+      final c = ProviderContainer(
+        overrides: [clockProvider.overrideWithValue(() => now)],
+      );
       addTearDown(c.dispose);
       expect(c.read(todayProvider), sun);
       now = DateTime(2026, 10, 14, 8);
@@ -66,7 +79,9 @@ void main() {
 
     test('refresh on the same day changes nothing', () {
       final now = DateTime(2026, 10, 11, 12);
-      final c = ProviderContainer(overrides: [clockProvider.overrideWithValue(() => now)]);
+      final c = ProviderContainer(
+        overrides: [clockProvider.overrideWithValue(() => now)],
+      );
       addTearDown(c.dispose);
       var notified = 0;
       c.listen(todayProvider, (_, _) => notified++);
@@ -76,7 +91,9 @@ void main() {
 
     test('the shown day follows today until a day is picked', () {
       var now = DateTime(2026, 10, 11, 12);
-      final c = ProviderContainer(overrides: [clockProvider.overrideWithValue(() => now)]);
+      final c = ProviderContainer(
+        overrides: [clockProvider.overrideWithValue(() => now)],
+      );
       addTearDown(c.dispose);
       expect(c.read(shownDayProvider), sun);
       now = DateTime(2026, 10, 12, 1);
@@ -93,9 +110,16 @@ void main() {
   group('settings', () {
     test('a change is kept in memory and on disk', () async {
       final c = await makeContainer();
-      await c.read(settingsProvider.notifier).update((s) => s.copyWith(streakThreshold: 80, theme: ThemeChoice.dark));
+      await c
+          .read(settingsProvider.notifier)
+          .update(
+            (s) => s.copyWith(streakThreshold: 80, theme: ThemeChoice.dark),
+          );
       expect(c.read(settingsProvider).streakThreshold, 80);
-      expect(Settings.read(c.read(sharedPrefsProvider)).theme, ThemeChoice.dark);
+      expect(
+        Settings.read(c.read(sharedPrefsProvider)).theme,
+        ThemeChoice.dark,
+      );
     });
 
     test('starts from what is stored', () async {
@@ -105,23 +129,29 @@ void main() {
   });
 
   group('stored data reaches the screens', () {
-    test('a write rebuilds the ledger and the Today view without being asked', () async {
-      final c = await makeContainer(clock: () => DateTime(2026, 10, 5, 9));
-      final repo = c.read(repositoryProvider);
-      expect((await c.read(ledgerProvider.future)).habits, isEmpty);
+    test(
+      'a write rebuilds the ledger and the Today view without being asked',
+      () async {
+        final c = await makeContainer(clock: () => DateTime(2026, 10, 5, 9));
+        final repo = c.read(repositoryProvider);
+        expect((await c.read(ledgerProvider.future)).habits, isEmpty);
 
-      await repo.addHabit(habit('a'));
-      final l1 = await c.read(ledgerProvider.future);
-      expect(l1.habits.map((h) => h.id), ['a']);
-      expect(c.read(todayViewProvider).requireValue.toDo.map((r) => r.habit.id), ['a']);
+        await repo.addHabit(habit('a'));
+        final l1 = await c.read(ledgerProvider.future);
+        expect(l1.habits.map((h) => h.id), ['a']);
+        expect(
+          c.read(todayViewProvider).requireValue.toDo.map((r) => r.habit.id),
+          ['a'],
+        );
 
-      await repo.setEntry(entry('a', mon));
-      await c.read(ledgerProvider.future);
-      final v = c.read(todayViewProvider).requireValue;
-      expect(v.toDo, isEmpty);
-      expect(v.finished.map((r) => r.habit.id), ['a']);
-      expect(v.summary.done, 1);
-    });
+        await repo.setEntry(entry('a', mon));
+        await c.read(ledgerProvider.future);
+        final v = c.read(todayViewProvider).requireValue;
+        expect(v.toDo, isEmpty);
+        expect(v.finished.map((r) => r.habit.id), ['a']);
+        expect(v.summary.done, 1);
+      },
+    );
 
     test('the view follows the picked day and the search text', () async {
       final c = await makeContainer(clock: () => DateTime(2026, 10, 11, 9));
@@ -132,7 +162,10 @@ void main() {
       await c.read(ledgerProvider.future);
 
       c.read(selectedDayProvider.notifier).select(mon);
-      expect(c.read(todayViewProvider).requireValue.finished.map((r) => r.habit.id), ['run']);
+      expect(
+        c.read(todayViewProvider).requireValue.finished.map((r) => r.habit.id),
+        ['run'],
+      );
       c.read(searchQueryProvider.notifier).set('read');
       final v = c.read(todayViewProvider).requireValue;
       expect(v.toDo.map((r) => r.habit.id), ['read']);
@@ -147,9 +180,17 @@ void main() {
       }
       await repo.setEntry(entry('a', mon));
       await c.read(ledgerProvider.future);
-      expect(c.read(todayViewProvider).requireValue.summary.status.name, 'missed'); // 1 of 2 = 50% < 60%
-      await c.read(settingsProvider.notifier).update((s) => s.copyWith(streakThreshold: 50));
-      expect(c.read(todayViewProvider).requireValue.summary.status.name, 'good');
+      expect(
+        c.read(todayViewProvider).requireValue.summary.status.name,
+        'missed',
+      ); // 1 of 2 = 50% < 60%
+      await c
+          .read(settingsProvider.notifier)
+          .update((s) => s.copyWith(streakThreshold: 50));
+      expect(
+        c.read(todayViewProvider).requireValue.summary.status.name,
+        'good',
+      );
     });
   });
 }

@@ -14,7 +14,8 @@ final class Ratio {
   double? get fraction => planned == 0 ? null : done / planned;
 
   @override
-  bool operator ==(Object other) => other is Ratio && other.done == done && other.planned == planned;
+  bool operator ==(Object other) =>
+      other is Ratio && other.done == done && other.planned == planned;
 
   @override
   int get hashCode => Object.hash(done, planned);
@@ -69,8 +70,8 @@ final class Ledger {
     required Iterable<Habit> habits,
     required Iterable<Entry> entries,
     Iterable<DayKey> seenDays = const [],
-  })  : habits = List.unmodifiable(habits),
-        _seen = {...seenDays} {
+  }) : habits = List.unmodifiable(habits),
+       _seen = {...seenDays} {
     for (final e in entries) {
       (_byHabit[e.habitId] ??= {})[e.day] = e;
       _entryDays.add(e.day);
@@ -111,7 +112,11 @@ final class Ledger {
   }
 }
 
-DaySummary summarizeDay(Ledger l, DayKey day, {int threshold = defaultStreakThreshold}) {
+DaySummary summarizeDay(
+  Ledger l,
+  DayKey day, {
+  int threshold = defaultStreakThreshold,
+}) {
   var planned = 0;
   var done = 0;
   var slips = 0;
@@ -134,7 +139,9 @@ DaySummary summarizeDay(Ledger l, DayKey day, {int threshold = defaultStreakThre
   }
   final DayStatus status;
   if (planned > 0) {
-    status = done * 100 >= planned * threshold ? DayStatus.good : DayStatus.missed;
+    status = done * 100 >= planned * threshold
+        ? DayStatus.good
+        : DayStatus.missed;
   } else if (slips > 0) {
     status = DayStatus.missed;
   } else if (tracking > 0 && l.wasSeen(day)) {
@@ -142,12 +149,22 @@ DaySummary summarizeDay(Ledger l, DayKey day, {int threshold = defaultStreakThre
   } else {
     status = DayStatus.neutral;
   }
-  return DaySummary(day: day, planned: planned, done: done, slips: slips, status: status);
+  return DaySummary(
+    day: day,
+    planned: planned,
+    done: done,
+    slips: slips,
+    status: status,
+  );
 }
 
 /// Days in a row that were good, counting back from [today]. A [today] that is
 /// still short of the threshold is pending and does not break the run.
-int currentStreak(Ledger l, DayKey today, {int threshold = defaultStreakThreshold}) {
+int currentStreak(
+  Ledger l,
+  DayKey today, {
+  int threshold = defaultStreakThreshold,
+}) {
   final first = l.firstDay;
   if (first == null) return 0;
   var n = 0;
@@ -166,7 +183,11 @@ int currentStreak(Ledger l, DayKey today, {int threshold = defaultStreakThreshol
 
 /// The longest run of good days up to [today]. A [today] still short of the
 /// threshold only ends a run that has already been counted.
-int bestStreak(Ledger l, DayKey today, {int threshold = defaultStreakThreshold}) {
+int bestStreak(
+  Ledger l,
+  DayKey today, {
+  int threshold = defaultStreakThreshold,
+}) {
   final first = l.firstDay;
   if (first == null) return 0;
   var run = 0;
@@ -187,7 +208,12 @@ int bestStreak(Ledger l, DayKey today, {int threshold = defaultStreakThreshold})
 
 /// Planned and done "Do" habits summed over [from]..[to]. Days before a habit
 /// existed plan nothing, so they neither help nor hurt.
-Ratio rateOver(Ledger l, DayKey from, DayKey to, {int threshold = defaultStreakThreshold}) {
+Ratio rateOver(
+  Ledger l,
+  DayKey from,
+  DayKey to, {
+  int threshold = defaultStreakThreshold,
+}) {
   var done = 0;
   var planned = 0;
   for (final d in from.through(to)) {
