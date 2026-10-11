@@ -128,28 +128,31 @@ class SectionHeader extends StatelessWidget {
     final c = context.colors;
     return Padding(
       padding: padding,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Expanded(
-            child: Semantics(
+      child: SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          spacing: 12,
+          runSpacing: 2,
+          children: [
+            Semantics(
               header: true,
               child: Text(
                 title.toUpperCase(),
                 style: AppType.overline.copyWith(color: c.muted),
               ),
             ),
-          ),
-          if (trailing != null)
-            Text(
-              trailing!,
-              style: AppType.small.copyWith(
-                color: c.faint,
-                fontWeight: FontWeight.w600,
+            if (trailing != null)
+              Text(
+                trailing!,
+                style: AppType.small.copyWith(
+                  color: c.faint,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

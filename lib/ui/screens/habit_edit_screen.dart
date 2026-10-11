@@ -363,22 +363,26 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                       ),
                       child: Column(
                         children: [
-                          SwitchListTile.adaptive(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              f.reminderMinutes == null
-                                  ? 'Remind me'
-                                  : 'Remind me at ${formatMinutes(f.reminderMinutes!, use24h: use24h)}',
-                              style: AppType.body,
+                          // The card paints a background; ink needs its own Material above it.
+                          Material(
+                            type: MaterialType.transparency,
+                            child: SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                f.reminderMinutes == null
+                                    ? 'Remind me'
+                                    : 'Remind me at ${formatMinutes(f.reminderMinutes!, use24h: use24h)}',
+                                style: AppType.body,
+                              ),
+                              subtitle: Text(
+                                f.reminderMinutes == null
+                                    ? 'A notification at a time you pick.'
+                                    : 'On the days it repeats. Quiet hours are respected.',
+                                style: AppType.small.copyWith(color: c.muted),
+                              ),
+                              value: f.reminderMinutes != null,
+                              onChanged: _toggleReminder,
                             ),
-                            subtitle: Text(
-                              f.reminderMinutes == null
-                                  ? 'A notification at a time you pick.'
-                                  : 'On the days it repeats. Quiet hours are respected.',
-                              style: AppType.small.copyWith(color: c.muted),
-                            ),
-                            value: f.reminderMinutes != null,
-                            onChanged: _toggleReminder,
                           ),
                           if (f.reminderMinutes != null)
                             Align(

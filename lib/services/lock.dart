@@ -15,7 +15,13 @@ String pbkdf2Sha256(String password, String salt, int iterations, int length) {
   final out = <int>[];
   var block = 1;
   while (out.length < length) {
-    var u = hmac.convert([...saltBytes, (block >> 24) & 0xff, (block >> 16) & 0xff, (block >> 8) & 0xff, block & 0xff]).bytes;
+    var u = hmac.convert([
+      ...saltBytes,
+      (block >> 24) & 0xff,
+      (block >> 16) & 0xff,
+      (block >> 8) & 0xff,
+      block & 0xff,
+    ]).bytes;
     final t = List<int>.of(u);
     for (var i = 1; i < iterations; i++) {
       u = hmac.convert(u).bytes;
@@ -26,25 +32,31 @@ String pbkdf2Sha256(String password, String salt, int iterations, int length) {
     out.addAll(t);
     block++;
   }
-  return out.take(length).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return out
+      .take(length)
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
 }
 
-String hashPin(String pin, String salt) => pbkdf2Sha256(pin, salt, _iterations, 32);
+String hashPin(String pin, String salt) =>
+    pbkdf2Sha256(pin, salt, _iterations, 32);
 
 String newSalt() {
   final r = Random.secure();
-  return base64Url.encode(Uint8List.fromList([for (var i = 0; i < 18; i++) r.nextInt(256)]));
+  return base64Url.encode(
+    Uint8List.fromList([for (var i = 0; i < 18; i++) r.nextInt(256)]),
+  );
 }
 
 /// How long to wait after [failures] wrong PINs in a row.
 Duration backoffFor(int failures) => switch (failures) {
-      < 5 => Duration.zero,
-      5 => const Duration(seconds: 30),
-      6 => const Duration(minutes: 1),
-      7 => const Duration(minutes: 5),
-      8 => const Duration(minutes: 15),
-      _ => const Duration(hours: 1),
-    };
+  < 5 => Duration.zero,
+  5 => const Duration(seconds: 30),
+  6 => const Duration(minutes: 1),
+  7 => const Duration(minutes: 5),
+  8 => const Duration(minutes: 15),
+  _ => const Duration(hours: 1),
+};
 
 /// Whether the app should ask for the PIN again after being out of sight for [awayFor].
 bool shouldLock({required Duration awayFor, required int lockAfterSeconds}) =>
@@ -61,16 +73,24 @@ final class LocalAuthBiometrics implements Biometrics {
   @override
   Future<bool> isAvailable() async {
     try {
-      return await _auth.canCheckBiometrics && (await _auth.getAvailableBiometrics()).isNotEmpty;
+      return await _auth.canCheckBiometrics &&
+          (await _auth.getAvailableBiometrics()).isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
   @override
-  Future<bool> authenticate(String reason, {required bool biometricOnly}) async {
+  Future<bool> authenticate(
+    String reason, {
+    required bool biometricOnly,
+  }) async {
     try {
-      return await _auth.authenticate(localizedReason: reason, biometricOnly: biometricOnly, persistAcrossBackgrounding: true);
+      return await _auth.authenticate(
+        localizedReason: reason,
+        biometricOnly: biometricOnly,
+        persistAcrossBackgrounding: true,
+      );
     } catch (e) {
       debugPrint('Local authentication failed: $e');
       return false;
@@ -79,7 +99,11 @@ final class LocalAuthBiometrics implements Biometrics {
 }
 
 final class PinCheck {
-  const PinCheck({required this.ok, this.failures = 0, this.waitFor = Duration.zero});
+  const PinCheck({
+    required this.ok,
+    this.failures = 0,
+    this.waitFor = Duration.zero,
+  });
   final bool ok;
   final int failures;
 
@@ -89,7 +113,11 @@ final class PinCheck {
 
 /// The PIN, its wrong-guess counter, and fingerprint / phone-lock unlocking.
 class LockService {
-  LockService({required this._prefs, required Biometrics biometrics, required this._now}) : _bio = biometrics;
+  LockService({
+    required this._prefs,
+    required Biometrics biometrics,
+    required this._now,
+  }) : _bio = biometrics;
 
   final SharedPreferences _prefs;
   final Biometrics _bio;
@@ -103,7 +131,8 @@ class LockService {
   bool get hasPin => _prefs.getString(_hashKey) != null;
 
   Future<void> setPin(String pin) async {
-    if (!RegExp(r'^\d{4,6}$').hasMatch(pin)) throw ArgumentError.value(pin, 'pin', 'A PIN is 4 to 6 digits');
+    if (!RegExp(r'^\d{4,6}$').hasMatch(pin))
+      throw ArgumentError.value(pin, 'pin', 'A PIN is 4 to 6 digits');
     final salt = newSalt();
     await _prefs.setString(_saltKey, salt);
     await _prefs.setString(_hashKey, hashPin(pin, salt));
@@ -125,7 +154,11 @@ class LockService {
     final until = _prefs.getInt(_untilKey);
     final now = _now().millisecondsSinceEpoch;
     if (until != null && now < until) {
-      return PinCheck(ok: false, failures: _prefs.getInt(_failKey) ?? 0, waitFor: Duration(milliseconds: until - now));
+      return PinCheck(
+        ok: false,
+        failures: _prefs.getInt(_failKey) ?? 0,
+        waitFor: Duration(milliseconds: until - now),
+      );
     }
     final salt = _prefs.getString(_saltKey);
     final hash = _prefs.getString(_hashKey);
@@ -136,7 +169,8 @@ class LockService {
     final failures = (_prefs.getInt(_failKey) ?? 0) + 1;
     await _prefs.setInt(_failKey, failures);
     final wait = backoffFor(failures);
-    if (wait > Duration.zero) await _prefs.setInt(_untilKey, now + wait.inMilliseconds);
+    if (wait > Duration.zero)
+      await _prefs.setInt(_untilKey, now + wait.inMilliseconds);
     return PinCheck(ok: false, failures: failures);
   }
 
@@ -148,5 +182,8 @@ class LockService {
   }
 
   /// The phone's own screen lock (PIN, pattern or password): the way back in after forgetting the app PIN.
-  Future<bool> unlockWithDeviceCredential() => _bio.authenticate('Unlock Daily Tracker with your phone lock', biometricOnly: false);
+  Future<bool> unlockWithDeviceCredential() => _bio.authenticate(
+    'Unlock Daily Tracker with your phone lock',
+    biometricOnly: false,
+  );
 }

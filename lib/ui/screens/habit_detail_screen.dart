@@ -269,34 +269,45 @@ class _Trend extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
             child: MergeSemantics(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    formatAmount(detail.latest!),
-                    style: appText(32, 800, height: 1.15),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    habit.unit ?? '',
-                    style: AppType.body.copyWith(color: c.muted),
-                  ),
-                  const Spacer(),
-                  if (change != null)
-                    Text(
-                      '${change > 0
-                              ? '+'
-                              : change < 0
-                              ? '−'
-                              : ''}${formatAmount(change.abs())} ${habit.unit ?? ''} in 30 days'
-                          .trim(),
-                      style: AppType.small.copyWith(
-                        color: c.muted,
-                        fontWeight: FontWeight.w700,
-                      ),
+              child: SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          formatAmount(detail.latest!),
+                          style: appText(32, 800, height: 1.15),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          habit.unit ?? '',
+                          style: AppType.body.copyWith(color: c.muted),
+                        ),
+                      ],
                     ),
-                ],
+                    if (change != null)
+                      Text(
+                        '${change > 0
+                                ? '+'
+                                : change < 0
+                                ? '−'
+                                : ''}${formatAmount(change.abs())} ${habit.unit ?? ''} in 30 days'
+                            .trim(),
+                        style: AppType.small.copyWith(
+                          color: c.muted,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

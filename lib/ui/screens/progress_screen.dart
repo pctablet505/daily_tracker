@@ -341,7 +341,6 @@ class _Cell extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: style.bg,
-        borderRadius: BorderRadius.circular(10),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: BorderSide(
