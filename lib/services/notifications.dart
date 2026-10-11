@@ -127,7 +127,10 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
 
   @override
   Future<void> replaceAll(List<PlannedReminder> plan) async {
-    await _plugin.cancelAllPendingNotifications();
+    // Snoozed reminders are not part of the plan and must outlive a re-plan.
+    for (final pending in await _plugin.pendingNotificationRequests()) {
+      if (!isSnoozeId(pending.id)) await _plugin.cancel(id: pending.id);
+    }
     for (final r in plan) {
       await _plugin.zonedSchedule(
         id: r.id,
@@ -167,6 +170,11 @@ Future<bool> markDoneFromNotification(
   return true;
 }
 
+/// A snoozed reminder gets an id in its own range so a re-plan leaves it alone.
+const snoozeIdBase = 1 << 30;
+bool isSnoozeId(int id) => id >= snoozeIdBase;
+int snoozeIdFor(int id) => isSnoozeId(id) ? id : snoozeIdBase + id;
+
 /// The app listens on this port name; a notification button sends to it after
 /// writing, so a screen that is open refreshes at once.
 const dataChangedPortName = 'daily_tracker/data-changed';
@@ -178,9 +186,9 @@ void announceDataChanged() =>
 /// not the app is open.
 @pragma('vm:entry-point')
 Future<void> notificationBackgroundHandler(NotificationResponse r) async {
-  final payload = r.payload;
-  if (payload == null || !payload.startsWith('habit:')) return;
-  final habitId = payload.substring('habit:'.length);
+  final target = r.payload == null ? null : parseHabitPayload(r.payload!);
+  if (target == null) return;
+  final habitId = target.habitId;
   try {
     if (r.actionId == 'done') {
       final dir = await getDatabasesPath();
@@ -194,7 +202,7 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
         await markDoneFromNotification(
           db,
           habitId,
-          DayKey.fromDate(DateTime.now()),
+          target.day ?? DayKey.fromDate(DateTime.now()),
           DateTime.now(),
         );
       } finally {
@@ -204,16 +212,30 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
     } else if (r.actionId == 'snooze') {
       final plugin = FlutterLocalNotificationsPlugin();
       await plugin.initialize(settings: _initSettings);
+      final dir = await getDatabasesPath();
+      final db = await openAppDatabase(
+        databaseFactory,
+        p.join(dir, databaseFileName),
+        singleInstance: false,
+      );
+      final String? name;
+      try {
+        name = (await HabitRepository(
+          db,
+        ).habits()).where((h) => h.id == habitId).firstOrNull?.name;
+      } finally {
+        await db.close();
+      }
       await plugin.zonedSchedule(
-        id: r.id ?? DateTime.now().millisecondsSinceEpoch & 0x7fffffff,
-        title: 'Reminder',
+        id: snoozeIdFor(r.id ?? DateTime.now().millisecondsSinceEpoch & 0xffff),
+        title: name ?? 'Reminder',
         body: 'You snoozed this one.',
         scheduledDate: tz.TZDateTime.now(tz.UTC).add(const Duration(hours: 1)),
         notificationDetails: NotificationDetails(
           android: _androidDetails(ReminderKind.habit, withActions: true),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: payload,
+        payload: r.payload,
       );
     }
   } catch (e) {

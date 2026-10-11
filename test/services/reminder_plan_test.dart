@@ -174,6 +174,27 @@ void main() {
       );
     });
 
+    test('in a window that does not cross midnight, the start is quiet and the end is not', () {
+      const day = Settings(
+        eveningCheckInOn: false,
+        quietHoursOn: true,
+        quietStartMinutes: 13 * 60,
+        quietEndMinutes: 15 * 60,
+      );
+      expect(
+        plan([remind('a', 13 * 60)], settings: day).first.when,
+        DateTime(2026, 10, 11, 15),
+      );
+      expect(
+        plan([remind('a', 13 * 60 - 1)], settings: day).first.when,
+        DateTime(2026, 10, 11, 12, 59),
+      );
+      expect(
+        plan([remind('a', 15 * 60)], settings: day).first.when,
+        DateTime(2026, 10, 11, 15),
+      );
+    });
+
     test('quiet hours off means no shifting', () {
       const off = Settings(eveningCheckInOn: false, quietHoursOn: false);
       expect(
@@ -282,12 +303,59 @@ void main() {
     );
   });
 
-  test('the payload says what to open', () {
+  test('the payload says what to open and which day it is for', () {
     final p = plan(
       [remind('a', 8 * 60), stayClear('s')],
       settings: const Settings(eveningCheckInOn: true),
       days: 1,
     );
-    expect(p.map((r) => r.payload).toSet(), {'habit:a', 'today'});
+    expect(p.map((r) => r.payload).toSet(), {'habit:a@2026-10-11', 'today'});
+  });
+
+  test(
+    'a reminder pushed to the next morning is still for the day it was set on',
+    () {
+      const quiet = Settings(
+        eveningCheckInOn: false,
+        quietHoursOn: true,
+        quietStartMinutes: 22 * 60,
+        quietEndMinutes: 7 * 60,
+      );
+      final r = plan([remind('a', 23 * 60)], settings: quiet, days: 1).single;
+      expect(r.when, DateTime(2026, 10, 12, 7));
+      expect(r.forDay, sun);
+      expect(r.payload, 'habit:a@2026-10-11');
+    },
+  );
+
+  group('the payload', () {
+    test('survives a round trip', () {
+      final back = parseHabitPayload(habitPayload('id-1', sun))!;
+      expect((back.habitId, back.day), ('id-1', sun));
+    });
+
+    test('without a day, or for the check-in, reads as expected', () {
+      expect(parseHabitPayload('habit:id-1')!.habitId, 'id-1');
+      expect(parseHabitPayload('habit:id-1')!.day, isNull);
+      expect(parseHabitPayload('today'), isNull);
+      expect(parseHabitPayload('habit:'), isNull);
+      expect(parseHabitPayload('habit:@2026-10-11'), isNull);
+    });
+
+    test('a day that does not parse is dropped, not guessed', () {
+      expect(parseHabitPayload('habit:a@nonsense')!.day, isNull);
+    });
+  });
+
+  test('the plan never holds more alarms than Android allows', () {
+    final many = [for (var i = 0; i < 60; i++) remind('h$i', 8 * 60)];
+    final p = plan(many, days: 14);
+    expect(p, hasLength(maxPlannedReminders));
+    expect(p.map((r) => r.id), [
+      for (var i = 1; i <= maxPlannedReminders; i++) i,
+    ]);
+    // soonest first: the dropped ones are the furthest away
+    expect(p.last.when.isBefore(DateTime(2026, 10, 25)), isTrue);
+    expect(p.first.when, DateTime(2026, 10, 11, 8));
   });
 }

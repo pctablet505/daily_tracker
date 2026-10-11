@@ -14,6 +14,7 @@ final class PlannedReminder {
     required this.title,
     required this.body,
     this.habitId,
+    this.forDay,
     this.markable = false,
   });
 
@@ -23,6 +24,10 @@ final class PlannedReminder {
   final String title;
   final String body;
   final String? habitId;
+
+  /// The day the reminder is about. Quiet hours can show it on the next morning,
+  /// and the Done button must still mark the day it was for.
+  final DayKey? forDay;
 
   /// A tick habit can be finished from the notification's Done button.
   final bool markable;
@@ -34,12 +39,33 @@ final class PlannedReminder {
     title: title,
     body: body,
     habitId: habitId,
+    forDay: forDay,
     markable: markable,
   );
 
   /// What the notification opens when tapped.
-  String get payload => habitId == null ? 'today' : 'habit:$habitId';
+  String get payload =>
+      habitId == null ? 'today' : habitPayload(habitId!, forDay);
 }
+
+/// `habit:ID@DAY`: where a reminder opens, and which day its Done button marks.
+String habitPayload(String habitId, DayKey? day) =>
+    day == null ? 'habit:$habitId' : 'habit:$habitId@$day';
+
+/// The reverse of [habitPayload]; null for any other payload ("today").
+({String habitId, DayKey? day})? parseHabitPayload(String payload) {
+  if (!payload.startsWith('habit:')) return null;
+  final rest = payload.substring('habit:'.length);
+  final at = rest.lastIndexOf('@');
+  if (at < 0) return rest.isEmpty ? null : (habitId: rest, day: null);
+  final id = rest.substring(0, at);
+  return id.isEmpty
+      ? null
+      : (habitId: id, day: DayKey.tryParse(rest.substring(at + 1)));
+}
+
+/// Android allows an app 500 pending alarms; keep well under that, soonest first.
+const maxPlannedReminders = 400;
 
 /// A reminder time moved out of quiet hours: to the moment the window ends.
 /// Returns minutes after midnight and whether it moved to the next day.
@@ -101,6 +127,7 @@ List<PlannedReminder> planReminders(
         title: title,
         body: body,
         habitId: habitId,
+        forDay: day,
         markable: markable,
       ),
     );
@@ -139,5 +166,6 @@ List<PlannedReminder> planReminders(
   }
   out.sort((a, b) => a.when.compareTo(b.when));
   // Ids are the position in time order; the whole plan replaces the old one each time.
-  return [for (var i = 0; i < out.length; i++) out[i].withId(i + 1)];
+  final kept = out.take(maxPlannedReminders).toList();
+  return [for (var i = 0; i < kept.length; i++) kept[i].withId(i + 1)];
 }

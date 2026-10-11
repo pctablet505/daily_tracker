@@ -59,4 +59,46 @@ void main() {
     await tester.runAsync(() => scheduler.replaceAll(const []));
     await android.cancel(id: reminder.id);
   }, timeout: const Timeout(Duration(minutes: 6)));
+
+  testWidgets('a snoozed reminder survives the app re-planning its reminders', (
+    tester,
+  ) async {
+    final scheduler = LocalNotificationsScheduler();
+    await tester.runAsync(scheduler.init);
+    final plugin = FlutterLocalNotificationsPlugin();
+
+    await tester.runAsync(() async {
+      await scheduler.replaceAll(const []);
+      await notificationBackgroundHandler(
+        const NotificationResponse(
+          notificationResponseType:
+              NotificationResponseType.selectedNotificationAction,
+          id: 5,
+          actionId: 'snooze',
+          payload: 'habit:unknown@2026-10-11',
+        ),
+      );
+      var pending = await plugin.pendingNotificationRequests();
+      expect(pending.map((n) => n.id), [snoozeIdFor(5)]);
+
+      // The app re-plans (it does on every open and every change).
+      await scheduler.replaceAll([
+        PlannedReminder(
+          id: 1,
+          when: DateTime.now().add(const Duration(days: 1)),
+          kind: ReminderKind.habit,
+          title: 'Planned',
+          body: 'x',
+          habitId: 'unknown',
+        ),
+      ]);
+      pending = await plugin.pendingNotificationRequests();
+      expect(pending.map((n) => n.id).toSet(), {1, snoozeIdFor(5)});
+
+      await scheduler.replaceAll(const []);
+      pending = await plugin.pendingNotificationRequests();
+      expect(pending.map((n) => n.id), [snoozeIdFor(5)]);
+      await plugin.cancelAllPendingNotifications();
+    });
+  });
 }
