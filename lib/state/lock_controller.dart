@@ -10,8 +10,16 @@ final lockServiceProvider = Provider<LockService>(
 
 /// Whether the lock screen is showing.
 class LockController extends Notifier<bool> {
+  /// A camera, picker or share sheet takes the user out of the app on purpose, so
+  /// the app stays open for at least this long after one, whatever "lock after" says.
+  static const externalGraceSeconds = 300;
+
   DateTime? _pausedAt;
   bool _external = false;
+
+  /// An external job returned while the app was still in the background; the
+  /// "resumed" that follows belongs to that trip.
+  bool _graceOnNextResume = false;
 
   @override
   bool build() {
@@ -27,18 +35,22 @@ class LockController extends Notifier<bool> {
 
   /// The app came back; locks again if it was away long enough.
   void resumed() {
-    if (_external) return;
     final since = _pausedAt;
     _pausedAt = null;
+    final onTrip = _external || _graceOnNextResume;
+    _graceOnNextResume = false;
     if (!_lockApplies) {
       state = false;
       return;
     }
     if (since == null) return;
     final away = ref.read(clockProvider)().difference(since);
+    final lockAfter = ref.read(settingsProvider).lockAfterSeconds;
     if (shouldLock(
       awayFor: away,
-      lockAfterSeconds: ref.read(settingsProvider).lockAfterSeconds,
+      lockAfterSeconds: onTrip && lockAfter < externalGraceSeconds
+          ? externalGraceSeconds
+          : lockAfter,
     ))
       state = true;
   }
@@ -48,14 +60,15 @@ class LockController extends Notifier<bool> {
   }
 
   /// Runs something that takes the user out of the app on purpose (camera, file
-  /// picker, share sheet) without it counting as leaving.
+  /// picker, share sheet). A short trip does not lock the app; a long one still does.
   Future<T> runExternal<T>(Future<T> Function() job) async {
     _external = true;
     try {
       return await job();
     } finally {
       _external = false;
-      _pausedAt = null;
+      // The result can arrive before the app is told it is back.
+      if (_pausedAt != null) _graceOnNextResume = true;
     }
   }
 

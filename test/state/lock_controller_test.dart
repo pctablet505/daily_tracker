@@ -151,6 +151,37 @@ void main() {
       );
     });
 
+    test('a short trip to a picker does not lock even with "right away"; a long one does', () async {
+      await setup(after: 0);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      await n.runExternal(() async {
+        n.paused();
+        now = now.add(const Duration(seconds: 40));
+        n.resumed();
+      });
+      expect(c.read(lockedProvider), isFalse);
+      await n.runExternal(() async {
+        n.paused();
+        now = now.add(const Duration(minutes: 6));
+        n.resumed();
+      });
+      expect(c.read(lockedProvider), isTrue);
+    });
+
+    test(
+      'a result that arrives before "resumed" still counts as a short trip',
+      () async {
+        await setup(after: 0);
+        final n = c.read(lockedProvider.notifier);
+        await n.unlockWithPin('1234');
+        await n.runExternal(() async => n.paused());
+        now = now.add(const Duration(seconds: 40));
+        n.resumed();
+        expect(c.read(lockedProvider), isFalse);
+      },
+    );
+
     test(
       'an app that was killed in the background and restarted is locked',
       () async {

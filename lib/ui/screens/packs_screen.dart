@@ -9,6 +9,7 @@ import '../../data/packs.dart';
 import '../../logic/habit_form.dart';
 import '../../services/files.dart';
 import '../../state/providers.dart';
+import '../../state/lock_controller.dart';
 import '../format.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
@@ -40,7 +41,9 @@ class _PacksScreenState extends ConsumerState<PacksScreen> {
 
   Future<void> _import() async {
     try {
-      final text = await ref.read(fileServiceProvider).pickAndReadText();
+      final text = await ref
+          .read(lockedProvider.notifier)
+          .runExternal(() => ref.read(fileServiceProvider).pickAndReadText());
       if (text == null || !mounted) return;
       await _preview(decodePack(text));
     } on FormatException catch (e) {

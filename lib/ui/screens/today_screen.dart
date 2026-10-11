@@ -10,6 +10,7 @@ import '../../data/stats.dart';
 import '../../logic/today_view.dart';
 import '../../services/photo_picker.dart';
 import '../../state/providers.dart';
+import '../../state/lock_controller.dart';
 import '../format.dart';
 import '../sheets/entry_sheets.dart';
 import '../theme/tokens.dart';
@@ -123,11 +124,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
         if (choice == PhotoChoice.remove)
           return _guard(() => actions.clear(h, day));
         try {
-          final path = await ref.read(photoPickerProvider)(
-            choice == PhotoChoice.camera
-                ? PhotoSource.camera
-                : PhotoSource.gallery,
-          );
+          final path = await ref
+              .read(lockedProvider.notifier)
+              .runExternal(
+                () => ref.read(photoPickerProvider)(
+                  choice == PhotoChoice.camera
+                      ? PhotoSource.camera
+                      : PhotoSource.gallery,
+                ),
+              );
           if (path != null) await _guard(() => actions.logPhoto(h, day, path));
         } catch (e) {
           if (mounted)

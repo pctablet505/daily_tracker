@@ -205,75 +205,72 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: c.bg,
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: c.accentSoft,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.lock_outline_rounded,
-                        color: c.accentInk,
-                        size: 30,
-                      ),
+    return Scaffold(
+      backgroundColor: c.bg,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: c.accentSoft,
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(height: 16),
-                    Semantics(
-                      header: true,
-                      child: Text(
-                        'Daily Tracker is locked',
-                        style: AppType.title,
-                      ),
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      color: c.accentInk,
+                      size: 30,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Enter your PIN',
-                      style: AppType.bodyLight.copyWith(color: c.muted),
+                  ),
+                  const SizedBox(height: 16),
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      'Daily Tracker is locked',
+                      style: AppType.title,
                     ),
-                    const SizedBox(height: 16),
-                    PinPad(
-                      key: _pad,
-                      onSubmit: _submit,
-                      enabled: _wait == Duration.zero,
-                      errorText: _error,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      children: [
-                        if (_bio)
-                          TextButton.icon(
-                            onPressed: _biometric,
-                            icon: const Icon(Icons.fingerprint_rounded),
-                            label: const Text('Use fingerprint'),
-                          ),
-                        TextButton(
-                          onPressed: () => unawaited(
-                            ref
-                                .read(lockedProvider.notifier)
-                                .unlockWithDeviceCredential(),
-                          ),
-                          child: const Text('Forgot PIN? Use phone lock'),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Enter your PIN',
+                    style: AppType.bodyLight.copyWith(color: c.muted),
+                  ),
+                  const SizedBox(height: 16),
+                  PinPad(
+                    key: _pad,
+                    onSubmit: _submit,
+                    enabled: _wait == Duration.zero,
+                    errorText: _error,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    children: [
+                      if (_bio)
+                        TextButton.icon(
+                          onPressed: _biometric,
+                          icon: const Icon(Icons.fingerprint_rounded),
+                          label: const Text('Use fingerprint'),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                      TextButton(
+                        onPressed: () => unawaited(
+                          ref
+                              .read(lockedProvider.notifier)
+                              .unlockWithDeviceCredential(),
+                        ),
+                        child: const Text('Forgot PIN? Use phone lock'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

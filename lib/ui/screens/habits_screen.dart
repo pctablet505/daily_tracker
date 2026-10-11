@@ -20,6 +20,7 @@ class HabitsScreen extends ConsumerStatefulWidget {
 
 class _HabitsScreenState extends ConsumerState<HabitsScreen> {
   bool _archived = false;
+  final _restarting = <String>{};
   String? _area;
 
   String _sub(Habit h, bool use24h) {
@@ -296,18 +297,23 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                       children: [
                         TextButton(
                           onPressed: () async {
+                            if (!_restarting.add(h.id)) return;
                             final messenger = ScaffoldMessenger.of(context);
-                            final fresh = await ref
-                                .read(actionsProvider)
-                                .startAgain(h, ref.read(todayProvider));
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Started ${fresh.name} again from today',
+                            try {
+                              final fresh = await ref
+                                  .read(actionsProvider)
+                                  .startAgain(h, ref.read(todayProvider));
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Started ${fresh.name} again from today',
+                                  ),
                                 ),
-                              ),
-                            );
-                            setState(() => _archived = false);
+                              );
+                              if (mounted) setState(() => _archived = false);
+                            } finally {
+                              _restarting.remove(h.id);
+                            }
                           },
                           child: const Text('Start again'),
                         ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'logic/habit_form.dart';
+import 'services/reminder_plan.dart';
 import 'services/reminder_sync.dart';
 import 'state/external_changes.dart';
 import 'state/lock_controller.dart';
@@ -25,6 +26,7 @@ import 'ui/screens/today_screen.dart';
 import 'ui/shell.dart';
 import 'ui/sheets/update_sheet.dart';
 import 'ui/theme/theme.dart';
+import 'ui/widgets/privacy_cover.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -142,6 +144,12 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       }),
     );
     unawaited(ref.read(cloudBackupProvider).restoreSession());
+    // An update offer is held back while locked; offer it once the user is in.
+    ref.listenManual(lockedProvider, (was, now) {
+      if (was == true && !now) {
+        Timer(const Duration(seconds: 2), () => unawaited(_offerUpdate()));
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onForeground();
       Timer(const Duration(seconds: 4), () => unawaited(_offerUpdate()));
@@ -157,9 +165,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
 
   void _openPayload(String payload) {
     if (!ref.read(settingsProvider).onboardingDone) return;
-    if (payload.startsWith('habit:')) {
+    final habit = parseHabitPayload(payload);
+    if (habit != null) {
       _router.go('/');
-      unawaited(_router.push('/habit/${payload.substring(6)}'));
+      unawaited(_router.push('/habit/${habit.habitId}'));
     } else {
       ref.read(selectedDayProvider.notifier).select(null);
       _router.go('/');
@@ -192,6 +201,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     }
   }
 
+  /// The back button must not walk through the screens hidden behind the lock.
+  @override
+  Future<bool> didPopRoute() async => ref.read(lockedProvider);
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final lock = ref.read(lockedProvider.notifier);
@@ -214,6 +227,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     ref.watch(externalChangesProvider);
     final choice = ref.watch(settingsProvider.select((s) => s.theme));
     final locked = ref.watch(lockedProvider);
+    final lockOn = ref.watch(settingsProvider.select((s) => s.lockOn));
     return MaterialApp.router(
       title: 'Daily Tracker',
       debugShowCheckedModeBanner: false,
@@ -225,15 +239,18 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
         ThemeChoice.dark => ThemeMode.dark,
       },
       routerConfig: _router,
-      builder: (context, child) => Stack(
-        children: [
-          // While locked the app underneath is kept out of the accessibility tree and out of reach.
-          ExcludeSemantics(
-            excluding: locked,
-            child: IgnorePointer(ignoring: locked, child: child),
-          ),
-          if (locked) const Positioned.fill(child: LockScreen()),
-        ],
+      builder: (context, child) => PrivacyCover(
+        enabled: lockOn,
+        child: Stack(
+          children: [
+            // While locked the app underneath is kept out of the accessibility tree and out of reach.
+            ExcludeSemantics(
+              excluding: locked,
+              child: IgnorePointer(ignoring: locked, child: child),
+            ),
+            if (locked) const Positioned.fill(child: LockScreen()),
+          ],
+        ),
       ),
     );
   }

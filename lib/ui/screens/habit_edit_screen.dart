@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../data/models.dart';
 import '../../logic/habit_form.dart';
 import '../../state/providers.dart';
+import '../../state/lock_controller.dart';
 import '../commands.dart';
 import '../format.dart';
 import '../theme/tokens.dart';
@@ -75,8 +76,10 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
   Future<void> _toggleReminder(bool on) async {
     if (!on) return _change((f) => f.copyWith(reminderMinutes: () => null));
     final granted = await ref
-        .read(reminderSchedulerProvider)
-        .requestPermission();
+        .read(lockedProvider.notifier)
+        .runExternal(
+          () => ref.read(reminderSchedulerProvider).requestPermission(),
+        );
     if (!mounted) return;
     setState(() => _notificationsBlocked = !granted);
     _change(
@@ -346,6 +349,17 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                         ),
                       ),
                   ],
+                  if (editing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        'Changing the days, or how you track it, applies to earlier days too, so past streaks can change.',
+                        style: AppType.small.copyWith(
+                          color: c.muted,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
                   const _Label('Time of day'),
                   _Options<DayPart>(
                     value: f.dayPart,
