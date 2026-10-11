@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../state/lock_controller.dart';
 import '../../state/providers.dart';
 import '../theme/tokens.dart';
+import '../widgets/keypad.dart';
 
 /// Dots and a keypad for entering a 4 to 6 digit PIN. Calls [onSubmit] with the digits when the user presses OK.
 class PinPad extends StatefulWidget {
@@ -95,74 +96,25 @@ class PinPadState extends State<PinPad> {
                   ),
                 ),
         ),
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 1.7,
-          children: [
-            for (final k in const [
-              '1',
-              '2',
-              '3',
-              '4',
-              '5',
-              '6',
-              '7',
-              '8',
-              '9',
-              'back',
-              '0',
-              'ok',
-            ])
-              if (k == 'ok')
-                Semantics(
-                  button: true,
-                  enabled: canSubmit,
-                  label: widget.submitLabel,
-                  excludeSemantics: true,
-                  child: Material(
-                    color: canSubmit ? c.accent : c.sunken,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: canSubmit
-                          ? () {
-                              final d = _digits;
-                              setState(() => _digits = '');
-                              widget.onSubmit(d);
-                            }
-                          : null,
-                      child: Center(
-                        child: Icon(
-                          Icons.check_rounded,
-                          color: canSubmit ? c.onAccent : c.faint,
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                Semantics(
-                  button: true,
-                  label: k == 'back' ? 'Delete last digit' : 'Digit $k',
-                  excludeSemantics: true,
-                  child: Material(
-                    color: c.sunken,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: widget.enabled ? () => _key(k) : null,
-                      child: Center(
-                        child: k == 'back'
-                            ? Icon(Icons.backspace_outlined, color: c.ink)
-                            : Text(k, style: appText(24, 700, color: c.ink)),
-                      ),
-                    ),
-                  ),
-                ),
+        Keypad(
+          aspectRatio: 1.7,
+          keys: [
+            for (final d in const ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
+              PadKey.digit(d, widget.enabled ? () => _key(d) : null),
+            PadKey.backspace(widget.enabled ? () => _key('back') : null),
+            PadKey.digit('0', widget.enabled ? () => _key('0') : null),
+            PadKey(
+              widget.submitLabel,
+              canSubmit
+                  ? () {
+                      final d = _digits;
+                      setState(() => _digits = '');
+                      widget.onSubmit(d);
+                    }
+                  : null,
+              icon: Icons.check_rounded,
+              primary: true,
+            ),
           ],
         ),
       ],

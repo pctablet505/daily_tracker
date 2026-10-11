@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../format.dart';
 import '../number_input.dart';
 import '../theme/tokens.dart';
+import '../widgets/keypad.dart';
 
 String _forDay(DayKey day, DayKey today) => day == today
     ? 'Logging for today, ${longDate(day)}'
@@ -178,7 +179,25 @@ class _NumberSheetState extends State<_NumberSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            _Keypad(onKey: _press),
+            Keypad(
+              keys: [
+                for (final d in const [
+                  '1',
+                  '2',
+                  '3',
+                  '4',
+                  '5',
+                  '6',
+                  '7',
+                  '8',
+                  '9',
+                ])
+                  PadKey.digit(d, () => _press(d)),
+                PadKey('Decimal point', () => _press('.'), text: '.'),
+                PadKey.digit('0', () => _press('0')),
+                PadKey.backspace(() => _press('back')),
+              ],
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -207,62 +226,6 @@ class _NumberSheetState extends State<_NumberSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Keypad extends StatelessWidget {
-  const _Keypad({required this.onKey});
-  final ValueChanged<String> onKey;
-
-  static const _keys = [
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '.',
-    '0',
-    'back',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      childAspectRatio: 2.4,
-      children: [
-        for (final k in _keys)
-          Semantics(
-            button: true,
-            label: k == 'back'
-                ? 'Delete last digit'
-                : (k == '.' ? 'Decimal point' : 'Digit $k'),
-            excludeSemantics: true,
-            child: Material(
-              color: c.sunken,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => onKey(k),
-                child: Center(
-                  child: k == 'back'
-                      ? Icon(Icons.backspace_outlined, color: c.ink)
-                      : Text(k, style: appText(24, 700, color: c.ink)),
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
