@@ -5,7 +5,6 @@ import 'package:daily_tracker/services/backup_service.dart';
 import 'package:daily_tracker/state/services.dart';
 import 'package:daily_tracker/state/settings.dart';
 import 'package:daily_tracker/ui/screens/backup_screen.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' show Database;
