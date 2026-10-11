@@ -29,7 +29,7 @@ enum DayStatus {
   /// Enough was done (or, with nothing planned, nothing was slipped).
   good,
 
-  /// Too little was done, or something was slipped.
+  /// Too little was done, or (on a day with nothing else planned) something was slipped.
   missed,
 
   /// Nothing was asked of the day: it neither adds to a streak nor breaks it.
@@ -57,7 +57,9 @@ final class DaySummary {
   final DayStatus status;
 
   double? get fraction => planned == 0 ? null : done / planned;
-  bool get perfect => planned > 0 && done == planned;
+
+  /// Everything planned was done and nothing was slipped.
+  bool get perfect => planned > 0 && done == planned && slips == 0;
 }
 
 /// All habits, entries and seen days, indexed for the counting functions.

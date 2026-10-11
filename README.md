@@ -11,9 +11,9 @@ A habit tracker for Android. It works offline, keeps its data on your phone, and
 - **Progress.** A month calendar, current and best streak, the last 30 days, perfect days, and a breakdown by area. Each habit has its own page with streaks, a 12-week map, a number chart and recent entries.
 - **Reminders.** A time per habit, quiet hours, an evening check-in for habits you stay clear of, and *Done* / *In 1 hour* buttons on the notification.
 - **Starter packs.** Ready-made sets (Healthy habits, Morning routine, Workout, Evening wind-down and more), and packs you can import from a `.json` file. A pack file is plain JSON, so a personal set of habits can live outside the app and be loaded on any phone.
-- **Backup.** Save a JSON file anywhere, restore from one (a safety copy is kept first), or back up to your own Google Drive app folder (needs set-up, below). **Photos never leave the phone** and are not part of any backup.
+- **Backup.** Save a JSON file anywhere, restore from one (a safety copy is kept first, and "Undo the last restore" puts it back), or back up to your own Google Drive app folder (needs set-up, below). **Photos are in no backup**; they only move in a direct phone-to-phone transfer. Android's automatic cloud backup carries the habits and entries only, never settings, the PIN or photos.
 - **App lock.** A 4 to 6 digit PIN, optional fingerprint, lock after a time away, your phone's lock as a way back in.
-- **Updates.** The app checks this repository's GitHub releases, verifies the download against the published checksum, and hands it to Android to install.
+- **Updates.** The app checks this repository's GitHub releases, verifies the download against the published `.sha256` file (and refuses to install it if they differ), and hands it to Android to install. A release published without a checksum is only checked for size, so always publish one; the workflow does.
 - Light and dark theme, large-text friendly, screen-reader labels, CSV export of every entry.
 
 ## Build and run

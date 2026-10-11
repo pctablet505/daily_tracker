@@ -33,4 +33,40 @@ void main() {
     expect(manifest, contains('android.permission.POST_NOTIFICATIONS'));
     expect(manifest, isNot(contains('SCHEDULE_EXACT_ALARM')));
   });
+
+  test('access to the user\'s photos, music and videos is removed from the merged manifest', () {
+    for (final permission in [
+      'READ_EXTERNAL_STORAGE',
+      'READ_MEDIA_IMAGES',
+      'READ_MEDIA_VIDEO',
+      'READ_MEDIA_AUDIO',
+    ]) {
+      expect(
+        RegExp('android\\.permission\\.$permission"\\s+tools:node="remove"')
+            .hasMatch(manifest),
+        isTrue,
+        reason: permission,
+      );
+    }
+  });
+
+  group('Android backup rules', () {
+    final cloud = File('android/app/src/main/res/xml/data_extraction_rules.xml')
+        .readAsStringSync()
+        .split('<device-transfer>')
+        .first;
+    final old = File('android/app/src/main/res/xml/backup_rules.xml')
+        .readAsStringSync();
+
+    test('the cloud copy holds the database and nothing else', () {
+      expect(cloud, contains('domain="database"'));
+      expect(cloud, isNot(contains('sharedpref')));
+      expect(cloud, isNot(contains('domain="file"')));
+    });
+
+    test('so does the automatic backup of Android 11 and older', () {
+      expect(old, contains('domain="database"'));
+      expect(old, isNot(contains('sharedpref')));
+    });
+  });
 }

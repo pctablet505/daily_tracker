@@ -104,7 +104,7 @@ class HabitTile extends StatelessWidget {
     final isTick = h.logType == LogType.tick;
     final finished = row.kind == RowKind.done || row.kind == RowKind.skipped;
     final meta = row.kind == RowKind.skipped
-        ? 'Skipped today'
+        ? 'Skipped'
         : habitMeta(
             h,
             entry: row.entry,
