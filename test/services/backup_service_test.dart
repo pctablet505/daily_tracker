@@ -128,6 +128,44 @@ void main() {
     ]);
   });
 
+  test('the last restore can be undone, and the undo can be undone', () async {
+    await seed();
+    final text = (await service.export()).text;
+    await repo.addHabit(habit('mine'));
+    expect(await service.hasSafetyCopy(), isFalse);
+
+    await service.restore(text);
+    expect((await repo.habits()).map((h) => h.id), isNot(contains('mine')));
+    expect(await service.hasSafetyCopy(), isTrue);
+
+    await service.undoLastRestore();
+    expect((await repo.habits()).map((h) => h.id), contains('mine'));
+
+    await service.undoLastRestore();
+    expect((await repo.habits()).map((h) => h.id), isNot(contains('mine')));
+  });
+
+  test('undoing with no safety copy says so and changes nothing', () async {
+    await seed();
+    await expectLater(service.undoLastRestore(), throwsFormatException);
+    expect((await repo.habits()).length, 2);
+  });
+
+  test('the copy just made survives when older copies have later dates in their names', () async {
+    await seed();
+    for (final day in ['2027-01-01', '2027-01-02', '2027-01-03']) {
+      File(p.join(safety.path, 'before-restore-${day}T00-00-00-000Z.json'))
+          .writeAsStringSync('{}');
+    }
+    await repo.addHabit(habit('mine'));
+    await service.restore((await service.export()).text);
+    final names = safety.listSync().map((f) => p.basename(f.path)).toList();
+    expect(names.where((n) => n.contains('2026-10-11')), hasLength(1));
+    expect(names, hasLength(3));
+    await service.undoLastRestore();
+    expect((await repo.habits()).map((h) => h.id), contains('mine'));
+  });
+
   test('a bad file is refused before anything is touched or saved', () async {
     await seed();
     await expectLater(service.restore('garbage'), throwsFormatException);

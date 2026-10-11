@@ -29,6 +29,29 @@ T _byName<T extends Enum>(List<T> values, Object? name, T fallback) {
   throw FormatException('Unknown ${T.toString()} value', name.toString());
 }
 
+/// A JSON number as a double. Infinity (what `1e400` parses to) is damage, not data.
+double? _finite(Object? v) {
+  if (v == null) return null;
+  if (v is! num || !v.isFinite) throw FormatException('Bad number', '$v');
+  return v.toDouble();
+}
+
+int? _wholeNumber(Object? v) => _finite(v)?.toInt();
+
+/// A photo's name inside the photo folder. Anything that could point elsewhere
+/// is damage: a backup must never reach outside that folder.
+String? _photoName(Object? v) {
+  if (v == null) return null;
+  if (v is! String ||
+      v.isEmpty ||
+      v.startsWith('.') ||
+      v.contains('/') ||
+      v.contains('\\')) {
+    throw FormatException('Bad photo name', '$v');
+  }
+  return v;
+}
+
 /// A thing you want to do (or avoid) on a schedule. Holds no per-day data.
 final class Habit {
   const Habit({
@@ -162,13 +185,13 @@ final class Habit {
       kind: _byName(HabitKind.values, m['kind'], HabitKind.build),
       logType: _byName(LogType.values, m['logType'], LogType.tick),
       unit: m['unit'] as String?,
-      goal: (m['goal'] as num?)?.toDouble(),
-      daysMask: (m['daysMask'] as num?)?.toInt() ?? everyDay,
+      goal: _finite(m['goal']),
+      daysMask: _wholeNumber(m['daysMask']) ?? everyDay,
       dayPart: _byName(DayPart.values, m['dayPart'], DayPart.anytime),
-      reminderMinutes: (m['reminderMinutes'] as num?)?.toInt(),
+      reminderMinutes: _wholeNumber(m['reminderMinutes']),
       area: m['area'] as String?,
       avoidMode: _byName(AvoidMode.values, m['avoidMode'], AvoidMode.track),
-      sortOrder: (m['sortOrder'] as num?)?.toInt() ?? 0,
+      sortOrder: _wholeNumber(m['sortOrder']) ?? 0,
       createdDay: DayKey.parse(created),
       endDay: end is String ? DayKey.parse(end) : null,
     );
@@ -259,9 +282,9 @@ final class Entry {
       habitId: habitId,
       day: DayKey.parse(day),
       state: _byName(EntryState.values, m['state'], EntryState.done),
-      value: (m['value'] as num?)?.toDouble(),
+      value: _finite(m['value']),
       note: m['note'] as String?,
-      photoPath: m['photoPath'] as String?,
+      photoPath: _photoName(m['photoPath']),
       loggedAt:
           (logged is String ? DateTime.tryParse(logged) : null) ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),

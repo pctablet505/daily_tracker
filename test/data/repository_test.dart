@@ -163,12 +163,12 @@ void main() {
           day: mon,
           state: EntryState.done,
           note: 'ran 5k',
-          photoPath: 'media/x.jpg',
+          photoPath: 'x.jpg',
           loggedAt: DateTime.utc(2026, 10, 5, 7),
         ),
       );
       final e = (await repo.entries()).single;
-      expect((e.note, e.photoPath), ('ran 5k', 'media/x.jpg'));
+      expect((e.note, e.photoPath), ('ran 5k', 'x.jpg'));
     });
   });
 

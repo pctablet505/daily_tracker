@@ -124,6 +124,39 @@ class BackupService {
     await _applySettings(backup.settings);
   }
 
+  /// The copies made before restores, newest first. The order comes from when
+  /// each was written, not from its name: a phone clock that was wrong once
+  /// must not make an old copy look new.
+  Future<List<File>> _safetyCopies() async {
+    final dir = await _safetyDir();
+    if (!dir.existsSync()) return [];
+    final copies = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => p.basename(f.path).startsWith('before-restore-'))
+        .toList();
+    DateTime when(File f) => f.statSync().modified;
+    copies.sort((a, b) {
+      final byTime = when(b).compareTo(when(a));
+      return byTime != 0
+          ? byTime
+          : p.basename(b.path).compareTo(p.basename(a.path));
+    });
+    return copies;
+  }
+
+  /// Whether there is a copy of what was here before a restore.
+  Future<bool> hasSafetyCopy() async => (await _safetyCopies()).isNotEmpty;
+
+  /// Puts back what was on the phone before the last restore. That itself saves
+  /// a copy first, so undoing twice goes back and forth.
+  Future<void> undoLastRestore() async {
+    final copies = await _safetyCopies();
+    if (copies.isEmpty)
+      throw const FormatException('There is nothing to undo.');
+    await restore(await copies.first.readAsString());
+  }
+
   Future<void> _saveSafetyCopy() async {
     final dir = await _safetyDir();
     await dir.create(recursive: true);
@@ -131,16 +164,11 @@ class BackupService {
       RegExp(r'[:.]'),
       '-',
     );
-    await File(p.join(dir.path, 'before-restore-$stamp.json'))
-        .writeAsString(await _encode());
-    final copies =
-        dir
-            .listSync()
-            .whereType<File>()
-            .where((f) => p.basename(f.path).startsWith('before-restore-'))
-            .toList()
-          ..sort((a, b) => p.basename(b.path).compareTo(p.basename(a.path)));
-    for (final old in copies.skip(_keepSafetyCopies)) {
+    final written = File(p.join(dir.path, 'before-restore-$stamp.json'));
+    await written.writeAsString(await _encode());
+    // Keep the copy just made, plus the newest of the others.
+    final others = (await _safetyCopies()).where((f) => f.path != written.path);
+    for (final old in others.skip(_keepSafetyCopies - 1)) {
       await old.delete();
     }
   }

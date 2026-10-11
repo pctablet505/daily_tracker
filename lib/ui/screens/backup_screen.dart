@@ -25,6 +25,23 @@ class BackupScreen extends ConsumerStatefulWidget {
 class _BackupScreenState extends ConsumerState<BackupScreen> {
   bool _busy = false;
   String? _status;
+  bool _canUndo = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshUndo());
+  }
+
+  Future<void> _refreshUndo() async {
+    var has = false;
+    try {
+      has = await ref.read(backupServiceProvider).hasSafetyCopy();
+    } catch (e) {
+      debugPrint('Could not look for a safety copy: $e');
+    }
+    if (mounted) setState(() => _canUndo = has);
+  }
 
   CloudBackup get _cloud => ref.read(cloudBackupProvider);
 
@@ -64,7 +81,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         title: const Text('Replace everything on this phone?'),
         content: Text(
           'This backup from $source was made $when. It has ${plural(p.habits, 'habit')} and ${plural(p.entries, 'entry', 'entries')}.\n\n'
-          'Your current habits and history are replaced. A safety copy of them is kept on this phone in case you change your mind. Photos are not touched.',
+          'Your current habits and history are replaced. A safety copy of them is kept on this phone, and "Undo the last restore" puts it back. Photos are not touched.',
         ),
         actions: [
           TextButton(
@@ -103,6 +120,32 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     if (!mounted || !await _confirmReplace(preview, 'the file')) return;
     await service.restore(text);
     _say('Restored ${plural(preview.habits, 'habit')}.');
+    await _refreshUndo();
+  });
+
+  Future<void> _undoRestore() => _run(() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Undo the last restore?'),
+        content: const Text(
+          'The habits and history that were on this phone before it are put back. What is here now is replaced, and kept as a copy you can undo again. Photos are not touched.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Undo the restore'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+    await ref.read(backupServiceProvider).undoLastRestore();
+    _say('Put back what was here before the last restore.');
   });
 
   Future<void> _signIn() => _run(() async {
@@ -179,6 +222,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     _say(
       'Restored ${plural(fetched.preview.habits, 'habit')} from Google Drive.',
     );
+    await _refreshUndo();
   });
 
   @override
@@ -241,6 +285,14 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                   icon: const Icon(Icons.file_open_outlined),
                   label: const Text('Restore from a file'),
                 ),
+                if (_canUndo) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _busy ? null : _undoRestore,
+                    icon: const Icon(Icons.undo_rounded),
+                    label: const Text('Undo the last restore'),
+                  ),
+                ],
               ],
             ),
           ),

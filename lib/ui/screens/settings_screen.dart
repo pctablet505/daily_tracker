@@ -65,7 +65,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   Future<void> _allowNotifications() async {
-    final ok = await ref.read(reminderSchedulerProvider).requestPermission();
+    final ok = await ref
+        .read(lockedProvider.notifier)
+        .runExternal(
+          () => ref.read(reminderSchedulerProvider).requestPermission(),
+        );
     ref.invalidate(notificationsAllowedProvider);
     if (!ok) await openAppSettings();
     unawaited(ref.read(reminderSyncProvider).resync());
@@ -412,6 +416,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     'Your habits, entries and photos are stored only on this phone. '
                     'The app has no account and sends nothing anywhere on its own.\n\n'
                     'If you choose Google Drive backup, a copy of your habits and entries (not your photos) goes to a private folder in your own Drive that only this app can read.\n\n'
+                    'Android may also include your habits and entries (never your photos, settings or PIN) in your Google account\'s automatic phone backup. You can turn that off in your phone\'s system settings.\n\n'
                     'Checking for updates asks GitHub for the latest release.',
                   ),
                   actions: [

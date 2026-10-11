@@ -130,7 +130,7 @@ void main() {
       state: EntryState.partial,
       value: 3.5,
       note: 'felt ok',
-      photoPath: 'media/a.jpg',
+      photoPath: 'a.jpg',
       loggedAt: DateTime.utc(2026, 10, 7, 9, 30),
     );
 
