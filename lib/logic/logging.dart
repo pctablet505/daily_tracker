@@ -112,8 +112,26 @@ Entry? slipEntry(
   return _make(h, day, EntryState.slipped, now, note: _clean(note));
 }
 
-/// Set a day aside on purpose; a second tap takes it back.
+/// Set a day aside on purpose; a second tap takes it back. What was logged for
+/// the day (an amount, a note, a photo) is kept while it is set aside, and comes
+/// back with it.
 Entry? skipEntry(Habit h, DayKey day, Entry? existing, DateTime now) {
-  if (existing?.state == EntryState.skipped) return null;
-  return _make(h, day, EntryState.skipped, now);
+  if (existing?.state != EntryState.skipped) {
+    return _make(
+      h,
+      day,
+      EntryState.skipped,
+      now,
+      value: existing?.value,
+      note: existing?.note,
+      photoPath: existing?.photoPath,
+    );
+  }
+  final value = existing!.value;
+  final photo = existing.photoPath;
+  final note = existing.note;
+  if (value != null) return numberEntry(h, day, value, now, existing: existing);
+  if (photo != null) return photoEntry(h, day, photo, now, existing: existing);
+  if (note != null) return noteEntry(h, day, note, now, existing: existing);
+  return null;
 }

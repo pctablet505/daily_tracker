@@ -111,6 +111,56 @@ void main() {
       expect(e?.state, EntryState.skipped);
       expect(skipEntry(tick, mon, e, now), isNull);
     });
+
+    test('keeps a photo, an amount or a note through skip and unskip', () {
+      final photo = Entry(
+        habitId: 'p',
+        day: mon,
+        state: EntryState.done,
+        photoPath: 'a.jpg',
+        loggedAt: now,
+      );
+      final skipped = skipEntry(tick, mon, photo, now)!;
+      expect(skipped.state, EntryState.skipped);
+      expect(skipped.photoPath, 'a.jpg');
+      final back = skipEntry(tick, mon, skipped, now)!;
+      expect(back.state, EntryState.done);
+      expect(back.photoPath, 'a.jpg');
+
+      final amount = skipEntry(
+        water,
+        mon,
+        Entry(
+          habitId: 'w',
+          day: mon,
+          state: EntryState.partial,
+          value: 3,
+          note: 'n',
+          loggedAt: now,
+        ),
+        now,
+      )!;
+      expect((amount.value, amount.note), (3.0, 'n'));
+      final restored = skipEntry(water, mon, amount, now)!;
+      expect(
+        (restored.state, restored.value, restored.note),
+        (EntryState.partial, 3.0, 'n'),
+      );
+
+      final note = skipEntry(
+        tick,
+        mon,
+        Entry(
+          habitId: 't',
+          day: mon,
+          state: EntryState.done,
+          note: 'x',
+          loggedAt: now,
+        ),
+        now,
+      )!;
+      expect(skipEntry(tick, mon, note, now)?.note, 'x');
+    });
   });
 
   group('keeping what was already there', () {
