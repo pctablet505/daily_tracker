@@ -1,5 +1,10 @@
 import 'format.dart';
 
+/// An amount as typed digits, with no thousands separators: 1500 -> "1500", 2.5 -> "2.5".
+/// [formatAmount] is for display; its commas cannot be typed back in or parsed.
+String plainAmount(double v) =>
+    v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+
 /// The text behind the on-screen keypad. Immutable: each key press returns a new one.
 final class NumberInput {
   const NumberInput([this.text = '']);
@@ -35,7 +40,7 @@ final class NumberInput {
   /// Add [delta] (may be negative); the result is not below zero and has no float noise.
   NumberInput adjust(double delta) {
     final next = ((value ?? 0) + delta).clamp(0, double.infinity).toDouble();
-    return NumberInput(formatAmount(double.parse(next.toStringAsFixed(2))));
+    return NumberInput(plainAmount(next));
   }
 }
 

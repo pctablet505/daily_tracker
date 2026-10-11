@@ -62,9 +62,14 @@ final class HabitForm {
   String? get daysError =>
       daysMask & Habit.everyDay == 0 ? 'Pick at least one day' : null;
 
+  /// "10000", "10,000" (thousands) and "2,5" (decimal comma) all read as expected.
   double? get goal {
-    final t = goalText.trim().replaceAll(',', '.');
-    return t.isEmpty ? null : double.tryParse(t);
+    final t = goalText.trim();
+    if (t.isEmpty) return null;
+    final grouped = RegExp(r'^\d{1,3}(,\d{3})+(\.\d+)?$').hasMatch(t);
+    return double.tryParse(
+      grouped ? t.replaceAll(',', '') : t.replaceAll(',', '.'),
+    );
   }
 
   String? get goalError {

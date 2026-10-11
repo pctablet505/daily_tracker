@@ -57,7 +57,7 @@ class _NumberSheet extends StatefulWidget {
 
 class _NumberSheetState extends State<_NumberSheet> {
   late NumberInput input = NumberInput(
-    widget.current == null ? '' : formatAmount(widget.current!),
+    widget.current == null ? '' : plainAmount(widget.current!),
   );
   late final double step = stepFor(
     goal: widget.habit.goal,
@@ -171,8 +171,7 @@ class _NumberSheetState extends State<_NumberSheet> {
                 if (widget.lastValue != null)
                   OutlinedButton(
                     onPressed: () => setState(
-                      () =>
-                          input = NumberInput(formatAmount(widget.lastValue!)),
+                      () => input = NumberInput(plainAmount(widget.lastValue!)),
                     ),
                     child: const Text('Same as last time'),
                   ),
@@ -344,42 +343,46 @@ Future<PhotoChoice?> showPhotoSheet(
   return showModalBottomSheet<PhotoChoice>(
     context: context,
     useRootNavigator: true,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(habit.name, style: AppType.title),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(habit.name, style: AppType.title),
+                ),
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take a photo'),
-              onTap: () => Navigator.pop(ctx, PhotoChoice.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery'),
-              onTap: () => Navigator.pop(ctx, PhotoChoice.gallery),
-            ),
-            if (hasPhoto)
               ListTile(
-                leading: Icon(
-                  Icons.delete_outline_rounded,
-                  color: ctx.colors.danger,
-                ),
-                title: Text(
-                  'Remove this photo',
-                  style: TextStyle(color: ctx.colors.danger),
-                ),
-                onTap: () => Navigator.pop(ctx, PhotoChoice.remove),
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(ctx, PhotoChoice.camera),
               ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(ctx, PhotoChoice.gallery),
+              ),
+              if (hasPhoto)
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_outline_rounded,
+                    color: ctx.colors.danger,
+                  ),
+                  title: Text(
+                    'Remove this photo',
+                    style: TextStyle(color: ctx.colors.danger),
+                  ),
+                  onTap: () => Navigator.pop(ctx, PhotoChoice.remove),
+                ),
+            ],
+          ),
         ),
       ),
     ),
@@ -398,50 +401,60 @@ Future<HabitMenuAction?> showHabitMenu(
   return showModalBottomSheet<HabitMenuAction>(
     context: context,
     useRootNavigator: true,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(habit.name, style: AppType.title),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(habit.name, style: AppType.title),
+                ),
               ),
-            ),
-            if (canSkip)
+              if (canSkip)
+                ListTile(
+                  leading: Icon(
+                    skipped ? Icons.undo_rounded : Icons.event_busy_outlined,
+                  ),
+                  title: Text(
+                    skipped ? 'Count this day again' : 'Skip this day',
+                  ),
+                  subtitle: skipped
+                      ? null
+                      : const Text(
+                          'Left out of your rate. Your streak is kept.',
+                        ),
+                  onTap: () => Navigator.pop(
+                    ctx,
+                    skipped ? HabitMenuAction.unskip : HabitMenuAction.skip,
+                  ),
+                ),
               ListTile(
-                leading: Icon(
-                  skipped ? Icons.undo_rounded : Icons.event_busy_outlined,
-                ),
-                title: Text(skipped ? 'Count this day again' : 'Skip this day'),
-                subtitle: skipped
-                    ? null
-                    : const Text('Left out of your rate. Your streak is kept.'),
-                onTap: () => Navigator.pop(
-                  ctx,
-                  skipped ? HabitMenuAction.unskip : HabitMenuAction.skip,
-                ),
+                leading: const Icon(Icons.show_chart_rounded),
+                title: const Text('History'),
+                onTap: () => Navigator.pop(ctx, HabitMenuAction.details),
               ),
-            ListTile(
-              leading: const Icon(Icons.show_chart_rounded),
-              title: const Text('History'),
-              onTap: () => Navigator.pop(ctx, HabitMenuAction.details),
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit habit'),
-              onTap: () => Navigator.pop(ctx, HabitMenuAction.edit),
-            ),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_outlined),
-              title: const Text('Archive'),
-              subtitle: const Text('Hides it from today on. History is kept.'),
-              onTap: () => Navigator.pop(ctx, HabitMenuAction.archive),
-            ),
-          ],
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit habit'),
+                onTap: () => Navigator.pop(ctx, HabitMenuAction.edit),
+              ),
+              ListTile(
+                leading: const Icon(Icons.inventory_2_outlined),
+                title: const Text('Archive'),
+                subtitle: const Text(
+                  'Hides it from today on. History is kept.',
+                ),
+                onTap: () => Navigator.pop(ctx, HabitMenuAction.archive),
+              ),
+            ],
+          ),
         ),
       ),
     ),

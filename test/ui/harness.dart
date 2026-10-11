@@ -40,7 +40,14 @@ final class NoPhotos implements PhotoStore {
   @override
   Future<String> importFile(String sourcePath) async => 'x.jpg';
   @override
-  File fileFor(String name) => File('/definitely/not/here/$name');
+  File fileFor(String name) {
+    // Like the real store: a name that could leave the photo folder is an error.
+    if (name.isEmpty || name.startsWith('.') || name.contains('/')) {
+      throw ArgumentError.value(name, 'name', 'not a file name');
+    }
+    return File('/definitely/not/here/$name');
+  }
+
   @override
   Future<void> delete(String name) async {}
 }
