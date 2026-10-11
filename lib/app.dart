@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'logic/habit_form.dart';
 import 'services/reminder_sync.dart';
+import 'state/external_changes.dart';
 import 'state/lock_controller.dart';
 import 'state/providers.dart';
 import 'state/services.dart';
@@ -210,6 +211,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
   @override
   Widget build(BuildContext context) {
     ref.watch(reminderSyncProvider);
+    ref.watch(externalChangesProvider);
     final choice = ref.watch(settingsProvider.select((s) => s.theme));
     final locked = ref.watch(lockedProvider);
     return MaterialApp.router(

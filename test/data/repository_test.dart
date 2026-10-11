@@ -332,6 +332,25 @@ void main() {
       },
     );
 
+    test(
+      'a separate connection can be closed without closing the app\'s own',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('dt_db_');
+        addTearDown(() => dir.delete(recursive: true));
+        final path = p.join(dir.path, 'habits.db');
+        final appDb = await openAppDatabase(factory, path);
+        addTearDown(appDb.close);
+        await HabitRepository(appDb).addHabit(habit('a'));
+
+        final own = await openAppDatabase(factory, path, singleInstance: false);
+        expect((await HabitRepository(own).habits()).map((h) => h.id), ['a']);
+        await own.close();
+
+        expect(appDb.isOpen, isTrue);
+        expect((await HabitRepository(appDb).habits()).map((h) => h.id), ['a']);
+      },
+    );
+
     test('keeps the new database when it is opened a second time', () async {
       final dir = await Directory.systemTemp.createTemp('dt_db_');
       addTearDown(() => dir.delete(recursive: true));

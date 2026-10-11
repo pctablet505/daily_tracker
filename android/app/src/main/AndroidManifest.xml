@@ -40,6 +40,25 @@
             </intent-filter>
         </activity>
 
+        <!-- flutter_local_notifications: without these three receivers Android has nobody to hand a
+             due reminder to, so nothing is ever shown (found on the emulator, not by unit tests). -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
+
         <!-- Don't delete the meta-data below. Used by the Flutter tool to generate GeneratedPluginRegistrant. -->
         <meta-data
             android:name="flutterEmbedding"

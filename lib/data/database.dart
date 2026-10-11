@@ -54,10 +54,15 @@ Future<void> _createSchema(Database db) async {
 /// Foreign keys are switched on so an entry can never outlive its habit.
 /// With [removeLegacyIn], the first version's database files in that folder
 /// are deleted first.
+///
+/// The phone hands out one shared connection per file by default, so closing it
+/// anywhere closes it for the whole app. Code that runs beside the app (a
+/// notification button) passes `singleInstance: false` to get, and close, its own.
 Future<Database> openAppDatabase(
   DatabaseFactory factory,
   String path, {
   String? removeLegacyIn,
+  bool singleInstance = true,
 }) async {
   if (removeLegacyIn != null) {
     for (final name in _legacyFiles) {
@@ -69,7 +74,7 @@ Future<Database> openAppDatabase(
     path,
     options: OpenDatabaseOptions(
       version: schemaVersion,
-      singleInstance: path != inMemoryDatabasePath,
+      singleInstance: singleInstance && path != inMemoryDatabasePath,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, _) => _createSchema(db),
     ),

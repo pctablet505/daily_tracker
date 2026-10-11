@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show IsolateNameServer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -166,7 +167,15 @@ Future<bool> markDoneFromNotification(
   return true;
 }
 
-/// Runs in a separate isolate when a notification button is pressed with the app closed.
+/// The app listens on this port name; a notification button sends to it after
+/// writing, so a screen that is open refreshes at once.
+const dataChangedPortName = 'daily_tracker/data-changed';
+
+void announceDataChanged() =>
+    IsolateNameServer.lookupPortByName(dataChangedPortName)?.send(null);
+
+/// Runs in a separate isolate when a notification button is pressed, whether or
+/// not the app is open.
 @pragma('vm:entry-point')
 Future<void> notificationBackgroundHandler(NotificationResponse r) async {
   final payload = r.payload;
@@ -175,9 +184,11 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
   try {
     if (r.actionId == 'done') {
       final dir = await getDatabasesPath();
+      // Its own connection: closing the app's shared one would break the open app.
       final db = await openAppDatabase(
         databaseFactory,
         p.join(dir, databaseFileName),
+        singleInstance: false,
       );
       try {
         await markDoneFromNotification(
@@ -189,6 +200,7 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
       } finally {
         await db.close();
       }
+      announceDataChanged();
     } else if (r.actionId == 'snooze') {
       final plugin = FlutterLocalNotificationsPlugin();
       await plugin.initialize(settings: _initSettings);
