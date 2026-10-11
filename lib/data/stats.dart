@@ -4,14 +4,6 @@ import 'models.dart';
 /// Share of the "Do" habits that must be done for a day to keep the streak, in percent.
 const defaultStreakThreshold = 60;
 
-extension HabitSchedule on Habit {
-  /// The habit exists on [day]: from the day it was made to its last day.
-  bool isActiveOn(DayKey day) => day >= createdDay && (endDay == null || day <= endDay!);
-
-  /// The habit is planned for [day].
-  bool isScheduledOn(DayKey day) => isActiveOn(day) && runsOn(day.weekday);
-}
-
 /// A count out of a total, e.g. 18 of 24 planned habits done.
 final class Ratio {
   const Ratio(this.done, this.planned);

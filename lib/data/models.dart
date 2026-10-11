@@ -81,6 +81,12 @@ final class Habit {
   /// Whether the schedule includes [weekday] (1 = Monday ... 7 = Sunday).
   bool runsOn(int weekday) => (daysMask >> (weekday - 1)) & 1 == 1;
 
+  /// The habit exists on [day]: from the day it was made to its last day.
+  bool isActiveOn(DayKey day) => day >= createdDay && (endDay == null || day <= endDay!);
+
+  /// The habit is planned for [day].
+  bool isScheduledOn(DayKey day) => isActiveOn(day) && runsOn(day.weekday);
+
   Habit copyWith({
     String? name,
     String? Function()? description,
