@@ -199,9 +199,21 @@ class _Title extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+    // Inside a list the title and the button would merge into one screen-reader stop.
     child: Semantics(
-      header: true,
-      child: Text('Progress', style: AppType.display),
+      container: true,
+      explicitChildNodes: true,
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text('Progress', style: AppType.display),
+            ),
+          ),
+          const SettingsButton(),
+        ],
+      ),
     ),
   );
 }

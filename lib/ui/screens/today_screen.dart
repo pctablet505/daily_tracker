@@ -492,6 +492,7 @@ class _Header extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: 12),
+          if (!searching) ...[const SettingsButton(), const SizedBox(width: 8)],
           RoundIconButton(
             icon: searching ? Icons.close_rounded : Icons.search_rounded,
             tooltip: searching ? 'Close search' : 'Search habits',
