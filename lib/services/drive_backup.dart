@@ -33,6 +33,16 @@ abstract interface class DriveAuth {
   Future<Map<String, String>> headers();
 }
 
+/// What to tell the user when Google's sign-in fails. The library reports a window the user
+/// closed and an app setup Google does not accept (a wrong client id or signing key) the same
+/// way, as "canceled", so that case must not blame the user alone.
+String signInFailureMessage(GoogleSignInExceptionCode code) =>
+    code == GoogleSignInExceptionCode.canceled
+    ? 'Sign-in did not finish. If you closed the Google window, try again. '
+          'If you chose an account and it still fails, Google does not accept '
+          'this build of the app.'
+    : 'Could not sign in to Google (${code.name}).';
+
 /// Sign-in through Google Play services. Needs a web client id from the app's
 /// Google Cloud project, passed to the build as `--dart-define=GOOGLE_SERVER_CLIENT_ID=...`.
 final class GoogleDriveAuth implements DriveAuth {
@@ -77,11 +87,8 @@ final class GoogleDriveAuth implements DriveAuth {
       _account = account;
       return account.email;
     } on GoogleSignInException catch (e) {
-      throw DriveException(
-        e.code == GoogleSignInExceptionCode.canceled
-            ? 'Sign-in was cancelled.'
-            : 'Could not sign in to Google (${e.code.name}).',
-      );
+      debugPrint('Google sign-in failed: ${e.code.name}: ${e.description}');
+      throw DriveException(signInFailureMessage(e.code));
     }
   }
 
