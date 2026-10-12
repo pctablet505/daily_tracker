@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../theme/tokens.dart';
 
@@ -356,4 +357,17 @@ class RoundIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Opens Settings. Every main screen's header has one, so Settings is never reachable
+/// from only one tab.
+class SettingsButton extends StatelessWidget {
+  const SettingsButton({super.key});
+
+  @override
+  Widget build(BuildContext context) => RoundIconButton(
+    icon: Icons.settings_outlined,
+    tooltip: 'Settings',
+    onPressed: () => context.push('/settings'),
+  );
 }

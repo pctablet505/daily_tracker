@@ -59,11 +59,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                     child: Text('Habits', style: AppType.display),
                   ),
                 ),
-                RoundIconButton(
-                  icon: Icons.settings_outlined,
-                  tooltip: 'Settings',
-                  onPressed: () => context.push('/settings'),
-                ),
+                const SettingsButton(),
               ],
             ),
           ),

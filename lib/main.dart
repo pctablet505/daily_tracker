@@ -9,11 +9,13 @@ import 'package:sqflite/sqflite.dart';
 
 import 'app.dart';
 import 'data/database.dart';
+import 'data/repository.dart';
 import 'services/lock.dart';
 import 'services/notifications.dart';
 import 'services/photo_store.dart';
 import 'state/lock_controller.dart';
 import 'state/providers.dart';
+import 'state/restored_setup.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +26,7 @@ Future<void> main() async {
     removeLegacyIn: dbDir,
   );
   final prefs = await SharedPreferences.getInstance();
+  await markSetUpIfHabitsExist(HabitRepository(db), prefs);
   final support = await getApplicationSupportDirectory();
   final scheduler = LocalNotificationsScheduler();
   await scheduler.init();
