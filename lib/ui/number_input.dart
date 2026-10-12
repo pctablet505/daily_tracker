@@ -2,8 +2,12 @@ import 'format.dart';
 
 /// An amount as typed digits, with no thousands separators: 1500 -> "1500", 2.5 -> "2.5".
 /// [formatAmount] is for display; its commas cannot be typed back in or parsed.
-String plainAmount(double v) =>
-    v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+String plainAmount(double v) {
+  if (!v.isFinite || v <= 0) return '0';
+  final clamped = v.clamp(0, NumberInput.maxAmount).toDouble();
+  final s = clamped.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+  return s.isEmpty || s == '-0' ? '0' : s;
+}
 
 /// The text behind the on-screen keypad. Immutable: each key press returns a new one.
 final class NumberInput {
@@ -11,6 +15,7 @@ final class NumberInput {
 
   static const maxDigits = 7;
   static const maxDecimals = 2;
+  static const maxAmount = 9999999.99;
 
   final String text;
 
@@ -39,7 +44,8 @@ final class NumberInput {
 
   /// Add [delta] (may be negative); the result is not below zero and has no float noise.
   NumberInput adjust(double delta) {
-    final next = ((value ?? 0) + delta).clamp(0, double.infinity).toDouble();
+    if (!delta.isFinite) return this;
+    final next = ((value ?? 0) + delta).clamp(0, maxAmount).toDouble();
     return NumberInput(plainAmount(next));
   }
 }

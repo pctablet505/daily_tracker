@@ -35,6 +35,7 @@ Entry? tickEntry(Habit h, DayKey day, Entry? existing, DateTime now) {
     day,
     EntryState.done,
     now,
+    value: existing?.value,
     note: existing?.note,
     photoPath: existing?.photoPath,
   );
@@ -49,7 +50,7 @@ Entry? numberEntry(
   DateTime now, {
   Entry? existing,
 }) {
-  if (value <= 0) return null;
+  if (!value.isFinite || value <= 0) return null;
   final goal = h.goal;
   final state = goal != null && value < goal
       ? EntryState.partial
@@ -79,6 +80,7 @@ Entry? noteEntry(
     day,
     EntryState.done,
     now,
+    value: existing?.value,
     note: note,
     photoPath: existing?.photoPath,
   );
@@ -96,6 +98,7 @@ Entry photoEntry(
   day,
   EntryState.done,
   now,
+  value: existing?.value,
   note: existing?.note,
   photoPath: fileName,
 );
@@ -109,7 +112,13 @@ Entry? slipEntry(
   String? note,
 }) {
   if (existing?.state == EntryState.slipped) return null;
-  return _make(h, day, EntryState.slipped, now, note: _clean(note));
+  return _make(
+    h,
+    day,
+    EntryState.slipped,
+    now,
+    note: _clean(note) ?? existing?.note,
+  );
 }
 
 /// Set a day aside on purpose; a second tap takes it back. What was logged for

@@ -112,9 +112,10 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
       for (final h in active)
         if (h.area != null) h.area!,
     }.toList()..sort();
-    final shown = _area == null
+    final selectedArea = areas.contains(_area) ? _area : null;
+    final shown = selectedArea == null
         ? active
-        : active.where((h) => h.area == _area).toList();
+        : active.where((h) => h.area == selectedArea).toList();
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -146,7 +147,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
           ),
           SectionHeader(
             'Active, ${active.length}',
-            trailing: active.length > 1 && _area == null
+            trailing: active.length > 1 && selectedArea == null
                 ? 'hold the handle to reorder'
                 : null,
             padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
@@ -160,15 +161,15 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                 children: [
                   FilterChip(
                     label: const Text('All'),
-                    selected: _area == null,
+                    selected: selectedArea == null,
                     onSelected: (_) => setState(() => _area = null),
                   ),
                   for (final a in areas)
                     FilterChip(
                       label: Text(a),
-                      selected: _area == a,
+                      selected: selectedArea == a,
                       onSelected: (_) =>
-                          setState(() => _area = _area == a ? null : a),
+                          setState(() => _area = selectedArea == a ? null : a),
                     ),
                 ],
               ),
@@ -187,7 +188,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
       ),
       itemCount: shown.length,
       onReorderItem: (from, to) {
-        if (_area != null) return;
+        if (selectedArea != null) return;
         final ids = [for (final h in shown) h.id];
         ids.insert(to, ids.removeAt(from));
         ref.read(actionsProvider).reorder(ids, ids);
@@ -231,7 +232,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                         ),
                       ),
                     ),
-                    if (_area == null && active.length > 1)
+                    if (selectedArea == null && active.length > 1)
                       ReorderableDragStartListener(
                         index: i,
                         child: Semantics(

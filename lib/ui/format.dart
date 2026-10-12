@@ -26,12 +26,17 @@ final _grouped = NumberFormat('#,##0', 'en');
 
 /// 75.0 -> "75", 75.5 -> "75.5", 0.25 -> "0.25", 10000 -> "10,000". Never trailing zeros.
 String formatAmount(double v) {
-  var s = v.toStringAsFixed(2);
+  if (!v.isFinite) return '0';
+  final clamped = v.clamp(-999999999999.99, 999999999999.99).toDouble();
+  final neg = clamped < 0;
+  var s = clamped.abs().toStringAsFixed(2);
   s = s.replaceFirst(RegExp(r'\.?0+$'), '');
+  if (s == '0' || s.isEmpty) return '0';
   final dot = s.indexOf('.');
   final whole = double.parse(dot < 0 ? s : s.substring(0, dot));
   final grouped = _grouped.format(whole);
-  return dot < 0 ? grouped : '$grouped${s.substring(dot)}';
+  final formatted = dot < 0 ? grouped : '$grouped${s.substring(dot)}';
+  return neg ? '-$formatted' : formatted;
 }
 
 String formatAmountUnit(double v, String? unit) =>

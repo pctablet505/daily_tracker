@@ -105,18 +105,23 @@ void main() {
     });
   });
 
-  test('photo entries are listed newest first', () {
+  test('photo entries are listed newest first, excluding skipped days', () {
     final p = habit('p', logType: LogType.photo);
-    Entry photo(DayKey d, String n) => Entry(
+    Entry photo(DayKey d, String n, [EntryState s = EntryState.done]) => Entry(
       habitId: 'p',
       day: d,
-      state: EntryState.done,
+      state: s,
       photoPath: n,
       loggedAt: DateTime.utc(2026),
     );
     final l = ledger(
       [p],
-      [photo(mon, 'a.jpg'), photo(wed, 'b.jpg'), entry('p', fri)],
+      [
+        photo(mon, 'a.jpg'),
+        photo(tue, 'skip.jpg', EntryState.skipped),
+        photo(wed, 'b.jpg'),
+        entry('p', fri),
+      ],
     );
     expect(buildHabitDetail(l, p, sun).photos.map((e) => e.photoPath), [
       'b.jpg',

@@ -170,13 +170,19 @@ void main() {
       'five wrong guesses lock out for 30 seconds, even the right PIN',
       () async {
         await lock.setPin('1234');
-        for (var i = 0; i < 5; i++) {
-          await lock.checkPin('0000');
+        for (var i = 0; i < 4; i++) {
+          expect((await lock.checkPin('0000')).waitFor, Duration.zero);
         }
+        final fifth = await lock.checkPin('0000');
+        expect(fifth.ok, isFalse);
+        expect(fifth.failures, 5);
+        expect(fifth.waitFor, const Duration(seconds: 30));
+        expect(lock.remainingWait, const Duration(seconds: 30));
         final during = await lock.checkPin('1234');
         expect(during.ok, isFalse);
         expect(during.waitFor, const Duration(seconds: 30));
         now = now.add(const Duration(seconds: 31));
+        expect(lock.remainingWait, Duration.zero);
         expect((await lock.checkPin('1234')).ok, isTrue);
       },
     );
@@ -224,5 +230,28 @@ void main() {
         expect(await lock.unlockWithDeviceCredential(), isFalse);
       },
     );
+
+    test(
+      'unlocking with biometrics or phone lock resets the wrong-guess backoff',
+      () async {
+        await lock.setPin('1234');
+        for (var i = 0; i < 5; i++) {
+          await lock.checkPin('0000');
+        }
+        expect(lock.remainingWait, const Duration(seconds: 30));
+        expect(await lock.unlockWithDeviceCredential(), isTrue);
+        expect(lock.remainingWait, Duration.zero);
+        expect((await lock.checkPin('0000')).failures, 1);
+      },
+    );
+
+    test('a backward clock jump cannot stretch the backoff beyond its cap', () async {
+      await lock.setPin('1234');
+      for (var i = 0; i < 5; i++) {
+        await lock.checkPin('0000');
+      }
+      now = now.subtract(const Duration(days: 365));
+      expect(lock.remainingWait, const Duration(seconds: 30));
+    });
   });
 }

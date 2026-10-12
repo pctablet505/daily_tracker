@@ -149,7 +149,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   });
 
   Future<void> _signIn() => _run(() async {
-    final email = await _cloud.signIn();
+    final email = await ref
+        .read(lockedProvider.notifier)
+        .runExternal(_cloud.signIn);
     _say('Signed in as $email.');
   });
 

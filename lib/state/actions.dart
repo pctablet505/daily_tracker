@@ -61,18 +61,19 @@ final class HabitActions {
   /// recording fails the copy is removed again.
   Future<void> logPhoto(Habit h, DayKey day, String sourcePath) async {
     final name = await photos.importFile(sourcePath);
+    final Entry? before;
+    final Entry? replaced;
     try {
-      final before = await _existing(h, day);
-      await _apply(
-        h,
-        day,
+      before = await _existing(h, day);
+      replaced = await repo.setEntry(
         photoEntry(h, day, name, _now(), existing: before),
-        before,
       );
     } catch (_) {
       await photos.delete(name);
       rethrow;
     }
+    final old = replaced?.photoPath ?? before?.photoPath;
+    if (old != null && old != name) await photos.delete(old);
   }
 
   Future<void> slip(Habit h, DayKey day, {String? note}) async {
@@ -117,8 +118,10 @@ final class HabitActions {
       repo.reorder([...ids, ...allIds.where((id) => !ids.contains(id))]);
 
   /// Takes the habit off the lists from today on; its history stays.
-  Future<void> archive(Habit h, DayKey today) =>
-      repo.archive(h.id, today.addDays(-1));
+  Future<void> archive(Habit h, DayKey today) async {
+    if (h.isArchived) return;
+    await repo.archive(h.id, today.addDays(-1));
+  }
 
   Future<Habit> startAgain(Habit archived, DayKey today) =>
       repo.startAgain(archived, newId: _newId(), today: today);
@@ -129,9 +132,15 @@ final class HabitActions {
 
   /// Call once the undo window has passed: only then are the photo files removed.
   Future<void> finishDelete(DeletedHabit gone) async {
+    final activePhotos = {
+      for (final e in await repo.entries())
+        if (e.photoPath != null) e.photoPath!,
+    };
     for (final e in gone.entries) {
       final name = e.photoPath;
-      if (name != null) await photos.delete(name);
+      if (name != null && !activePhotos.contains(name)) {
+        await photos.delete(name);
+      }
     }
   }
 

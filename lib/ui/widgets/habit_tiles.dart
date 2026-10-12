@@ -128,6 +128,7 @@ class HabitTile extends StatelessWidget {
               button: true,
               label: markLabel,
               excludeSemantics: true,
+              onTap: isTick ? onToggle : onLog,
               child: InkResponse(
                 onTap: isTick ? onToggle : onLog,
                 radius: 28,

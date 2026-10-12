@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models.dart';
 import '../../logic/habit_detail.dart';
+import '../../services/photo_store.dart';
 import '../../state/providers.dart';
 import '../format.dart';
 import '../theme/tokens.dart';
@@ -91,9 +92,14 @@ class HabitDetailScreen extends ConsumerWidget {
                         _EntryTile(
                           habit: h,
                           entry: d.recent[i],
-                          previous: i + 1 < d.recent.length
-                              ? d.recent[i + 1]
-                              : null,
+                          previous: d.recent
+                              .skip(i + 1)
+                              .where(
+                                (e) =>
+                                    e.state != EntryState.skipped &&
+                                    e.value != null,
+                              )
+                              .firstOrNull,
                           divider: i > 0,
                           onTap: () {
                             ref
@@ -350,6 +356,7 @@ class _Trend extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 26,
+                        maxIncluded: false,
                         interval: spots.last.x < 6
                             ? 1
                             : (spots.last.x / 4).ceilToDouble(),
@@ -468,6 +475,51 @@ class _Photos extends ConsumerWidget {
   const _Photos({required this.entries});
   final List<Entry> entries;
 
+  void _open(BuildContext context, PhotoStore store, Entry e) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                child: Image.file(
+                  store.fileFor(e.photoPath!),
+                  errorBuilder: (_, _, _) => const _MissingPhoto(big: true),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: SafeArea(
+                child: IconButton.filledTonal(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Center(
+                  child: Text(
+                    shortDate(e.day),
+                    style: AppType.heading.copyWith(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
@@ -484,52 +536,9 @@ class _Photos extends ConsumerWidget {
             button: true,
             label: 'Photo from ${shortDate(e.day)}',
             excludeSemantics: true,
+            onTap: () => _open(context, store, e),
             child: GestureDetector(
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => Dialog.fullscreen(
-                  backgroundColor: Colors.black,
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: InteractiveViewer(
-                          child: Image.file(
-                            store.fileFor(e.photoPath!),
-                            errorBuilder: (_, _, _) =>
-                                const _MissingPhoto(big: true),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: SafeArea(
-                          child: IconButton.filledTonal(
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 16,
-                        left: 0,
-                        right: 0,
-                        child: SafeArea(
-                          child: Center(
-                            child: Text(
-                              shortDate(e.day),
-                              style: AppType.heading.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              onTap: () => _open(context, store, e),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: Image.file(
@@ -591,7 +600,7 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final v = entry.value;
+    final v = entry.state == EntryState.skipped ? null : entry.value;
     final delta = v != null && previous?.value != null
         ? v - previous!.value!
         : null;

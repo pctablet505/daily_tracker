@@ -30,7 +30,6 @@ void main() {
     for (final c in <(int, int, HeatLevel)>[
       (4, 0, HeatLevel.missed),
       (4, 1, HeatLevel.low),
-      (4, 1, HeatLevel.low),
       (4, 2, HeatLevel.mid),
       (4, 3, HeatLevel.mid),
       (4, 4, HeatLevel.full),
@@ -168,19 +167,19 @@ void main() {
       expect(needsAttention(l, mon, sun), isEmpty);
     });
 
-    test('respects the limit and leaves out stay-clear habits', () {
+    test('respects the limit and leaves out stay-clear and archived habits', () {
       final l = ledger([
         habit('a'),
         habit('b'),
         habit('c'),
         habit('d'),
+        habit('archived', end: sat),
         stayClear('s'),
       ]);
       expect(needsAttention(l, mon, sun, limit: 2).length, 2);
-      expect(
-        needsAttention(l, mon, sun, limit: 9).any((i) => i.habit.id == 's'),
-        isFalse,
-      );
+      final all = needsAttention(l, mon, sun, limit: 9).map((i) => i.habit.id);
+      expect(all, isNot(contains('s')));
+      expect(all, isNot(contains('archived')));
     });
 
     test('a stay-clear habit with slips is not listed here', () {
@@ -199,7 +198,7 @@ void main() {
   });
 
   group('by area', () {
-    test('groups habits by area, best last, with "Other" for none', () {
+    test('groups habits by area, best first, with "Other" for none', () {
       final l = ledger(
         [
           habit('a', area: 'Health'),
@@ -219,6 +218,14 @@ void main() {
         },
       );
       expect(r.map((x) => x.area), ['Mind', 'Health', 'Other']);
+    });
+
+    test('breaks ties alphabetically by area name', () {
+      final l = ledger([
+        habit('a', area: 'Work'),
+        habit('b', area: 'Body'),
+      ]);
+      expect(areaRates(l, mon, tue).map((x) => x.area), ['Body', 'Work']);
     });
 
     test('leaves out areas with nothing planned and stay-clear habits', () {

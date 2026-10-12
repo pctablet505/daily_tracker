@@ -86,26 +86,66 @@ final class HabitRepository {
   }
 
   Future<void> updateHabit(Habit habit) async {
-    final n = await _db.update(
-      'habits',
-      habit.toMap(),
-      where: 'id = ?',
-      whereArgs: [habit.id],
-    );
-    if (n == 0) throw StateError('No habit with id ${habit.id}');
+    await _db.transaction((txn) async {
+      final n = await txn.update(
+        'habits',
+        habit.toMap(),
+        where: 'id = ?',
+        whereArgs: [habit.id],
+      );
+      if (n == 0) throw StateError('No habit with id ${habit.id}');
+      final rows = await txn.query(
+        'entries',
+        where: 'habitId = ?',
+        whereArgs: [habit.id],
+      );
+      for (final r in rows) {
+        final e = Entry.fromMap(r);
+        if (e.state != EntryState.done && e.state != EntryState.partial)
+          continue;
+        final EntryState nextState;
+        if (habit.logType == LogType.number && e.value != null) {
+          nextState = habit.goal != null && e.value! < habit.goal!
+              ? EntryState.partial
+              : EntryState.done;
+        } else {
+          nextState = EntryState.done;
+        }
+        if (nextState != e.state) {
+          await txn.update(
+            'entries',
+            {'state': nextState.name},
+            where: 'habitId = ? AND day = ?',
+            whereArgs: [habit.id, e.day.toString()],
+          );
+        }
+      }
+    });
     _changed();
   }
 
-  /// Sets the order to the position in [ids]; pass every habit.
+  /// Sets the order to the position in [ids]; any habit not in [ids] is placed after them.
   Future<void> reorder(List<String> ids) async {
     await _db.transaction((txn) async {
+      final existing = await txn.query(
+        'habits',
+        columns: ['id'],
+        orderBy: 'sortOrder, createdDay, id',
+      );
+      final seen = <String>{};
+      final all = <String>[
+        for (final id in ids)
+          if (seen.add(id)) id,
+        for (final r in existing)
+          if (seen.add(r['id']! as String)) r['id']! as String,
+      ];
       final batch = txn.batch();
-      for (var i = 0; i < ids.length; i++) {
+      for (var i = 0; i < all.length; i++) {
         batch.update(
           'habits',
           {'sortOrder': i},
           where: 'id = ?',
-          whereArgs: [ids[i]],
+          whereArgs: [all[i]],
         );
       }
       await batch.commit(noResult: true);
@@ -280,11 +320,19 @@ final class HabitRepository {
 
   // Whole-database
 
-  Future<Snapshot> snapshot() async => Snapshot(
-    habits: await habits(),
-    entries: await entries(),
-    seenDays: await seenDays(),
-  );
+  Future<Snapshot> snapshot() => _db.transaction((txn) async {
+    final habitRows = await txn.query(
+      'habits',
+      orderBy: 'sortOrder, createdDay, id',
+    );
+    final entryRows = await txn.query('entries', orderBy: 'day, habitId');
+    final seenRows = await txn.query('seen_days');
+    return Snapshot(
+      habits: [for (final r in habitRows) Habit.fromMap(r)],
+      entries: [for (final r in entryRows) Entry.fromMap(r)],
+      seenDays: {for (final r in seenRows) DayKey.parse(r['day']! as String)},
+    );
+  });
 
   /// Replaces everything with [snapshot] in one transaction. If the data is
   /// inconsistent nothing is touched and a [FormatException] is thrown.

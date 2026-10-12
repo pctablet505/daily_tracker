@@ -32,6 +32,8 @@ final class SystemFileService implements FileService {
     if (length != null && length > maxBytes)
       throw const FormatException('That file is too large.');
     final bytes = await f.readAsBytes();
+    if (bytes.length > maxBytes)
+      throw const FormatException('That file is too large.');
     return utf8.decode(bytes);
   }
 
@@ -43,7 +45,7 @@ final class SystemFileService implements FileService {
     String mimeType = 'application/json',
   }) async {
     final dir = await getTemporaryDirectory();
-    final file = File(p.join(dir.path, fileName));
+    final file = File(p.join(dir.path, p.basename(fileName)));
     await file.writeAsString(content);
     await SharePlus.instance.share(
       ShareParams(

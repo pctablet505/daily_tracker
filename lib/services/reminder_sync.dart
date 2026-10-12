@@ -12,6 +12,7 @@ class ReminderSync {
   ReminderSync(this._ref) {
     _ref.listen(revisionProvider, (_, _) => _schedule());
     _ref.listen(settingsProvider, (_, _) => _schedule());
+    _ref.listen(todayProvider, (_, _) => _schedule());
     _ref.onDispose(() => _debounce?.cancel());
     _schedule();
   }

@@ -85,12 +85,12 @@ void main() {
       },
     );
 
-    test('not before it was created and not after it ended', () {
+    test('not before it was created and not after it ended, even with an entry', () {
       final a = habit('a', created: wed, end: thu);
       expect(buildTodayView(ledger([a]), tue).isEmpty, isTrue);
       expect(buildTodayView(ledger([a]), wed).isEmpty, isFalse);
       expect(buildTodayView(ledger([a]), thu).isEmpty, isFalse);
-      expect(buildTodayView(ledger([a]), fri).isEmpty, isTrue);
+      expect(buildTodayView(ledger([a], [entry('a', fri)]), fri).isEmpty, isTrue);
     });
 
     test('a stay-clear habit ignores the weekday mask', () {
@@ -186,16 +186,17 @@ void main() {
   });
 
   group('what a row remembers', () {
-    test('a number habit knows the last amount from an earlier day', () {
+    test('a number habit knows the last non-skipped amount from an earlier day', () {
       final w = habit('w', logType: LogType.number);
       final l = ledger(
         [w],
         [
           entry('w', mon, EntryState.done, 75.9),
           entry('w', tue, EntryState.done, 75.5),
+          entry('w', wed, EntryState.skipped, 99.0),
         ],
       );
-      expect(buildTodayView(l, wed).toDo.single.lastValue, 75.5);
+      expect(buildTodayView(l, thu).toDo.single.lastValue, 75.5);
       expect(
         buildTodayView(l, tue).finished.single.lastValue,
         75.9,
@@ -204,7 +205,7 @@ void main() {
       expect(buildTodayView(l, mon).finished.single.lastValue, isNull);
     });
 
-    test('a photo habit counts its photos up to the day shown', () {
+    test('a photo habit counts its non-skipped photos up to the day shown', () {
       final p = habit('p', logType: LogType.photo);
       final l = ledger(
         [p],
@@ -226,6 +227,13 @@ void main() {
           Entry(
             habitId: 'p',
             day: thu,
+            state: EntryState.skipped,
+            photoPath: 'skipped.jpg',
+            loggedAt: DateTime.utc(2026),
+          ),
+          Entry(
+            habitId: 'p',
+            day: fri,
             state: EntryState.done,
             loggedAt: DateTime.utc(2026),
           ), // no photo
@@ -233,7 +241,7 @@ void main() {
       );
       expect(buildTodayView(l, wed).finished.single.photoCount, 2);
       expect(buildTodayView(l, tue).toDo.single.photoCount, 1);
-      expect(buildTodayView(l, fri).toDo.single.photoCount, 2);
+      expect(buildTodayView(l, fri).finished.single.photoCount, 2);
     });
   });
 }

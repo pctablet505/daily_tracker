@@ -145,6 +145,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   Future<void> _init() async {
     final lock = ref.read(lockServiceProvider);
+    final wait = lock.remainingWait;
+    if (wait > Duration.zero) {
+      _error = 'Too many tries. Wait ${_format(wait)}.';
+      _countdown(wait);
+    }
     final available = await lock.biometricsAvailable;
     if (!mounted) return;
     setState(
@@ -261,11 +266,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                           label: const Text('Use fingerprint'),
                         ),
                       TextButton(
-                        onPressed: () => unawaited(
-                          ref
-                              .read(lockedProvider.notifier)
-                              .unlockWithDeviceCredential(),
-                        ),
+                        onPressed: () => unawaited(_deviceCredential()),
                         child: const Text('Forgot PIN? Use phone lock'),
                       ),
                     ],
@@ -277,5 +278,14 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _deviceCredential() async {
+    final ok = await ref
+        .read(lockedProvider.notifier)
+        .unlockWithDeviceCredential();
+    if (!ok && mounted) {
+      setState(() => _error = 'Could not unlock with your phone lock.');
+    }
   }
 }

@@ -69,7 +69,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
       context: context,
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
     );
-    if (t != null)
+    if (t != null && mounted)
       _change((f) => f.copyWith(reminderMinutes: () => t.hour * 60 + t.minute));
   }
 
@@ -428,7 +428,9 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                                     ),
                                   ),
                                   TextButton(
-                                    onPressed: openAppSettings,
+                                    onPressed: () => ref
+                                        .read(lockedProvider.notifier)
+                                        .runExternal(openAppSettings),
                                     child: const Text('Open settings'),
                                   ),
                                 ],
@@ -476,19 +478,21 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                   ),
                   if (editing) ...[
                     const SizedBox(height: 28),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final nav = GoRouter.of(context);
-                        await ref
-                            .read(actionsProvider)
-                            .archive(_original!, ref.read(todayProvider));
-                        _dirty = false;
-                        nav.pop();
-                      },
-                      icon: const Icon(Icons.inventory_2_outlined),
-                      label: const Text('Archive, keep history'),
-                    ),
-                    const SizedBox(height: 8),
+                    if (!_original!.isArchived) ...[
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final nav = GoRouter.of(context);
+                          await ref
+                              .read(actionsProvider)
+                              .archive(_original!, ref.read(todayProvider));
+                          _dirty = false;
+                          if (mounted) nav.pop();
+                        },
+                        icon: const Icon(Icons.inventory_2_outlined),
+                        label: const Text('Archive, keep history'),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     TextButton.icon(
                       style: TextButton.styleFrom(foregroundColor: c.danger),
                       onPressed: () async {
@@ -499,7 +503,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                           _original!,
                         )) {
                           _dirty = false;
-                          nav.pop();
+                          if (mounted) nav.pop();
                         }
                       },
                       icon: const Icon(Icons.delete_outline_rounded),
@@ -569,6 +573,7 @@ class _Options<T> extends StatelessWidget {
             button: true,
             selected: e.key == value,
             label: e.value,
+            onTap: () => onChanged(e.key),
             excludeSemantics: true,
             child: Material(
               color: e.key == value ? c.accentSoft : c.surface,
@@ -639,6 +644,7 @@ class _DayPicker extends StatelessWidget {
                 button: true,
                 selected: (mask >> i) & 1 == 1,
                 label: _names[i],
+                onTap: () => onChanged(mask ^ (1 << i)),
                 excludeSemantics: true,
                 child: Material(
                   color: (mask >> i) & 1 == 1 ? c.accent : c.surface,

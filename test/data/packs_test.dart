@@ -101,6 +101,13 @@ void main() {
         'format': 'daily-tracker-backup',
       });
       refused('it is from a newer version', {...good(), 'version': 2});
+      refused('it has a non-positive version', {...good(), 'version': 0});
+      refused('a reminder is out of range', {
+        ...good(),
+        'habits': [
+          {'name': 'a', 'reminderMinutes': 1440},
+        ],
+      });
       refused('it has no name', {...good()}..remove('name'));
       refused('it has no habits', {...good(), 'habits': []});
       refused('a habit has no name', {

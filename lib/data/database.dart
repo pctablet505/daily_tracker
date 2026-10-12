@@ -67,7 +67,13 @@ Future<Database> openAppDatabase(
   if (removeLegacyIn != null) {
     for (final name in _legacyFiles) {
       final f = File(p.join(removeLegacyIn, name));
-      if (f.existsSync()) await f.delete();
+      if (f.existsSync()) {
+        try {
+          await f.delete();
+        } on FileSystemException {
+          // Another caller may have removed the file first.
+        }
+      }
     }
   }
   return factory.openDatabase(
@@ -75,7 +81,10 @@ Future<Database> openAppDatabase(
     options: OpenDatabaseOptions(
       version: schemaVersion,
       singleInstance: singleInstance && path != inMemoryDatabasePath,
-      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+        await db.rawQuery('PRAGMA busy_timeout = 5000');
+      },
       onCreate: (db, _) => _createSchema(db),
     ),
   );

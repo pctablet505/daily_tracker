@@ -78,9 +78,10 @@ TodayView buildTodayView(
   final stayClear = <HabitRow>[];
   final finished = <HabitRow>[];
   for (final h in l.habits) {
+    if (!h.isActiveOn(day)) continue;
     final e = l.entryOf(h.id, day);
     if (h.tracksSlips) {
-      if (!h.isActiveOn(day) || !_matches(h, q)) continue;
+      if (!_matches(h, q)) continue;
       stayClear.add(
         HabitRow(
           habit: h,
@@ -108,12 +109,24 @@ TodayView buildTodayView(
       streak: habitStreak(l, h, day).current,
       lastValue: h.logType == LogType.number
           ? history
-                .where((x) => x.day < day && x.value != null)
+                .where(
+                  (x) =>
+                      x.day < day &&
+                      x.value != null &&
+                      x.state != EntryState.skipped,
+                )
                 .lastOrNull
                 ?.value
           : null,
       photoCount: h.logType == LogType.photo
-          ? history.where((x) => x.day <= day && x.photoPath != null).length
+          ? history
+                .where(
+                  (x) =>
+                      x.day <= day &&
+                      x.photoPath != null &&
+                      x.state != EntryState.skipped,
+                )
+                .length
           : 0,
     );
     (kind == RowKind.done || kind == RowKind.skipped ? finished : toDo).add(

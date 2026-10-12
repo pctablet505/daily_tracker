@@ -92,8 +92,11 @@ void main() {
       expect(parseRelease(release(apk: false)), isNull);
     });
 
-    test('is ignored when the tag is not a version', () {
+    test('is ignored when the tag is not a version or has path traversal', () {
       expect(parseRelease(release(tag: 'nightly')), isNull);
+      expect(parseRelease(release(tag: 'v2.1.0/../../evil')), isNull);
+      expect(parseRelease(release(tag: 'v2.1.0\\evil')), isNull);
+      expect(parseRelease(release(tag: 'v2..1.0')), isNull);
     });
 
     test('literal backslash-n sequences in the notes become line breaks', () {

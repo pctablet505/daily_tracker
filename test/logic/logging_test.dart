@@ -47,6 +47,8 @@ void main() {
       (water, 12, EntryState.done),
       (water, 0, null),
       (water, -1, null),
+      (water, double.nan, null),
+      (water, double.infinity, null),
       (steps, 0.5, EntryState.done), // no goal: any positive amount counts
       (steps, 0, null),
     ]) {
@@ -187,24 +189,21 @@ void main() {
       );
     });
 
-    test('a photo keeps the note, and a note keeps the photo', () {
+    test('a photo keeps the note and value, and a note keeps the photo and value', () {
       final before = Entry(
         habitId: 'p',
         day: mon,
         state: EntryState.done,
+        value: 5,
         note: 'sunrise',
         photoPath: 'old.jpg',
         loggedAt: now,
       );
       final p = habit('p', logType: LogType.photo);
-      expect(
-        photoEntry(p, mon, 'new.jpg', now, existing: before).note,
-        'sunrise',
-      );
-      expect(
-        noteEntry(p, mon, 'cloudy', now, existing: before)?.photoPath,
-        'old.jpg',
-      );
+      final withPhoto = photoEntry(p, mon, 'new.jpg', now, existing: before);
+      expect((withPhoto.note, withPhoto.value), ('sunrise', 5.0));
+      final withNote = noteEntry(p, mon, 'cloudy', now, existing: before);
+      expect((withNote?.photoPath, withNote?.value), ('old.jpg', 5.0));
     });
   });
 }

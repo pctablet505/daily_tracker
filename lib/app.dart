@@ -123,6 +123,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
   );
   StreamSubscription<String>? _taps;
+  Timer? _updateTimer;
+  bool _offeringUpdate = false;
   late final UpdatePrompter _prompter = UpdatePrompter(
     prefs: ref.read(sharedPrefsProvider),
     now: ref.read(clockProvider),
@@ -131,6 +133,11 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     isOnline: () => ref.read(networkProvider).isOnline(),
     wifiOnly: () => ref.read(settingsProvider).wifiOnlyUpdate,
   );
+
+  void _scheduleUpdateOffer(Duration delay) {
+    _updateTimer?.cancel();
+    _updateTimer = Timer(delay, () => unawaited(_offerUpdate()));
+  }
 
   @override
   void initState() {
@@ -144,20 +151,54 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       }),
     );
     unawaited(ref.read(cloudBackupProvider).restoreSession());
+    if (ref.read(lockedProvider)) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => FocusManager.instance.primaryFocus?.unfocus(),
+      );
+    }
     // An update offer is held back while locked; offer it once the user is in.
     ref.listenManual(lockedProvider, (was, now) {
-      if (was == true && !now) {
-        Timer(const Duration(seconds: 2), () => unawaited(_offerUpdate()));
+      if (now) {
+        _updateTimer?.cancel();
+        FocusManager.instance.primaryFocus?.unfocus();
+      } else if (was == true) {
+        if (ref.read(settingsProvider).onboardingDone) {
+          unawaited(
+            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
+          );
+          unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
+        }
+        _scheduleUpdateOffer(const Duration(seconds: 2));
+      }
+    });
+    ref.listenManual(
+      settingsProvider.select((s) => s.onboardingDone),
+      (was, now) {
+        if (was == false && now && !ref.read(lockedProvider)) {
+          unawaited(
+            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
+          );
+        }
+      },
+    );
+    ref.listenManual(todayProvider, (was, now) {
+      if (was != null && was != now) {
+        if (ref.read(settingsProvider).onboardingDone &&
+            !ref.read(lockedProvider)) {
+          unawaited(ref.read(actionsProvider).markSeen(now));
+        }
+        unawaited(ref.read(reminderSyncProvider).resync());
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onForeground();
-      Timer(const Duration(seconds: 4), () => unawaited(_offerUpdate()));
+      _scheduleUpdateOffer(const Duration(seconds: 4));
     });
   }
 
   @override
   void dispose() {
+    _updateTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_taps?.cancel());
     super.dispose();
@@ -167,6 +208,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     if (!ref.read(settingsProvider).onboardingDone) return;
     final habit = parseHabitPayload(payload);
     if (habit != null) {
+      ref.read(selectedDayProvider.notifier).select(habit.day);
       _router.go('/');
       unawaited(_router.push('/habit/${habit.habitId}'));
     } else {
@@ -179,15 +221,27 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     ref.read(todayProvider.notifier).refresh();
     // A notification button may have written to the database while the app was closed.
     ref.read(revisionProvider.notifier).bump();
-    unawaited(ref.read(actionsProvider).markSeen(ref.read(todayProvider)));
+    if (ref.read(settingsProvider).onboardingDone &&
+        !ref.read(lockedProvider)) {
+      unawaited(ref.read(actionsProvider).markSeen(ref.read(todayProvider)));
+      unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
+    }
     unawaited(ref.read(reminderSyncProvider).resync());
-    unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
   }
 
   Future<void> _offerUpdate() async {
-    if (!mounted || ref.read(lockedProvider)) return;
+    if (_offeringUpdate ||
+        !mounted ||
+        ref.read(lockedProvider) ||
+        !ref.read(settingsProvider).onboardingDone)
+      return;
+    _offeringUpdate = true;
     try {
       final release = await _prompter.releaseToOffer();
+      if (!mounted ||
+          ref.read(lockedProvider) ||
+          !ref.read(settingsProvider).onboardingDone)
+        return;
       final ctx = _rootKey.currentContext;
       if (release != null && ctx != null && ctx.mounted) {
         await showUpdateSheet(
@@ -198,6 +252,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       }
     } catch (e) {
       debugPrint('Offering an update failed: $e');
+    } finally {
+      _offeringUpdate = false;
     }
   }
 
@@ -244,9 +300,12 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
         child: Stack(
           children: [
             // While locked the app underneath is kept out of the accessibility tree and out of reach.
-            ExcludeSemantics(
+            ExcludeFocus(
               excluding: locked,
-              child: IgnorePointer(ignoring: locked, child: child),
+              child: ExcludeSemantics(
+                excluding: locked,
+                child: IgnorePointer(ignoring: locked, child: child),
+              ),
             ),
             if (locked) const Positioned.fill(child: LockScreen()),
           ],

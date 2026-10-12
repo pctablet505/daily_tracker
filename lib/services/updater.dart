@@ -64,7 +64,14 @@ final class ReleaseInfo {
 ReleaseInfo? parseRelease(Map<String, Object?> json) {
   if (json['draft'] == true || json['prerelease'] == true) return null;
   final tag = json['tag_name'];
-  if (tag is! String || _parts(tag) == null) return null;
+  if (tag is! String ||
+      !RegExp(
+        r'^[vV]?\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$',
+      ).hasMatch(tag) ||
+      tag.contains('..') ||
+      _parts(tag) == null) {
+    return null;
+  }
   final assets = (json['assets'] as List<Object?>? ?? const [])
       .whereType<Map<String, Object?>>()
       .toList();
@@ -214,7 +221,7 @@ class UpdateService {
       var received = 0;
       final done = Completer<void>();
       late final StreamSubscription<List<int>> sub;
-      sub = res.stream.listen(
+      sub = res.stream.timeout(_timeout).listen(
         (chunk) {
           sink.add(chunk);
           hasher.add(chunk);

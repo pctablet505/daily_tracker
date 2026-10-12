@@ -221,6 +221,8 @@ void main() {
       final s = stayClear('s');
       final l = ledger([s], [slip('s', thu)], [fri, sat, sun]);
       expect(currentStreak(l, sun), 3);
+      final slippedToday = ledger([s], [slip('s', sun)], [fri, sat, sun]);
+      expect(currentStreak(slippedToday, sun), 0);
     });
   });
 

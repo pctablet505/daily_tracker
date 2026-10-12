@@ -210,8 +210,13 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
       }
       announceDataChanged();
     } else if (r.actionId == 'snooze') {
+      tzdata.initializeTimeZones();
       final plugin = FlutterLocalNotificationsPlugin();
-      await plugin.initialize(settings: _initSettings);
+      await plugin.initialize(
+        settings: _initSettings,
+        onDidReceiveBackgroundNotificationResponse:
+            notificationBackgroundHandler,
+      );
       final dir = await getDatabasesPath();
       final db = await openAppDatabase(
         databaseFactory,

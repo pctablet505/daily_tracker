@@ -83,10 +83,18 @@ class CloudBackup {
 
   Future<void> setAutoBackup(bool on) => _prefs.setBool(_autoKey, on);
 
+  Future<void>? _restoringSession;
+
   /// Picks up a previous sign-in without asking; call once at start.
-  Future<void> restoreSession() async {
-    final e = await _auth.restoreSession();
-    if (e != null) await _prefs.setString(_emailKey, e);
+  Future<void> restoreSession() => _restoringSession ??= _doRestoreSession();
+
+  Future<void> _doRestoreSession() async {
+    try {
+      final e = await _auth.restoreSession();
+      if (e != null) await _prefs.setString(_emailKey, e);
+    } finally {
+      _restoringSession = null;
+    }
   }
 
   Future<String> signIn() async {
@@ -112,6 +120,7 @@ class CloudBackup {
     bool automatic = false,
     bool overrideWifiOnly = false,
   }) async {
+    if (_restoringSession != null) await _restoringSession;
     final blocked = await _blocked(overrideWifiOnly: overrideWifiOnly);
     if (blocked != null) {
       return BackupOutcome(
@@ -139,6 +148,7 @@ class CloudBackup {
   /// Downloads the stored backup for a confirmation step. Null when there is none.
   /// Throws [DriveException] on a Drive problem and [FormatException] when the file is not valid.
   Future<CloudRestore?> fetchForRestore({bool overrideWifiOnly = false}) async {
+    if (_restoringSession != null) await _restoringSession;
     final blocked = await _blocked(overrideWifiOnly: overrideWifiOnly);
     if (blocked == BackupStatus.offline)
       throw const DriveException('You are offline.');
@@ -158,6 +168,7 @@ class CloudBackup {
   /// to protect, and the last backup is older than [autoEvery]. Never throws.
   Future<void> autoBackupIfDue() async {
     try {
+      if (_restoringSession != null) await _restoringSession;
       if (!autoBackup || email == null) return;
       final last = lastBackupAt;
       if (last != null && _now().difference(last) < autoEvery) return;

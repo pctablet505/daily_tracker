@@ -40,26 +40,45 @@ void main() {
     );
 
     test(
-      'update changes the stored habit; an unknown id is an error',
+      'update changes the stored habit and reconciles entry states when goal or logType changes',
       () async {
-        final a = await repo.addHabit(habit('a'));
+        final a = await repo.addHabit(
+          habit('a', logType: LogType.number, goal: 8),
+        );
+        await repo.setEntry(entry('a', mon, EntryState.partial, 4));
+        await repo.setEntry(entry('a', tue, EntryState.done, 8));
         await repo.updateHabit(
-          a.copyWith(name: 'Renamed', reminderMinutes: () => 480),
+          a.copyWith(
+            name: 'Renamed',
+            reminderMinutes: () => 480,
+            goal: () => 4,
+          ),
         );
         final back = (await repo.habits()).single;
         expect((back.name, back.reminderMinutes), ('Renamed', 480));
+        expect(
+          (await repo.entries(habitId: 'a', from: mon, to: mon)).single.state,
+          EntryState.done,
+        );
+        await repo.updateHabit(back.copyWith(goal: () => 10));
+        expect(
+          (await repo.entries(habitId: 'a', from: tue, to: tue)).single.state,
+          EntryState.partial,
+        );
         expect(() => repo.updateHabit(habit('nope')), throwsStateError);
       },
     );
 
     test(
-      'reorder renumbers by the given order and leaves nothing out',
+      'reorder renumbers by the given order and keeps any omitted habits after without colliding',
       () async {
         for (final id in ['a', 'b', 'c']) {
           await repo.addHabit(habit(id));
         }
-        await repo.reorder(['c', 'a', 'b']);
-        expect((await repo.habits()).map((h) => h.id), ['c', 'a', 'b']);
+        await repo.reorder(['c', 'a']);
+        final all = await repo.habits();
+        expect(all.map((h) => h.id), ['c', 'a', 'b']);
+        expect(all.map((h) => h.sortOrder), [0, 1, 2]);
       },
     );
 

@@ -50,6 +50,7 @@ class Keypad extends StatelessWidget {
             enabled: k.onTap != null,
             label: k.semantics,
             excludeSemantics: true,
+            onTap: k.onTap,
             child: Material(
               color: !k.primary
                   ? c.sunken

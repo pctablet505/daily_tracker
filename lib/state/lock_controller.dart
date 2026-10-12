@@ -15,7 +15,7 @@ class LockController extends Notifier<bool> {
   static const externalGraceSeconds = 300;
 
   DateTime? _pausedAt;
-  bool _external = false;
+  int _externalDepth = 0;
 
   /// An external job returned while the app was still in the background; the
   /// "resumed" that follows belongs to that trip.
@@ -31,13 +31,13 @@ class LockController extends Notifier<bool> {
       ref.read(settingsProvider).lockOn && ref.read(lockServiceProvider).hasPin;
 
   /// The app went to the background.
-  void paused() => _pausedAt = ref.read(clockProvider)();
+  void paused() => _pausedAt ??= ref.read(clockProvider)();
 
   /// The app came back; locks again if it was away long enough.
   void resumed() {
     final since = _pausedAt;
     _pausedAt = null;
-    final onTrip = _external || _graceOnNextResume;
+    final onTrip = _externalDepth > 0 || _graceOnNextResume;
     _graceOnNextResume = false;
     if (!_lockApplies) {
       state = false;
@@ -62,11 +62,11 @@ class LockController extends Notifier<bool> {
   /// Runs something that takes the user out of the app on purpose (camera, file
   /// picker, share sheet). A short trip does not lock the app; a long one still does.
   Future<T> runExternal<T>(Future<T> Function() job) async {
-    _external = true;
+    _externalDepth++;
     try {
       return await job();
     } finally {
-      _external = false;
+      _externalDepth--;
       // The result can arrive before the app is told it is back.
       if (_pausedAt != null) _graceOnNextResume = true;
     }

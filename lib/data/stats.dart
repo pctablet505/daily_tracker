@@ -112,6 +112,18 @@ final class Ledger {
     }
     return first;
   }
+
+  /// The earliest day that was seen or has an entry, or null if none.
+  DayKey? get _firstActiveDay {
+    DayKey? first;
+    void take(DayKey d) {
+      if (first == null || d < first!) first = d;
+    }
+
+    _seen.forEach(take);
+    _entryDays.forEach(take);
+    return first;
+  }
 }
 
 DaySummary summarizeDay(
@@ -125,13 +137,13 @@ DaySummary summarizeDay(
   var tracking = 0;
   for (final h in l.habits) {
     final e = l.entryOf(h.id, day);
+    if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
       if (!h.isActiveOn(day)) continue;
       tracking++;
       if (e?.state == EntryState.slipped) slips++;
       continue;
     }
-    if (e?.state == EntryState.skipped) continue;
     if (e?.state == EntryState.done) {
       planned++;
       done++;
@@ -167,17 +179,18 @@ int currentStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = l.firstDay;
+  final first = threshold > 0 ? l._firstActiveDay : l.firstDay;
   if (first == null) return 0;
   var n = 0;
   for (var d = today; d >= first; d = d.addDays(-1)) {
-    switch (summarizeDay(l, d, threshold: threshold).status) {
+    final s = summarizeDay(l, d, threshold: threshold);
+    switch (s.status) {
       case DayStatus.good:
         n++;
       case DayStatus.neutral:
         break;
       case DayStatus.missed:
-        if (d != today) return n;
+        if (d != today || (s.planned == 0 && s.slips > 0)) return n;
     }
   }
   return n;
@@ -190,8 +203,8 @@ int bestStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = l.firstDay;
-  if (first == null) return 0;
+  final first = threshold > 0 ? l._firstActiveDay : l.firstDay;
+  if (first == null || first > today) return 0;
   var run = 0;
   var best = 0;
   for (final d in first.through(today)) {
@@ -254,10 +267,17 @@ final class HabitStreak {
 /// Stay-clear habit: days since the last slip, counting only days the app saw.
 HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
   final last = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+  final DayKey? earliest = h.tracksSlips
+      ? l._firstActiveDay
+      : l.entriesOf(h.id).firstOrNull?.day;
+  if (earliest == null) return const HabitStreak(current: 0, best: 0);
+  final start = earliest > h.createdDay ? earliest : h.createdDay;
+  if (start > last) return const HabitStreak(current: 0, best: 0);
   var run = 0;
   var best = 0;
-  for (final d in h.createdDay.through(last)) {
+  for (final d in start.through(last)) {
     final e = l.entryOf(h.id, d);
+    if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
       if (e?.state == EntryState.slipped) {
         run = 0;
@@ -267,7 +287,6 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
       }
       continue;
     }
-    if (e?.state == EntryState.skipped) continue;
     if (e?.state == EntryState.done) {
       run++;
       if (run > best) best = run;
@@ -285,13 +304,13 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
   var planned = 0;
   for (final d in from.through(to)) {
     final e = l.entryOf(h.id, d);
+    if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
       if (!h.isActiveOn(d) || !l.wasSeen(d)) continue;
       planned++;
       if (e?.state != EntryState.slipped) done++;
       continue;
     }
-    if (e?.state == EntryState.skipped) continue;
     if (e?.state == EntryState.done) {
       planned++;
       done++;

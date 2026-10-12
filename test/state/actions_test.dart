@@ -182,13 +182,15 @@ void main() {
       },
     );
 
-    test('archiving ends the habit yesterday, so it leaves today', () async {
+    test('archiving ends the habit yesterday, and is a no-op if already archived', () async {
       final h = await repo.addHabit(habit('a', created: mon));
       await act.archive(h, sun);
       final back = (await repo.habits()).single;
       expect(back.endDay, sat);
       expect(back.isActiveOn(sun), isFalse);
       expect(back.isActiveOn(sat), isTrue);
+      await act.archive(back, sun.addDays(5));
+      expect((await repo.habits()).single.endDay, sat);
     });
 
     test(
@@ -202,6 +204,12 @@ void main() {
         }, reason: 'photo kept during the undo window');
         await act.undoDelete(gone);
         expect((await entryOn('p', mon))?.photoPath, 'ph0.jpg');
+        await act.finishDelete(gone);
+        expect(
+          photos.stored,
+          {'ph0.jpg'},
+          reason: 'finishDelete after undoDelete must not delete restored photo',
+        );
         final again = await act.deleteHabit('p');
         await act.finishDelete(again);
         expect(photos.stored, isEmpty);

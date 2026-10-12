@@ -222,8 +222,10 @@ class PillButton extends StatelessWidget {
     final fg = outlined ? c.muted : c.accentInk;
     return Semantics(
       button: true,
+      enabled: onPressed != null,
       label: semanticLabel ?? label,
       excludeSemantics: true,
+      onTap: onPressed,
       child: Material(
         color: outlined ? Colors.transparent : c.accentSoft,
         shape: StadiumBorder(
@@ -233,7 +235,11 @@ class PillButton extends StatelessWidget {
           customBorder: const StadiumBorder(),
           onTap: onPressed,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40, minWidth: 48),
+            constraints: const BoxConstraints(
+              minHeight: 40,
+              minWidth: 48,
+              maxWidth: 160,
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
@@ -331,8 +337,10 @@ class RoundIconButton extends StatelessWidget {
       message: tooltip,
       child: Semantics(
         button: true,
+        enabled: onPressed != null,
         label: tooltip,
         excludeSemantics: true,
+        onTap: onPressed,
         child: Material(
           color: c.surface,
           shape: CircleBorder(side: BorderSide(color: c.border)),

@@ -339,6 +339,7 @@ class _Cell extends StatelessWidget {
       button: cell.level != HeatLevel.future,
       label: '${isToday ? 'Today, ' : ''}${longDate(cell.day!)}, $detail',
       excludeSemantics: true,
+      onTap: cell.level == HeatLevel.future ? null : onTap,
       child: Material(
         color: style.bg,
         shape: RoundedRectangleBorder(

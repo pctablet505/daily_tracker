@@ -131,9 +131,12 @@ class _NumberSheetState extends State<_NumberSheet> {
                     ),
                     if (unit.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      Text(
-                        unit,
-                        style: AppType.heading.copyWith(color: c.muted),
+                      Flexible(
+                        child: Text(
+                          unit,
+                          style: AppType.heading.copyWith(color: c.muted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ],
@@ -445,14 +448,15 @@ Future<HabitMenuAction?> showHabitMenu(
                 title: const Text('Edit habit'),
                 onTap: () => Navigator.pop(ctx, HabitMenuAction.edit),
               ),
-              ListTile(
-                leading: const Icon(Icons.inventory_2_outlined),
-                title: const Text('Archive'),
-                subtitle: const Text(
-                  'Hides it from today on. History is kept.',
+              if (!habit.isArchived)
+                ListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('Archive'),
+                  subtitle: const Text(
+                    'Hides it from today on. History is kept.',
+                  ),
+                  onTap: () => Navigator.pop(ctx, HabitMenuAction.archive),
                 ),
-                onTap: () => Navigator.pop(ctx, HabitMenuAction.archive),
-              ),
             ],
           ),
         ),

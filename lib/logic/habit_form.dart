@@ -17,23 +17,30 @@ final class HabitForm {
   });
 
   static const maxNameLength = 60;
+  static const maxGoal = 9999999.99;
 
-  factory HabitForm.fromHabit(Habit h) => HabitForm(
-    name: h.name,
-    description: h.description ?? '',
-    kind: h.kind,
-    logType: h.logType,
-    unit: h.unit ?? '',
-    goalText: h.goal == null ? '' : _goalText(h.goal!),
-    daysMask: h.daysMask,
-    dayPart: h.dayPart,
-    reminderMinutes: h.reminderMinutes,
-    area: h.area ?? '',
-    avoidMode: h.avoidMode,
-  );
+  factory HabitForm.fromHabit(Habit h) {
+    final rem = h.reminderMinutes;
+    final mask = h.daysMask & Habit.everyDay;
+    return HabitForm(
+      name: h.name,
+      description: h.description ?? '',
+      kind: h.kind,
+      logType: h.logType,
+      unit: h.unit ?? '',
+      goalText: h.goal == null ? '' : _goalText(h.goal!),
+      daysMask: mask == 0 ? Habit.everyDay : mask,
+      dayPart: h.dayPart,
+      reminderMinutes: rem != null && rem >= 0 && rem < 24 * 60 ? rem : null,
+      area: h.area ?? '',
+      avoidMode: h.avoidMode,
+    );
+  }
 
   static String _goalText(double v) =>
-      v == v.roundToDouble() ? v.round().toString() : v.toString();
+      v.isFinite && v.abs() < 1e15 && v == v.roundToDouble()
+      ? v.round().toString()
+      : v.toString();
 
   final String name;
   final String description;
@@ -59,24 +66,28 @@ final class HabitForm {
     return null;
   }
 
-  String? get daysError =>
-      daysMask & Habit.everyDay == 0 ? 'Pick at least one day' : null;
+  String? get daysError => logsSlips
+      ? null
+      : (daysMask & Habit.everyDay == 0 ? 'Pick at least one day' : null);
 
   /// "10000", "10,000" (thousands) and "2,5" (decimal comma) all read as expected.
   double? get goal {
     final t = goalText.trim();
     if (t.isEmpty) return null;
-    final grouped = RegExp(r'^\d{1,3}(,\d{3})+(\.\d+)?$').hasMatch(t);
-    return double.tryParse(
+    final grouped = RegExp(r'^[1-9]\d{0,2}(,\d{3})+(\.\d+)?$').hasMatch(t);
+    final v = double.tryParse(
       grouped ? t.replaceAll(',', '') : t.replaceAll(',', '.'),
     );
+    return v != null && v.isFinite ? v : null;
   }
 
   String? get goalError {
     if (!isNumber) return null;
     if (goalText.trim().isEmpty) return null;
     final g = goal;
-    return g == null || g <= 0 ? 'Enter a number above zero' : null;
+    if (g == null || g <= 0) return 'Enter a number above zero';
+    if (g > maxGoal) return 'Keep it under 10,000,000';
+    return null;
   }
 
   bool get isValid =>
@@ -95,7 +106,7 @@ final class HabitForm {
       logType: slips ? LogType.tick : logType,
       unit: number ? clean(unit) : null,
       goal: number ? goal : null,
-      daysMask: daysMask & Habit.everyDay,
+      daysMask: slips ? Habit.everyDay : (daysMask & Habit.everyDay),
       dayPart: dayPart,
       reminderMinutes: slips ? null : reminderMinutes,
       area: clean(area),

@@ -77,7 +77,8 @@ List<AttentionItem> needsAttention(
   final items =
       <AttentionItem>[
             for (final h in l.habits)
-              if (!h.tracksSlips) AttentionItem(h, habitRate(l, h, from, to)),
+              if (!h.tracksSlips && !h.isArchived)
+                AttentionItem(h, habitRate(l, h, from, to)),
           ]
           .where(
             (i) =>
@@ -112,7 +113,10 @@ List<AreaRate> areaRates(Ledger l, DayKey from, DayKey to) {
     for (final k in planned.keys)
       if (planned[k]! > 0) AreaRate(k, Ratio(done[k]!, planned[k]!)),
   ];
-  out.sort((a, b) => b.ratio.fraction!.compareTo(a.ratio.fraction!));
+  out.sort((a, b) {
+    final c = b.ratio.fraction!.compareTo(a.ratio.fraction!);
+    return c != 0 ? c : a.area.compareTo(b.area);
+  });
   return out;
 }
 

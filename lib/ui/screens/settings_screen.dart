@@ -61,7 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       context: context,
       initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
     );
-    if (t != null) onPicked(t.hour * 60 + t.minute);
+    if (t != null && mounted) onPicked(t.hour * 60 + t.minute);
   }
 
   Future<void> _allowNotifications() async {
@@ -71,7 +71,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           () => ref.read(reminderSchedulerProvider).requestPermission(),
         );
     ref.invalidate(notificationsAllowedProvider);
-    if (!ok) await openAppSettings();
+    if (!ok) {
+      await ref.read(lockedProvider.notifier).runExternal(openAppSettings);
+      ref.invalidate(notificationsAllowedProvider);
+    }
     unawaited(ref.read(reminderSyncProvider).resync());
   }
 
@@ -90,12 +93,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     }
   }
 
-  Future<bool> _confirmPin() async {
-    final pin = await showPinEntry(
-      context,
-      title: 'Enter your PIN to turn the lock off',
-    );
+  Future<bool> _confirmPin({
+    String title = 'Enter your PIN to turn the lock off',
+  }) async {
+    final pin = await showPinEntry(context, title: title);
     if (pin == null) return false;
+    if (pin == _phoneLockToken) {
+      final ok = await ref
+          .read(lockedProvider.notifier)
+          .unlockWithDeviceCredential();
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not unlock with your phone lock.'),
+          ),
+        );
+      }
+      return ok;
+    }
     final r = await ref.read(lockServiceProvider).checkPin(pin);
     if (!r.ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -112,21 +127,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   Future<void> _changePin() async {
-    if (!await _confirmPinWith('Enter your current PIN')) return;
+    if (!await _confirmPin(title: 'Enter your current PIN')) return;
     if (!mounted) return;
     final pin = await showPinSetup(context);
     if (pin != null) await ref.read(lockServiceProvider).setPin(pin);
-  }
-
-  Future<bool> _confirmPinWith(String title) async {
-    final pin = await showPinEntry(context, title: title);
-    if (pin == null) return false;
-    final r = await ref.read(lockServiceProvider).checkPin(pin);
-    if (!r.ok && mounted)
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('That PIN is not right.')));
-    return r.ok;
   }
 
   Future<void> _exportCsv() async {
@@ -399,10 +403,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               icon: Icons.code_rounded,
               title: 'Source code',
               subtitle: sourceUrl,
-              onTap: () => launchUrl(
-                Uri.parse(sourceUrl),
-                mode: LaunchMode.externalApplication,
-              ),
+              onTap: () => ref
+                  .read(lockedProvider.notifier)
+                  .runExternal(
+                    () => launchUrl(
+                      Uri.parse(sourceUrl),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                  ),
             ),
             _Row(
               icon: Icons.privacy_tip_outlined,
@@ -601,6 +609,8 @@ Future<String?> showPinSetup(BuildContext context) {
   );
 }
 
+const _phoneLockToken = '__phone_lock__';
+
 /// Asks for a PIN once. Returns it, or null when cancelled.
 Future<String?> showPinEntry(BuildContext context, {required String title}) {
   return showModalBottomSheet<String>(
@@ -617,6 +627,11 @@ Future<String?> showPinEntry(BuildContext context, {required String title}) {
               Text(title, style: AppType.title, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               PinPad(onSubmit: (p) => Navigator.pop(ctx, p)),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, _phoneLockToken),
+                child: const Text('Forgot PIN? Use phone lock'),
+              ),
             ],
           ),
         ),

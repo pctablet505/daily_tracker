@@ -63,10 +63,12 @@ void main() {
       expect(NumberInput('3').adjust(1).text, '4');
     });
 
-    test('starts from zero when empty, and never goes below zero', () {
+    test('starts from zero when empty, and never goes below zero or above max', () {
       expect(const NumberInput().adjust(1).text, '1');
       expect(NumberInput('0.3').adjust(-1).text, '0');
       expect(const NumberInput().adjust(-1).text, '0');
+      expect(const NumberInput('9999999').adjust(10).text, '9999999.99');
+      expect(plainAmount(-0.0), '0');
     });
   });
 

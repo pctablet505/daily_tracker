@@ -86,14 +86,22 @@ final todayProvider = NotifierProvider<TodayNotifier, DayKey>(
 );
 
 class SettingsNotifier extends Notifier<Settings> {
+  Future<void>? _writing;
+
   @override
   Settings build() => Settings.read(ref.read(sharedPrefsProvider));
 
-  Future<void> update(Settings Function(Settings) change) async {
+  Future<void> update(Settings Function(Settings) change) {
     final next = change(state);
-    if (next == state) return;
+    if (next == state) return _writing ?? Future<void>.value();
     state = next;
-    await next.write(ref.read(sharedPrefsProvider));
+    final prefs = ref.read(sharedPrefsProvider);
+    final prev = _writing ?? Future<void>.value();
+    final run = prev.then((_) => next.write(prefs));
+    _writing = run.whenComplete(() {
+      if (identical(_writing, run)) _writing = null;
+    });
+    return run;
   }
 }
 
@@ -104,11 +112,12 @@ final settingsProvider = NotifierProvider<SettingsNotifier, Settings>(
 /// Everything stored, ready for the counting functions. Rebuilt after every write.
 final ledgerProvider = FutureProvider<Ledger>((ref) async {
   ref.watch(revisionProvider);
-  final repo = ref.watch(repositoryProvider);
-  final habits = await repo.habits();
-  final entries = await repo.entries();
-  final seen = await repo.seenDays();
-  return Ledger(habits: habits, entries: entries, seenDays: seen);
+  final snap = await ref.watch(repositoryProvider).snapshot();
+  return Ledger(
+    habits: snap.habits,
+    entries: snap.entries,
+    seenDays: snap.seenDays,
+  );
 });
 
 /// A day picked on the week strip; null follows today.

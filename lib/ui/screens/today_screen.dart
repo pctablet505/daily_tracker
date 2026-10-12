@@ -626,6 +626,7 @@ class _FinishedToggle extends StatelessWidget {
       expanded: open,
       label: 'Done, $count',
       excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: c.sunken,
         borderRadius: BorderRadius.circular(14),

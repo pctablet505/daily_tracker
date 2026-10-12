@@ -109,6 +109,7 @@ List<PlannedReminder> planReminders(
     String? habitId, {
     bool markable = false,
   }) {
+    if (minutes < 0 || minutes >= 24 * 60) return;
     final shifted = _shiftOutOfQuiet(minutes, settings);
     final target = shifted.nextDay ? day.addDays(1) : day;
     final when = DateTime(

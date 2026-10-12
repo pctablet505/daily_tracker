@@ -109,7 +109,7 @@ HabitDetail buildHabitDetail(
     change30: change,
     photos: [
       for (final e in newestFirst)
-        if (e.photoPath != null) e,
+        if (e.photoPath != null && e.state != EntryState.skipped) e,
     ],
     recentDays: dots,
   );

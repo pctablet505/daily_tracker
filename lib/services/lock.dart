@@ -130,6 +130,18 @@ class LockService {
 
   bool get hasPin => _prefs.getString(_hashKey) != null;
 
+  Duration get remainingWait {
+    final until = _prefs.getInt(_untilKey);
+    final now = _now().millisecondsSinceEpoch;
+    if (until != null && now < until) {
+      final left = Duration(milliseconds: until - now);
+      final maxWait = backoffFor(_prefs.getInt(_failKey) ?? 0);
+      if (maxWait > Duration.zero && left > maxWait) return maxWait;
+      return left;
+    }
+    return Duration.zero;
+  }
+
   Future<void> setPin(String pin) async {
     if (!RegExp(r'^\d{4,6}$').hasMatch(pin))
       throw ArgumentError.value(pin, 'pin', 'A PIN is 4 to 6 digits');
@@ -151,13 +163,12 @@ class LockService {
   }
 
   Future<PinCheck> checkPin(String pin) async {
-    final until = _prefs.getInt(_untilKey);
-    final now = _now().millisecondsSinceEpoch;
-    if (until != null && now < until) {
+    final wait = remainingWait;
+    if (wait > Duration.zero) {
       return PinCheck(
         ok: false,
         failures: _prefs.getInt(_failKey) ?? 0,
-        waitFor: Duration(milliseconds: until - now),
+        waitFor: wait,
       );
     }
     final salt = _prefs.getString(_saltKey);
@@ -168,22 +179,33 @@ class LockService {
     }
     final failures = (_prefs.getInt(_failKey) ?? 0) + 1;
     await _prefs.setInt(_failKey, failures);
-    final wait = backoffFor(failures);
-    if (wait > Duration.zero)
-      await _prefs.setInt(_untilKey, now + wait.inMilliseconds);
-    return PinCheck(ok: false, failures: failures);
+    final nextWait = backoffFor(failures);
+    if (nextWait > Duration.zero) {
+      final now = _now().millisecondsSinceEpoch;
+      await _prefs.setInt(_untilKey, now + nextWait.inMilliseconds);
+    }
+    return PinCheck(ok: false, failures: failures, waitFor: nextWait);
   }
 
   Future<bool> get biometricsAvailable => _bio.isAvailable();
 
   Future<bool> unlockWithBiometrics() async {
     if (!await _bio.isAvailable()) return false;
-    return _bio.authenticate('Unlock Daily Tracker', biometricOnly: true);
+    final ok = await _bio.authenticate(
+      'Unlock Daily Tracker',
+      biometricOnly: true,
+    );
+    if (ok) await _resetFailures();
+    return ok;
   }
 
   /// The phone's own screen lock (PIN, pattern or password): the way back in after forgetting the app PIN.
-  Future<bool> unlockWithDeviceCredential() => _bio.authenticate(
-    'Unlock Daily Tracker with your phone lock',
-    biometricOnly: false,
-  );
+  Future<bool> unlockWithDeviceCredential() async {
+    final ok = await _bio.authenticate(
+      'Unlock Daily Tracker with your phone lock',
+      biometricOnly: false,
+    );
+    if (ok) await _resetFailures();
+    return ok;
+  }
 }

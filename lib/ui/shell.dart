@@ -21,8 +21,8 @@ class AppShell extends StatelessWidget {
           ),
           child: SafeArea(
             top: false,
-            child: SizedBox(
-              height: 68,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 68),
               child: Row(
                 children: [
                   const SizedBox(width: 8),
@@ -50,6 +50,7 @@ class AppShell extends StatelessWidget {
                       button: true,
                       label: 'Add a habit',
                       excludeSemantics: true,
+                      onTap: () => context.push('/habit/new'),
                       child: Material(
                         color: c.accent,
                         borderRadius: BorderRadius.circular(18),
@@ -91,6 +92,9 @@ class _Tab extends StatelessWidget {
   final int index;
   final StatefulNavigationShell shell;
 
+  void _select() =>
+      shell.goBranch(index, initialLocation: index == shell.currentIndex);
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -101,36 +105,40 @@ class _Tab extends StatelessWidget {
         selected: selected,
         label: label,
         excludeSemantics: true,
+        onTap: _select,
         child: InkWell(
-          onTap: () => shell.goBranch(
-            index,
-            initialLocation: index == shell.currentIndex,
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 56,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: selected ? c.accentSoft : Colors.transparent,
-                  borderRadius: BorderRadius.circular(15),
+          onTap: _select,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: selected ? c.accentSoft : Colors.transparent,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 22,
+                    color: selected ? c.accentInk : c.muted,
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  size: 22,
-                  color: selected ? c.accentInk : c.muted,
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.caption.copyWith(
+                    color: selected ? c.ink : c.muted,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: AppType.caption.copyWith(
-                  color: selected ? c.ink : c.muted,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -33,6 +33,9 @@ class _PrivacyCoverState extends State<PrivacyCover>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final away = state != AppLifecycleState.resumed;
+    if (away && widget.enabled) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
     if (away != _away) setState(() => _away = away);
   }
 

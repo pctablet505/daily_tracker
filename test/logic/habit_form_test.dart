@@ -37,9 +37,12 @@ void main() {
         isNull,
         reason: 'a decimal comma is accepted',
       );
+      expect(number('0,500').goalError, isNull);
       expect(number('0').goalError, isNotNull);
       expect(number('-3').goalError, isNotNull);
       expect(number('abc').goalError, isNotNull);
+      expect(number('Infinity').goalError, isNotNull);
+      expect(number('10000000').goalError, isNotNull);
     });
 
     test('a goal is not checked when the habit is not a number habit', () {
@@ -50,6 +53,11 @@ void main() {
       expect(form().isValid, isTrue);
       expect(form(name: '').isValid, isFalse);
       expect(form().copyWith(daysMask: 0).isValid, isFalse);
+      expect(
+        form(kind: HabitKind.avoid).copyWith(daysMask: 0).isValid,
+        isTrue,
+        reason: 'stay-clear habits are always every day',
+      );
     });
   });
 
@@ -93,6 +101,13 @@ void main() {
             .goal,
         2.5,
       );
+      expect(
+        form()
+            .copyWith(logType: LogType.number, goalText: '0,500')
+            .toHabit(base)
+            .goal,
+        0.5,
+      );
     });
 
     test('a stay-clear habit that logs slips is always a tick habit with no reminder', () {
@@ -102,12 +117,13 @@ void main() {
             logType: LogType.number,
             unit: 'cups',
             goalText: '2',
+            daysMask: 0,
             reminderMinutes: () => 480,
           )
           .toHabit(base);
       expect(
-        (h.logType, h.unit, h.goal, h.reminderMinutes, h.tracksSlips),
-        (LogType.tick, null, null, null, true),
+        (h.logType, h.unit, h.goal, h.reminderMinutes, h.tracksSlips, h.daysMask),
+        (LogType.tick, null, null, null, true, Habit.everyDay),
       );
     });
 

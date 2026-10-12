@@ -57,7 +57,10 @@ class _PacksScreenState extends ConsumerState<PacksScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _preview(StarterPack pack) async {
-    final existing = ref.read(ledgerProvider).value?.habits ?? const <Habit>[];
+    final existing =
+        ref.read(ledgerProvider).value?.habits ??
+        (await ref.read(ledgerProvider.future)).habits;
+    if (!mounted) return;
     final plan = planPackApply(existing, pack);
     final go = await showModalBottomSheet<bool>(
       context: context,
@@ -232,7 +235,10 @@ class _PackSheet extends StatelessWidget {
           ),
         ),
         if (f.kind == HabitKind.avoid && !skipped)
-          Text('stay clear', style: AppType.caption.copyWith(color: c.indigo)),
+          Text(
+            f.logsSlips ? 'stay clear' : 'avoid',
+            style: AppType.caption.copyWith(color: c.indigo),
+          ),
       ],
     ),
   );

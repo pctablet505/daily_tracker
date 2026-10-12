@@ -189,6 +189,34 @@ void main() {
         expect(c.read(lockedProvider), isTrue);
       },
     );
+
+    test(
+      'a second pause transition while already in the background keeps the original pause time',
+      () async {
+        await setup(after: 60);
+        final n = c.read(lockedProvider.notifier);
+        await n.unlockWithPin('1234');
+        n.paused(); // inactive at t=0
+        now = now.add(const Duration(seconds: 40));
+        n.paused(); // hidden/paused at t=40s
+        now = now.add(const Duration(seconds: 25)); // total 65s > 60s
+        n.resumed();
+        expect(c.read(lockedProvider), isTrue);
+      },
+    );
+
+    test('nested runExternal calls keep the external grace window until both finish', () async {
+      await setup(after: 0);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      await n.runExternal(() async {
+        await n.runExternal(() async {});
+        n.paused();
+        now = now.add(const Duration(seconds: 30));
+        n.resumed();
+      });
+      expect(c.read(lockedProvider), isFalse);
+    });
   });
 
   test('turning the lock on or off at runtime is seen straight away', () async {

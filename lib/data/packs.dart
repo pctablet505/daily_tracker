@@ -194,12 +194,19 @@ StarterPack decodePack(String text) {
   final version = root['version'];
   if (version is! int)
     throw const FormatException('The pack has no version number.');
+  if (version < 1) throw const FormatException('The pack file is damaged.');
   if (version > packVersion) {
     throw const FormatException(
       'This pack was made by a newer version of the app. Update the app and try again.',
     );
   }
   const damaged = FormatException('The pack file is damaged.');
+  int? finiteInt(Object? v) {
+    if (v == null) return null;
+    if (v is! num || !v.isFinite) throw damaged;
+    return v.toInt();
+  }
+
   try {
     final name = (root['name'] as String?)?.trim() ?? '';
     final list = root['habits'] as List<Object?>? ?? const [];
@@ -212,6 +219,9 @@ StarterPack decodePack(String text) {
       final habitName = (m['name'] as String?)?.trim() ?? '';
       if (habitName.isEmpty) throw damaged;
       final goal = m['goal'];
+      if (goal is num && !goal.isFinite) throw damaged;
+      final rem = finiteInt(m['reminderMinutes']);
+      if (rem != null && (rem < 0 || rem >= 24 * 60)) throw damaged;
       final form = HabitForm(
         name: habitName,
         description: (m['description'] as String?) ?? '',
@@ -221,9 +231,9 @@ StarterPack decodePack(String text) {
         goalText: goal == null
             ? ''
             : (goal is num ? goal.toString() : goal as String),
-        daysMask: (m['daysMask'] as num?)?.toInt() ?? Habit.everyDay,
+        daysMask: finiteInt(m['daysMask']) ?? Habit.everyDay,
         dayPart: _enum(DayPart.values, m['dayPart'], DayPart.anytime),
-        reminderMinutes: (m['reminderMinutes'] as num?)?.toInt(),
+        reminderMinutes: rem,
         area: (m['area'] as String?) ?? '',
         avoidMode: _enum(AvoidMode.values, m['avoidMode'], AvoidMode.track),
       );

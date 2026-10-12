@@ -69,4 +69,15 @@ void main() {
       expect(old, isNot(contains('sharedpref')));
     });
   });
+
+  test('MainActivity is a FragmentActivity so fingerprint unlock can open its dialog', () {
+    final activity = File(
+      'android/app/src/main/kotlin/com/dailytracker/daily_tracker/MainActivity.kt',
+    ).readAsStringSync();
+    expect(
+      activity,
+      contains('import io.flutter.embedding.android.FlutterFragmentActivity'),
+    );
+    expect(activity, contains('class MainActivity: FlutterFragmentActivity()'));
+  });
 }
