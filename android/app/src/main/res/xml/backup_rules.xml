@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: Auto Backup to the user's Google account.
+     Only the database (habits and entries). Settings, the app-lock PIN and the
+     progress photos stay on the device; a backup file carries the settings. -->
+<full-backup-content>
+    <include domain="database" path="." />
+</full-backup-content>

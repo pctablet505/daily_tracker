@@ -1,14 +1,114 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'core/constants/app_constants.dart';
-import 'core/theme/app_theme.dart';
-import 'presentation/providers/theme_provider.dart';
-import 'presentation/providers/update_provider.dart';
-import 'presentation/features/update/update_dialog.dart';
-import 'presentation/features/lock/app_lock_screen.dart';
-import 'presentation/router/app_router.dart';
+
+import 'logic/habit_form.dart';
+import 'services/reminder_plan.dart';
+import 'services/reminder_sync.dart';
+import 'state/external_changes.dart';
+import 'state/lock_controller.dart';
+import 'state/providers.dart';
+import 'state/services.dart';
+import 'state/settings.dart';
+import 'state/update_prompt.dart';
+import 'ui/screens/backup_screen.dart';
+import 'ui/screens/habit_detail_screen.dart';
+import 'ui/screens/habit_edit_screen.dart';
+import 'ui/screens/habits_screen.dart';
+import 'ui/screens/lock_screen.dart';
+import 'ui/screens/onboarding_screen.dart';
+import 'ui/screens/packs_screen.dart';
+import 'ui/screens/progress_screen.dart';
+import 'ui/screens/settings_screen.dart';
+import 'ui/screens/today_screen.dart';
+import 'ui/shell.dart';
+import 'ui/sheets/update_sheet.dart';
+import 'ui/theme/theme.dart';
+import 'ui/widgets/privacy_cover.dart';
+
+final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
+GoRouter buildRouter({
+  required bool Function() onboardingDone,
+  String initialLocation = '/',
+}) {
+  return GoRouter(
+    navigatorKey: _rootKey,
+    initialLocation: initialLocation,
+    redirect: (context, state) {
+      if (!onboardingDone() && state.matchedLocation != '/onboarding')
+        return '/onboarding';
+      return null;
+    },
+    routes: [
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, shell) => AppShell(navigationShell: shell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/', builder: (_, _) => const TodayScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/progress',
+                builder: (_, _) => const ProgressScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/habits', builder: (_, _) => const HabitsScreen()),
+            ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/onboarding',
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: '/habits/packs',
+        parentNavigatorKey: _rootKey,
+        builder: (_, s) => PacksScreen(
+          openId: s.uri.queryParameters['open'],
+          import: s.uri.queryParameters['import'] == '1',
+        ),
+      ),
+      GoRoute(
+        path: '/habit/new',
+        parentNavigatorKey: _rootKey,
+        builder: (_, s) => HabitEditScreen(
+          preset: s.extra is HabitForm ? s.extra! as HabitForm : null,
+        ),
+      ),
+      GoRoute(
+        path: '/habit/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (_, s) => HabitDetailScreen(habitId: s.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/habit/:id/edit',
+        parentNavigatorKey: _rootKey,
+        builder: (_, s) => HabitEditScreen(habitId: s.pathParameters['id']),
+      ),
+      GoRoute(
+        path: '/settings',
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/backup',
+        parentNavigatorKey: _rootKey,
+        builder: (_, _) => const BackupScreen(),
+      ),
+    ],
+  );
+}
 
 class DailyTrackerApp extends ConsumerStatefulWidget {
   const DailyTrackerApp({super.key});
@@ -17,86 +117,200 @@ class DailyTrackerApp extends ConsumerStatefulWidget {
   ConsumerState<DailyTrackerApp> createState() => _DailyTrackerAppState();
 }
 
-class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp> {
-  bool? _hasSeenOnboarding;
-  bool _isLocked = false;
-  bool _isLoading = true;
-  bool _hasShownUpdateDialog = false;
-  // Router stored as a field so it isn't recreated on every rebuild, which
-  // would reset the current route back to initialLocation.
-  late final GoRouter _router;
+class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
+    with WidgetsBindingObserver {
+  late final GoRouter _router = buildRouter(
+    onboardingDone: () => ref.read(settingsProvider).onboardingDone,
+  );
+  StreamSubscription<String>? _taps;
+  Timer? _updateTimer;
+  bool _offeringUpdate = false;
+  late final UpdatePrompter _prompter = UpdatePrompter(
+    prefs: ref.read(sharedPrefsProvider),
+    now: ref.read(clockProvider),
+    check: () => ref.read(updateServiceProvider).check(),
+    isOnWifi: () => ref.read(networkProvider).isOnWifi(),
+    isOnline: () => ref.read(networkProvider).isOnline(),
+    wifiOnly: () => ref.read(settingsProvider).wifiOnlyUpdate,
+  );
+
+  void _scheduleUpdateOffer(Duration delay) {
+    _updateTimer?.cancel();
+    _updateTimer = Timer(delay, () => unawaited(_offerUpdate()));
+  }
 
   @override
   void initState() {
     super.initState();
-    _initialize();
-  }
-
-  Future<void> _initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding =
-        prefs.getBool(AppConstants.prefFirstLaunch) ?? false;
-    final appLockEnabled =
-        prefs.getBool(AppConstants.prefAppLockEnabled) ?? false;
-
-    _router = AppRouter.router(hasSeenOnboarding);
-
-    setState(() {
-      _hasSeenOnboarding = hasSeenOnboarding;
-      _isLocked = appLockEnabled;
-      _isLoading = false;
+    WidgetsBinding.instance.addObserver(this);
+    final scheduler = ref.read(reminderSchedulerProvider);
+    _taps = scheduler.taps.listen(_openPayload);
+    unawaited(
+      scheduler.launchPayload().then((p) {
+        if (p != null) _openPayload(p);
+      }),
+    );
+    unawaited(ref.read(cloudBackupProvider).restoreSession());
+    if (ref.read(lockedProvider)) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => FocusManager.instance.primaryFocus?.unfocus(),
+      );
+    }
+    // An update offer is held back while locked; offer it once the user is in.
+    ref.listenManual(lockedProvider, (was, now) {
+      if (now) {
+        _updateTimer?.cancel();
+        FocusManager.instance.primaryFocus?.unfocus();
+      } else if (was == true) {
+        if (ref.read(settingsProvider).onboardingDone) {
+          unawaited(
+            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
+          );
+          unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
+        }
+        _scheduleUpdateOffer(const Duration(seconds: 2));
+      }
+    });
+    ref.listenManual(
+      settingsProvider.select((s) => s.onboardingDone),
+      (was, now) {
+        if (was == false && now && !ref.read(lockedProvider)) {
+          unawaited(
+            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
+          );
+        }
+      },
+    );
+    ref.listenManual(todayProvider, (was, now) {
+      if (was != null && was != now) {
+        if (ref.read(settingsProvider).onboardingDone &&
+            !ref.read(lockedProvider)) {
+          unawaited(ref.read(actionsProvider).markSeen(now));
+        }
+        unawaited(ref.read(reminderSyncProvider).resync());
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onForeground();
+      _scheduleUpdateOffer(const Duration(seconds: 4));
     });
   }
 
-  void _onUnlock() {
-    setState(() => _isLocked = false);
+  @override
+  void dispose() {
+    _updateTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_taps?.cancel());
+    super.dispose();
+  }
+
+  void _openPayload(String payload) {
+    if (!ref.read(settingsProvider).onboardingDone) return;
+    final habit = parseHabitPayload(payload);
+    if (habit != null) {
+      ref.read(selectedDayProvider.notifier).select(habit.day);
+      _router.go('/');
+      unawaited(_router.push('/habit/${habit.habitId}'));
+    } else {
+      ref.read(selectedDayProvider.notifier).select(null);
+      _router.go('/');
+    }
+  }
+
+  void _onForeground() {
+    ref.read(todayProvider.notifier).refresh();
+    // A notification button may have written to the database while the app was closed.
+    ref.read(revisionProvider.notifier).bump();
+    if (ref.read(settingsProvider).onboardingDone &&
+        !ref.read(lockedProvider)) {
+      unawaited(ref.read(actionsProvider).markSeen(ref.read(todayProvider)));
+      unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
+    }
+    unawaited(ref.read(reminderSyncProvider).resync());
+  }
+
+  Future<void> _offerUpdate() async {
+    if (_offeringUpdate ||
+        !mounted ||
+        ref.read(lockedProvider) ||
+        !ref.read(settingsProvider).onboardingDone)
+      return;
+    _offeringUpdate = true;
+    try {
+      final release = await _prompter.releaseToOffer();
+      if (!mounted ||
+          ref.read(lockedProvider) ||
+          !ref.read(settingsProvider).onboardingDone)
+        return;
+      final ctx = _rootKey.currentContext;
+      if (release != null && ctx != null && ctx.mounted) {
+        await showUpdateSheet(
+          ctx,
+          release,
+          onSkip: () => _prompter.skip(release.version),
+        );
+      }
+    } catch (e) {
+      debugPrint('Offering an update failed: $e');
+    } finally {
+      _offeringUpdate = false;
+    }
+  }
+
+  /// The back button must not walk through the screens hidden behind the lock.
+  @override
+  Future<bool> didPopRoute() async => ref.read(lockedProvider);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final lock = ref.read(lockedProvider.notifier);
+    switch (state) {
+      case AppLifecycleState.paused:
+        lock.paused();
+      case AppLifecycleState.resumed:
+        lock.resumed();
+        _onForeground();
+      case AppLifecycleState.inactive ||
+          AppLifecycleState.hidden ||
+          AppLifecycleState.detached:
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading || _hasSeenOnboarding == null) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme(null),
-        home: const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
-
-    final themeState = ref.watch(themeProvider);
-    final updateAsync = ref.watch(updateCheckProvider);
-
-    if (_isLocked) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme(null),
-        darkTheme: AppTheme.darkTheme(null),
-        themeMode: themeState.themeMode,
-        home: AppLockScreen(onUnlock: _onUnlock),
-      );
-    }
-
-    // Handle update check result — show dialog once per app session
-    updateAsync.whenData((update) {
-      if (update != null && mounted && !_hasShownUpdateDialog) {
-        _hasShownUpdateDialog = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final navContext = rootNavigatorKey.currentState?.context;
-          if (navContext != null && navContext.mounted) {
-            UpdateDialog.show(navContext, update);
-          }
-        });
-      }
-    });
-
+    ref.watch(reminderSyncProvider);
+    ref.watch(externalChangesProvider);
+    final choice = ref.watch(settingsProvider.select((s) => s.theme));
+    final locked = ref.watch(lockedProvider);
+    final lockOn = ref.watch(settingsProvider.select((s) => s.lockOn));
     return MaterialApp.router(
       title: 'Daily Tracker',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(null),
-      darkTheme: AppTheme.darkTheme(null),
-      themeMode: themeState.themeMode,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: switch (choice) {
+        ThemeChoice.system => ThemeMode.system,
+        ThemeChoice.light => ThemeMode.light,
+        ThemeChoice.dark => ThemeMode.dark,
+      },
       routerConfig: _router,
+      builder: (context, child) => PrivacyCover(
+        enabled: lockOn,
+        child: Stack(
+          children: [
+            // While locked the app underneath is kept out of the accessibility tree and out of reach.
+            ExcludeFocus(
+              excluding: locked,
+              child: ExcludeSemantics(
+                excluding: locked,
+                child: IgnorePointer(ignoring: locked, child: child),
+              ),
+            ),
+            if (locked) const Positioned.fill(child: LockScreen()),
+          ],
+        ),
+      ),
     );
   }
 }

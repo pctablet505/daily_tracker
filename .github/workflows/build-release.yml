@@ -1,18 +1,38 @@
 name: Build and Release APK
 
+# Push a tag like v2.0.0 to publish a release. "Run workflow" builds an APK you can
+# download from the run, without publishing anything. Pull requests run analyze and tests.
 on:
   push:
     tags:
       - 'v*.*.*'
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build APK
+    name: Test and build APK
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
+        # The in-app updater compares the release tag with the installed version.
+        run: |
+          pub=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          if [ "$pub" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in pubspec.yaml ($pub)"
+            exit 1
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -23,35 +43,81 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.1'
+          flutter-version: '3.47.7'
           channel: 'stable'
+          cache: true
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Analyze
+        run: flutter analyze
 
-      - name: Generate checksum
+      - name: Test
+        run: flutter test
+
+      - name: Check the signing secrets exist
+        if: github.event_name != 'pull_request'
+        # A release signed with the debug key could never update the installed app,
+        # so refuse to build one rather than publish it.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          missing=0
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set (Settings > Secrets and variables > Actions). See the README."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Write the signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode --ignore-garbage > "$RUNNER_TEMP/release.keystore"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        if: github.event_name != 'pull_request'
+        env:
+          # Optional: turns on Google Drive backup (see the README).
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          flutter build apk --release \
+            --target-platform android-arm,android-arm64 \
+            --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Name the files and write the checksum
+        if: github.event_name != 'pull_request'
         run: |
           cd build/app/outputs/flutter-apk
-          sha256sum app-release.apk > app-release.sha256
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || version="dev-${GITHUB_SHA::7}"
+          mv app-release.apk "daily-tracker-$version.apk"
+          sha256sum "daily-tracker-$version.apk" > "daily-tracker-$version.apk.sha256"
+          cat "daily-tracker-$version.apk.sha256"
 
       - name: Upload APK artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/app-release.sha256
+            build/app/outputs/flutter-apk/daily-tracker-*.apk
+            build/app/outputs/flutter-apk/daily-tracker-*.apk.sha256
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/flutter-apk/app-release.sha256
+            build/app/outputs/flutter-apk/daily-tracker-*.apk
+            build/app/outputs/flutter-apk/daily-tracker-*.apk.sha256
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

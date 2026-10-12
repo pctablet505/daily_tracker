@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A ring with a check, inside the adaptive icon's 66dp safe zone (centre 54,54 of 108). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,31.5a22.5,22.5 0 1,0 0.01,0z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="5.5" />
+    <path
+        android:pathData="M44,54.5l7,7.5l13,-15"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="6.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

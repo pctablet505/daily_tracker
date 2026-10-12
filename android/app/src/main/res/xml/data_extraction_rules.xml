@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and newer. Cloud backup carries habits and entries only: never the
+     app-lock PIN (a short PIN's hash can be guessed offline), settings or photos.
+     A direct phone-to-phone transfer keeps everything, photos included. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="media" />
+    </device-transfer>
+</data-extraction-rules>

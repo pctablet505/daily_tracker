@@ -1,56 +1,50 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'core/services/dependency_injection.dart';
-import 'core/utils/app_logger.dart';
-import 'data/local/database_helper.dart';
-import 'data/repositories/task_repository.dart';
-import 'services/background/background_service.dart';
-import 'services/notification/notification_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+
 import 'app.dart';
+import 'data/database.dart';
+import 'services/lock.dart';
+import 'services/notifications.dart';
+import 'services/photo_store.dart';
+import 'state/lock_controller.dart';
+import 'state/providers.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  tz.initializeTimeZones();
-  setupDependencies();
-
-  // Service initialization should never prevent the app from launching.
-  await _safeInitialize(
-      () => NotificationService().initialize(), 'NotificationService');
-  await _safeInitialize(
-      () => BackgroundService.initialize(), 'BackgroundService');
-  await _safeInitialize(
-      () => BackgroundService.registerUpdateCheck(), 'registerUpdateCheck');
-  await _safeInitialize(
-      () => BackgroundService.registerAutoSync(), 'registerAutoSync');
-  await _safeInitialize(
-      () => BackgroundService.registerDailyReset(), 'registerDailyReset');
-
-  // Reset recurring tasks on app startup
-  await _resetRecurringTasks();
-
+  final dbDir = await getDatabasesPath();
+  final db = await openAppDatabase(
+    databaseFactory,
+    p.join(dbDir, databaseFileName),
+    removeLegacyIn: dbDir,
+  );
+  final prefs = await SharedPreferences.getInstance();
+  final support = await getApplicationSupportDirectory();
+  final scheduler = LocalNotificationsScheduler();
+  await scheduler.init();
   runApp(
-    const ProviderScope(
-      child: DailyTrackerApp(),
+    ProviderScope(
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        sharedPrefsProvider.overrideWithValue(prefs),
+        photoStoreProvider.overrideWithValue(
+          DiskPhotoStore(Directory(p.join(support.path, 'media'))),
+        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
+        lockServiceProvider.overrideWithValue(
+          LockService(
+            prefs: prefs,
+            biometrics: LocalAuthBiometrics(),
+            now: DateTime.now,
+          ),
+        ),
+      ],
+      child: const DailyTrackerApp(),
     ),
   );
-}
-
-Future<void> _safeInitialize(Future<void> Function() init, String name,
-    {Duration timeout = const Duration(seconds: 3)}) async {
-  try {
-    await init().timeout(timeout);
-  } catch (e) {
-    AppLogger.e('Failed to initialize $name', e);
-  }
-}
-
-Future<void> _resetRecurringTasks() async {
-  try {
-    final db = getIt<DatabaseHelper>();
-    final repository = TaskRepository(db);
-    await repository.resetRecurringTasksForNewDay();
-  } catch (e) {
-    AppLogger.e('Failed to reset recurring tasks', e);
-  }
 }
