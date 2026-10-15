@@ -254,22 +254,54 @@ class StayClearTile extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: InkWell(
-                onTap: onMore,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name, style: AppType.body.copyWith(fontSize: 15)),
-                      if (unchecked)
-                        Text(
-                          'Not checked',
-                          style: AppType.caption.copyWith(color: c.faint),
-                        ),
-                    ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  InkWell(
+                    onTap: onMore,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: AppType.body.copyWith(fontSize: 15),
+                          ),
+                          if (unchecked)
+                            Text(
+                              'Not checked',
+                              style: AppType.caption.copyWith(color: c.faint),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  // Under the name: two pills beside it would squeeze it out
+                  // on a small phone or at large text.
+                  if (unchecked)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10, bottom: 10),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          PillButton(
+                            label: 'I stayed clear',
+                            outlined: true,
+                            onPressed: onStayedClear,
+                            semanticLabel: 'I stayed clear: $name',
+                          ),
+                          PillButton(
+                            label: 'Slipped',
+                            outlined: true,
+                            onPressed: onSlip,
+                            semanticLabel: 'Log a slip: $name',
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
             if (row.kind == RowKind.onTrack && row.streak > 0)
@@ -283,24 +315,18 @@ class StayClearTile extends StatelessWidget {
                   ),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: unchecked
-                  ? PillButton(
-                      label: 'I stayed clear',
-                      outlined: true,
-                      onPressed: onStayedClear,
-                      semanticLabel: 'I stayed clear: $name',
-                    )
-                  : PillButton(
-                      label: slipped ? 'Undo slip' : 'Slipped',
-                      outlined: true,
-                      onPressed: onSlip,
-                      semanticLabel: slipped
-                          ? 'Undo the slip: $name'
-                          : 'Log a slip: $name',
-                    ),
-            ),
+            if (!unchecked)
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: PillButton(
+                  label: slipped ? 'Undo slip' : 'Slipped',
+                  outlined: true,
+                  onPressed: onSlip,
+                  semanticLabel: slipped
+                      ? 'Undo the slip: $name'
+                      : 'Log a slip: $name',
+                ),
+              ),
           ],
         ),
       ),

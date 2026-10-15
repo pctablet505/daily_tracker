@@ -1,4 +1,5 @@
 import 'package:daily_tracker/data/database.dart';
+import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/state/providers.dart';
 import 'package:daily_tracker/ui/screens/today_screen.dart';
@@ -10,7 +11,7 @@ import '../data/fixtures.dart';
 import 'harness.dart';
 
 /// Wednesday 7 Oct was never seen; two stay-clear habits and one tick habit.
-Future<void> _pumpUnseenWednesday(WidgetTester tester) async {
+Future<HabitRepository> _pumpUnseenWednesday(WidgetTester tester) async {
   final db = (await tester.runAsync(
     () => openAppDatabase(databaseFactoryFfiNoIsolate, inMemoryDatabasePath),
   ))!;
@@ -40,6 +41,19 @@ Future<void> _pumpUnseenWednesday(WidgetTester tester) async {
   await tester.pumpAndSettle();
   expect(find.text('Editing Wed 7 Oct'), findsOneWidget);
   expect(find.text('Not checked'), findsNWidgets(2));
+  return HabitRepository(db);
+}
+
+/// What is stored for Wednesday, by habit id.
+Future<Map<String, EntryState>> _wednesday(
+  WidgetTester tester,
+  HabitRepository repo,
+) async {
+  final snap = (await tester.runAsync(repo.snapshot))!;
+  return {
+    for (final e in snap.entries)
+      if (e.day == wed) e.habitId: e.state,
+  };
 }
 
 Future<void> _tapAndWait(WidgetTester tester, Finder target) async {
@@ -56,8 +70,8 @@ void main() {
   testWidgets(
     '"I stayed clear" answers for its own habit only, and the section header names the buttons shown',
     (tester) async {
-      await _pumpUnseenWednesday(tester);
-      expect(find.text('tap I stayed clear if it went well'), findsOneWidget);
+      final repo = await _pumpUnseenWednesday(tester);
+      expect(find.text('tap Slipped or I stayed clear'), findsOneWidget);
       expect(find.text('tap Slipped if it happened'), findsNothing);
 
       await _tapAndWait(
@@ -65,6 +79,7 @@ void main() {
         find.bySemanticsLabel('I stayed clear: Habit sugar'),
       );
       expect(find.text('Not checked'), findsOneWidget);
+      expect(await _wednesday(tester, repo), {'sugar': EntryState.done});
       expect(
         find.bySemanticsLabel('I stayed clear: Habit smoke'),
         findsOneWidget,
@@ -78,6 +93,33 @@ void main() {
       );
       expect(find.text('Not checked'), findsNothing);
       expect(find.text('tap Slipped if it happened'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a row not checked offers Slipped too, and a slip there is logged '
+    'for that habit and day',
+    (tester) async {
+      final repo = await _pumpUnseenWednesday(tester);
+      for (final name in ['Habit sugar', 'Habit smoke']) {
+        expect(find.bySemanticsLabel('I stayed clear: $name'), findsOneWidget);
+        expect(find.bySemanticsLabel('Log a slip: $name'), findsOneWidget);
+      }
+
+      await _tapAndWait(
+        tester,
+        find.bySemanticsLabel('Log a slip: Habit sugar'),
+      );
+      expect(await _wednesday(tester, repo), {'sugar': EntryState.slipped});
+      expect(
+        find.bySemanticsLabel('Undo the slip: Habit sugar'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('I stayed clear: Habit sugar'),
+        findsNothing,
+      );
+      expect(find.text('Not checked'), findsOneWidget);
     },
   );
 

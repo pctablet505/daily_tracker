@@ -227,7 +227,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Not checked'), findsOneWidget);
-    expect(find.text('Slipped'), findsNothing);
+    expect(find.text('Slipped'), findsOneWidget);
 
     await tester.runAsync(() async {
       await tester.tap(find.text('I stayed clear'));
@@ -238,13 +238,13 @@ void main() {
     expect(find.text('Slipped'), findsOneWidget);
   });
 
-  testWidgets('a row that is not checked fits at double text size', (
-    tester,
-  ) async {
+  testWidgets('a row that is not checked fits both its buttons at double '
+      'text size on a small phone', (tester) async {
     final l = Ledger(
       habits: [stayClear('scroll').copyWith(name: 'No social media scrolling')],
       entries: const [],
-      seenDays: [mon, sun],
+      // Only today seen: no streak, so the summary card has no streak chip.
+      seenDays: [sun],
     );
     final errors = await collectFrameworkErrors(() async {
       await pumpScreen(
@@ -252,7 +252,7 @@ void main() {
         const Scaffold(body: TodayScreen()),
         overrides: await baseOverrides(ledger: l),
         textScale: 2,
-        size: const Size(360, 1600),
+        size: const Size(320, 1600),
       );
       ProviderScope.containerOf(tester.element(find.byType(TodayScreen)))
           .read(selectedDayProvider.notifier)
@@ -260,6 +260,7 @@ void main() {
       await tester.pumpAndSettle();
     });
     expect(find.text('I stayed clear'), findsOneWidget);
+    expect(find.text('Slipped'), findsOneWidget);
     expect(errors, isEmpty, reason: errors.join('\n'));
   });
 

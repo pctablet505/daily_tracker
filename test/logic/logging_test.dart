@@ -162,6 +162,16 @@ void main() {
       expect(slipEntry(s, mon, e, now), isNull);
     });
 
+    test('"I stayed clear" logs that habit on track, and keeps a day already logged', () {
+      final clear = stayedClearEntry(s, mon, null, now);
+      expect(
+        (clear.habitId, clear.day, clear.state),
+        ('s', mon, EntryState.done),
+      );
+      final slipped = slipEntry(s, mon, null, now, note: 'after dinner')!;
+      expect(stayedClearEntry(s, mon, slipped, now), same(slipped));
+    });
+
     test('a slip keeps a note about what happened', () {
       expect(
         slipEntry(s, mon, null, now, note: ' after dinner ')?.note,

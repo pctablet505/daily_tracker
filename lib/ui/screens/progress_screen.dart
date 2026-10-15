@@ -163,6 +163,10 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     final summaryText = s.planned == 0
         ? (s.slips > 0
               ? '${plural(s.slips, 'slip')} logged.'
+              : s.status == DayStatus.good
+              ? 'On track, no slips.'
+              : s.notChecked > 0
+              ? 'Not checked.'
               : 'Nothing was planned.')
         : '${s.done} of ${s.planned} done${s.slips > 0 ? ', ${plural(s.slips, 'slip')}' : ', no slips'}.';
     showModalBottomSheet<void>(
@@ -350,14 +354,18 @@ class _Cell extends StatelessWidget {
     final c = context.colors;
     final style = heatStyle(c, cell.level);
     final s = cell.summary!;
-    final detail = switch (cell.level) {
-      HeatLevel.future => 'not yet',
-      HeatLevel.none => 'nothing planned',
-      _ =>
-        s.planned == 0
-            ? (s.slips > 0 ? plural(s.slips, 'slip') : 'on track')
-            : '${s.done} of ${s.planned} done',
-    };
+    // Says what the day sheet says; a blank cell may be today, still open.
+    final detail = cell.level == HeatLevel.future
+        ? 'not yet'
+        : s.planned > 0
+        ? '${s.done} of ${s.planned} done'
+        : s.slips > 0
+        ? plural(s.slips, 'slip')
+        : s.status == DayStatus.good
+        ? 'on track'
+        : s.notChecked > 0
+        ? 'not checked'
+        : 'nothing planned';
     return Semantics(
       button: cell.level != HeatLevel.future,
       label: '${isToday ? 'Today, ' : ''}${longDate(cell.day!)}, $detail',

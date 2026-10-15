@@ -24,6 +24,7 @@ void main() {
       planned: planned,
       done: done,
       slips: slips,
+      notChecked: 0,
       status: status,
     );
 

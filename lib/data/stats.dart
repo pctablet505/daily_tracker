@@ -43,6 +43,7 @@ final class DaySummary {
     required this.planned,
     required this.done,
     required this.slips,
+    required this.notChecked,
     required this.status,
   });
 
@@ -54,6 +55,10 @@ final class DaySummary {
 
   /// Slips logged on stay-clear habits.
   final int slips;
+
+  /// Stay-clear habits with no slip on a day the app did not see and that has
+  /// no entry of their own: how that day went for them is not known.
+  final int notChecked;
   final DayStatus status;
 
   double? get fraction => planned == 0 ? null : done / planned;
@@ -151,6 +156,7 @@ DaySummary summarizeDay(
   var done = 0;
   var slips = 0;
   var keptClear = 0;
+  var notChecked = 0;
   for (final h in l.habits) {
     if (!h.isActiveOn(day)) continue;
     final e = l.entryOf(h.id, day);
@@ -160,6 +166,8 @@ DaySummary summarizeDay(
         slips++;
       } else if (l.wasSeen(h.id, day)) {
         keptClear++;
+      } else {
+        notChecked++;
       }
       continue;
     }
@@ -187,6 +195,7 @@ DaySummary summarizeDay(
     planned: planned,
     done: done,
     slips: slips,
+    notChecked: notChecked,
     status: status,
   );
 }

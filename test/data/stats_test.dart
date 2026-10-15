@@ -191,6 +191,26 @@ void main() {
       expect(habitStreak(own, t, mon).best, 0);
     });
 
+    test('counts the stay-clear habits not checked: no slip, no entry of their own, an unseen day', () {
+      final l = ledger(
+        [
+          s,
+          stayClear('kept'),
+          stayClear('slipped'),
+          stayClear('skipped'),
+          stayClear('later', created: wed),
+          habit('a'),
+        ],
+        [
+          entry('kept', mon),
+          slip('slipped', mon),
+          entry('skipped', mon, EntryState.skipped),
+        ],
+      );
+      expect(summarizeDay(l, mon).notChecked, 1);
+      expect(summarizeDay(ledger([s], [], [mon]), mon).notChecked, 0);
+    });
+
     test('before the habit existed it does not make a day good', () {
       expect(
         summarizeDay(

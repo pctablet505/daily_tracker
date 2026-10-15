@@ -419,19 +419,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       );
     }
     if (v.stayClear.isNotEmpty) {
-      // A row not checked offers "I stayed clear" instead of "Slipped".
-      final unchecked = v.stayClear
-          .where((r) => r.kind == RowKind.unchecked)
-          .length;
+      // A row not checked offers "I stayed clear" as well as "Slipped".
+      final unchecked = v.stayClear.any((r) => r.kind == RowKind.unchecked);
       widgets
         ..add(
           SectionHeader(
             'Staying clear',
-            trailing: unchecked == 0
-                ? 'tap Slipped if it happened'
-                : unchecked == v.stayClear.length
-                ? 'tap I stayed clear if it went well'
-                : 'tap Slipped or I stayed clear',
+            trailing: unchecked
+                ? 'tap Slipped or I stayed clear'
+                : 'tap Slipped if it happened',
           ),
         )
         ..add(

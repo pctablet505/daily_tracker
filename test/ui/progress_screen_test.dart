@@ -76,6 +76,60 @@ void main() {
     });
   });
 
+  group('a calendar day and its sheet', () {
+    const d2 = DayKey(2026, 10, 2);
+    const d5 = DayKey(2026, 10, 5);
+    // The morning of the 5th. No habit yet on the 1st; a stay-clear habit
+    // from the 2nd, kept clear on the 2nd, never checked on the 3rd, slipped
+    // on the 4th; a tick habit from the 5th, not done yet.
+    final ledger = Ledger(
+      habits: [
+        Habit(id: 's', name: 'No sugar', kind: HabitKind.avoid, createdDay: d2),
+        Habit(id: 'a', name: 'Stretch', createdDay: d5),
+      ],
+      entries: [
+        Entry(
+          habitId: 's',
+          day: const DayKey(2026, 10, 4),
+          state: EntryState.slipped,
+          loggedAt: DateTime.utc(2026, 10, 4),
+        ),
+      ],
+      seenDays: const [DayKey(2026, 10, 1), d2, d5],
+    );
+
+    for (final (day, label, sheet) in [
+      (1, 'nothing planned', 'Nothing was planned.'),
+      (2, 'on track', 'On track, no slips.'),
+      (3, 'not checked', 'Not checked.'),
+      (4, '1 slip', '1 slip logged.'),
+      (5, '0 of 1 done', '0 of 1 done, no slips.'),
+    ]) {
+      testWidgets('October $day reads "$label" and its sheet "$sheet"', (
+        tester,
+      ) async {
+        await pumpScreen(
+          tester,
+          const Scaffold(body: ProgressScreen()),
+          overrides: await baseOverrides(
+            ledger: ledger,
+            now: DateTime(2026, 10, 5, 8),
+          ),
+          size: const Size(400, 1600),
+        );
+        final cell = find.bySemanticsLabel(RegExp('(^|, )$day October, '));
+        expect(cell, findsOneWidget);
+        expect(
+          tester.getSemantics(cell).label,
+          endsWith('$day October, $label'),
+        );
+        await tester.tap(cell);
+        await tester.pumpAndSettle();
+        expect(find.text(sheet), findsOneWidget);
+      });
+    }
+  });
+
   testWidgets('today, still open, does not pull an area bar down', (
     tester,
   ) async {
