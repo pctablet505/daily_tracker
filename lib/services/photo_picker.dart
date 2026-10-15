@@ -12,6 +12,7 @@ Future<String?> _pickWithImagePicker(PhotoSource source) async {
         ? ImageSource.camera
         : ImageSource.gallery,
     maxWidth: 2048,
+    maxHeight: 2048,
     imageQuality: 85,
   );
   return file?.path;

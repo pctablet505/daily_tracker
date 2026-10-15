@@ -157,25 +157,37 @@ class CloudBackup {
         'Connect to Wi-Fi, or allow mobile data for this restore.',
       );
     final info = await _drive.info();
-    final text = await _drive.download();
+    if (info == null) return null;
+    final text = await _drive.download(file: info);
     if (text == null) return null;
-    return CloudRestore(text, _backup.preview(text), info?.modified);
+    return CloudRestore(text, _backup.preview(text), info.modified);
   }
 
   Future<void> restore(String text) => _backup.restore(text);
 
+  Future<void>? _autoRunning;
+
   /// Backs up if automatic backup is on, we are signed in, there is something
   /// to protect, and the last backup is older than [autoEvery]. Never throws.
-  Future<void> autoBackupIfDue() async {
+  Future<void> autoBackupIfDue() => _autoRunning ??= _doAutoBackup();
+
+  Future<void> _doAutoBackup() async {
     try {
       if (_restoringSession != null) await _restoringSession;
       if (!autoBackup || email == null) return;
       final last = lastBackupAt;
-      if (last != null && _now().difference(last) < autoEvery) return;
+      final now = _now();
+      if (last != null &&
+          !now.isBefore(last) &&
+          now.difference(last) < autoEvery) {
+        return;
+      }
       if ((await _backup.repo.habits()).isEmpty) return;
       await backupNow(automatic: true);
     } catch (e) {
       debugPrint('Automatic backup skipped: $e');
+    } finally {
+      _autoRunning = null;
     }
   }
 }

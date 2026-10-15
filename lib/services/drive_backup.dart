@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -102,7 +103,11 @@ final class GoogleDriveAuth implements DriveAuth {
 
   @override
   Future<Map<String, String>> headers() async {
-    final account = _account;
+    var account = _account;
+    if (account == null) {
+      await restoreSession();
+      account = _account;
+    }
     if (account == null)
       throw const DriveException('Sign in to Google first.', needsSignIn: true);
     try {
@@ -159,7 +164,7 @@ class DriveBackup {
       if (body is String) req.bodyBytes = utf8.encode(body);
       final res = await http.Response.fromStream(
         await _http.send(req).timeout(_timeout),
-      );
+      ).timeout(_timeout);
       if (res.statusCode == 401)
         throw const DriveException(
           'Google needs you to sign in again.',
@@ -178,6 +183,8 @@ class DriveBackup {
       throw const DriveException(
         'Google Drive did not answer in time. Check your connection.',
       );
+    } on SocketException {
+      throw const DriveException('Lost the connection to Google Drive.');
     } on http.ClientException {
       throw const DriveException('Lost the connection to Google Drive.');
     }
@@ -194,23 +201,35 @@ class DriveBackup {
         'pageSize': '10',
       }),
     );
-    final files =
-        ((jsonDecode(utf8.decode(res.bodyBytes))
-                as Map<String, Object?>)['files']
-            as List<Object?>? ??
-        const []);
-    if (files.isEmpty) return null;
-    final f = files.first! as Map<String, Object?>;
-    return DriveFileInfo(
-      id: f['id']! as String,
-      modified: DateTime.parse(f['modifiedTime']! as String),
-      size: int.tryParse('${f['size']}') ?? 0,
-    );
+    try {
+      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is! Map<String, Object?>) {
+        throw const DriveException('Google Drive sent an unreadable reply.');
+      }
+      final files = (decoded['files'] as List<Object?>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .toList();
+      if (files.isEmpty) return null;
+      final f = files.firstWhere(
+        (m) => (int.tryParse('${m['size']}') ?? 0) > 0,
+        orElse: () => files.first,
+      );
+      return DriveFileInfo(
+        id: f['id']! as String,
+        modified: DateTime.parse(f['modifiedTime']! as String),
+        size: int.tryParse('${f['size']}') ?? 0,
+      );
+    } on DriveException {
+      rethrow;
+    } catch (_) {
+      throw const DriveException('Google Drive sent an unreadable reply.');
+    }
   }
 
   /// Stores [json], replacing the previous backup.
   Future<DriveFileInfo> upload(String json) async {
     var id = (await info())?.id;
+    var createdNew = false;
     if (id == null) {
       final created = await _send(
         'POST',
@@ -221,28 +240,51 @@ class DriveBackup {
         }),
         contentType: 'application/json',
       );
-      id =
-          (jsonDecode(utf8.decode(created.bodyBytes))
-                  as Map<String, Object?>)['id']!
-              as String;
+      try {
+        id =
+            (jsonDecode(utf8.decode(created.bodyBytes))
+                    as Map<String, Object?>)['id']!
+                as String;
+      } catch (_) {
+        throw const DriveException('Google Drive sent an unreadable reply.');
+      }
+      createdNew = true;
     }
-    await _send(
-      'PATCH',
-      Uri.https(_api, '/upload/drive/v3/files/$id', {'uploadType': 'media'}),
-      body: json,
-      contentType: 'application/json',
-    );
-    return (await info())!;
+    try {
+      await _send(
+        'PATCH',
+        Uri.https(_api, '/upload/drive/v3/files/$id', {'uploadType': 'media'}),
+        body: json,
+        contentType: 'application/json',
+      );
+    } catch (_) {
+      if (createdNew) {
+        try {
+          await _send('DELETE', Uri.https(_api, '/drive/v3/files/$id'));
+        } catch (_) {}
+      }
+      rethrow;
+    }
+    return (await info()) ??
+        DriveFileInfo(
+          id: id,
+          modified: DateTime.now().toUtc(),
+          size: utf8.encode(json).length,
+        );
   }
 
   /// The backup text, or null when there is none yet.
-  Future<String?> download() async {
-    final f = await info();
+  Future<String?> download({DriveFileInfo? file}) async {
+    final f = file ?? await info();
     if (f == null) return null;
     final res = await _send(
       'GET',
       Uri.https(_api, '/drive/v3/files/${f.id}', {'alt': 'media'}),
     );
-    return utf8.decode(res.bodyBytes);
+    try {
+      return utf8.decode(res.bodyBytes);
+    } on FormatException {
+      throw const FormatException('The backup file is damaged.');
+    }
   }
 }
