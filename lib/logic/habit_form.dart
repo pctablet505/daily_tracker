@@ -86,6 +86,9 @@ final class HabitForm {
     if (goalText.trim().isEmpty) return null;
     final g = goal;
     if (g == null || g <= 0) return 'Enter a number above zero';
+    if ((g * 100 - (g * 100).round()).abs() > 1e-6) {
+      return 'Use at most 2 decimal places';
+    }
     if (g > maxGoal) return 'Keep it under 10,000,000';
     return null;
   }

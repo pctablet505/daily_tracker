@@ -86,15 +86,20 @@ class CloudBackup {
   Future<void>? _restoringSession;
 
   /// Picks up a previous sign-in without asking; call once at start.
-  Future<void> restoreSession() => _restoringSession ??= _doRestoreSession();
-
-  Future<void> _doRestoreSession() async {
+  Future<void> restoreSession() async {
+    if (_restoringSession != null) return _restoringSession;
+    final future = _doRestoreSession();
+    _restoringSession = future;
     try {
-      final e = await _auth.restoreSession();
-      if (e != null) await _prefs.setString(_emailKey, e);
+      await future;
     } finally {
       _restoringSession = null;
     }
+  }
+
+  Future<void> _doRestoreSession() async {
+    final e = await _auth.restoreSession();
+    if (e != null) await _prefs.setString(_emailKey, e);
   }
 
   Future<String> signIn() async {
@@ -169,7 +174,16 @@ class CloudBackup {
 
   /// Backs up if automatic backup is on, we are signed in, there is something
   /// to protect, and the last backup is older than [autoEvery]. Never throws.
-  Future<void> autoBackupIfDue() => _autoRunning ??= _doAutoBackup();
+  Future<void> autoBackupIfDue() async {
+    if (_autoRunning != null) return _autoRunning;
+    final future = _doAutoBackup();
+    _autoRunning = future;
+    try {
+      await future;
+    } finally {
+      _autoRunning = null;
+    }
+  }
 
   Future<void> _doAutoBackup() async {
     try {
@@ -186,8 +200,6 @@ class CloudBackup {
       await backupNow(automatic: true);
     } catch (e) {
       debugPrint('Automatic backup skipped: $e');
-    } finally {
-      _autoRunning = null;
     }
   }
 }

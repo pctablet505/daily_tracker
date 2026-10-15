@@ -23,6 +23,7 @@ final class HabitDetail {
     required this.streak,
     required this.rate30,
     required this.totalDone,
+    this.totalSlips = 0,
     required this.recent,
     required this.series,
     required this.latest,
@@ -34,6 +35,7 @@ final class HabitDetail {
   final HabitStreak streak;
   final Ratio rate30;
   final int totalDone;
+  final int totalSlips;
 
   /// Newest first.
   final List<Entry> recent;
@@ -108,11 +110,13 @@ HabitDetail buildHabitDetail(
   final totalDone = h.tracksSlips
       ? habitRate(l, h, h.createdDay, anchor).done
       : all.where((e) => e.state == EntryState.done).length;
+  final totalSlips = all.where((e) => e.state == EntryState.slipped).length;
 
   return HabitDetail(
     streak: habitStreak(l, h, today),
     rate30: habitRate(l, h, windowStart, anchor),
     totalDone: totalDone,
+    totalSlips: totalSlips,
     recent: newestFirst.take(recentLimit).toList(),
     series: series,
     latest: series.isEmpty ? null : series.last.value,

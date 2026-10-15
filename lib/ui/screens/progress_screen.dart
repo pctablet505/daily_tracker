@@ -28,8 +28,6 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
       settingsProvider.select((s) => s.streakThreshold),
     );
     final ledger = ref.watch(ledgerProvider);
-    final shown = _month ?? today.monthStartPlus(0);
-    final isThisMonth = shown.year == today.year && shown.month == today.month;
     return SafeArea(
       bottom: false,
       child: ledger.when(
@@ -52,12 +50,22 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                   child: EmptyState(
                     icon: Icons.bar_chart_rounded,
                     title: 'Nothing to show yet',
-                    message: 'Once you have a habit and log a few days, your streaks and progress show up here.',
+                    message:
+                        'Once you have a habit and log a few days, your streaks and progress show up here.',
                   ),
                 ),
               ],
             );
           }
+          final currentMonth = today.monthStartPlus(0);
+          final first = l.firstDay ?? today;
+          final firstMonth = first.monthStartPlus(0) > currentMonth
+              ? currentMonth
+              : first.monthStartPlus(0);
+          var shown = _month ?? currentMonth;
+          if (shown > currentMonth) shown = currentMonth;
+          if (shown < firstMonth) shown = firstMonth;
+          final isThisMonth = shown >= currentMonth;
           final stats = progressStats(l, today, threshold: threshold);
           final to = shown.monthEnd > today ? today : shown.monthEnd;
           final attention = to < shown
@@ -66,8 +74,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           final areas = to < shown
               ? const <AreaRate>[]
               : areaRates(l, shown, to);
-          final first = l.firstDay ?? today;
-          final canGoBack = shown > first.monthStartPlus(0);
+          final canGoBack = shown > firstMonth;
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
@@ -79,7 +86,10 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     : null,
                 onNext: isThisMonth
                     ? null
-                    : () => setState(() => _month = shown.monthStartPlus(1)),
+                    : () => setState(() {
+                        final next = shown.monthStartPlus(1);
+                        _month = next >= currentMonth ? null : next;
+                      }),
               ),
               _Heatmap(
                 cells: monthGrid(
@@ -118,8 +128,9 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                     _AttentionTile(
                       item: attention[i],
                       divider: i > 0,
-                      onTap: () =>
-                          context.push('/habit/${attention[i].habit.id}'),
+                      onTap: () => context.push(
+                        '/habit/${Uri.encodeComponent(attention[i].habit.id)}',
+                      ),
                     ),
                 ]),
               ],

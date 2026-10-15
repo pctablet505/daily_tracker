@@ -51,7 +51,8 @@ class HabitDetailScreen extends ConsumerWidget {
               IconButton(
                 tooltip: 'Edit habit',
                 icon: const Icon(Icons.edit_outlined),
-                onPressed: () => context.push('/habit/${h.id}/edit'),
+                onPressed: () =>
+                    context.push('/habit/${Uri.encodeComponent(h.id)}/edit'),
               ),
             ],
           ),
@@ -76,6 +77,7 @@ class HabitDetailScreen extends ConsumerWidget {
               if (d.photos.isNotEmpty) ...[
                 SectionHeader(
                   'Photos, ${d.photos.length}',
+                  trailing: d.photos.length > 30 ? 'latest 30' : null,
                   padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
                 ),
                 _Photos(entries: d.photos.take(30).toList()),
@@ -92,10 +94,12 @@ class HabitDetailScreen extends ConsumerWidget {
                         _EntryTile(
                           habit: h,
                           entry: d.recent[i],
-                          previous: d.recent
-                              .skip(i + 1)
+                          previous: l
+                              .entriesOf(h.id)
+                              .reversed
                               .where(
                                 (e) =>
+                                    e.day < d.recent[i].day &&
                                     e.state != EntryState.skipped &&
                                     e.value != null,
                               )
@@ -139,6 +143,9 @@ class _Facts extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final ended = habit.endDay != null && habit.endDay! < habit.createdDay
+        ? habit.createdDay
+        : habit.endDay;
     final facts = <String>[
       habit.tracksSlips
           ? 'Staying clear'
@@ -148,7 +155,7 @@ class _Facts extends StatelessWidget {
       if (habit.reminderMinutes != null)
         'Reminder ${formatMinutes(habit.reminderMinutes!, use24h: use24h)}',
       if (habit.area != null) habit.area!,
-      if (habit.isArchived) 'Archived ${shortDate(habit.endDay!)}',
+      if (habit.isArchived) 'Archived ${shortDate(ended!)}',
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,10 +213,8 @@ class _Stats extends StatelessWidget {
       ('${detail.streak.best}', 'Best streak'),
       (r == null ? '–' : '${(r * 100).round()}%', 'Last 30 days'),
       (
-        habit.tracksSlips
-            ? '${detail.recent.where((e) => e.state == EntryState.slipped).length}'
-            : '${detail.totalDone}',
-        habit.tracksSlips ? 'Slips (recent)' : 'Times done',
+        habit.tracksSlips ? '${detail.totalSlips}' : '${detail.totalDone}',
+        habit.tracksSlips ? 'Slips' : 'Times done',
       ),
     ];
     final w = (MediaQuery.sizeOf(context).width - 40 - 10) / 2;
@@ -343,6 +348,10 @@ class _Trend extends StatelessWidget {
                         reservedSize: 44,
                         maxIncluded: false,
                         minIncluded: false,
+                        interval: ((maxY - minY) / 4).clamp(
+                          0.1,
+                          double.infinity,
+                        ),
                         getTitlesWidget: (v, meta) => SideTitleWidget(
                           meta: meta,
                           child: Text(
@@ -604,6 +613,9 @@ class _EntryTile extends StatelessWidget {
     final delta = v != null && previous?.value != null
         ? v - previous!.value!
         : null;
+    final roundedDelta = delta == null
+        ? 0.0
+        : double.parse(delta.abs().toStringAsFixed(2));
     final title = switch (entry.state) {
       EntryState.slipped => 'Slipped',
       EntryState.skipped => 'Skipped',
@@ -639,11 +651,11 @@ class _EntryTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (delta != null && delta != 0)
+                if (delta != null && roundedDelta > 0)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: Text(
-                      '${delta > 0 ? '+' : '−'}${formatAmount(double.parse(delta.abs().toStringAsFixed(2)))}',
+                      '${delta > 0 ? '+' : '−'}${formatAmount(roundedDelta)}',
                       style: AppType.caption.copyWith(
                         color: c.muted,
                         fontWeight: FontWeight.w700,

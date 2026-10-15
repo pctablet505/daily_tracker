@@ -64,10 +64,17 @@ class Keypad extends StatelessWidget {
                       ? Icon(
                           k.icon,
                           color: !k.primary
-                              ? c.ink
+                              ? (k.onTap != null ? c.ink : c.faint)
                               : (k.onTap != null ? c.onAccent : c.faint),
                         )
-                      : Text(k.text!, style: appText(24, 700, color: c.ink)),
+                      : Text(
+                          k.text!,
+                          style: appText(
+                            24,
+                            700,
+                            color: k.onTap != null ? c.ink : c.faint,
+                          ),
+                        ),
                 ),
               ),
             ),

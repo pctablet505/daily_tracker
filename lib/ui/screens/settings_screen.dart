@@ -70,9 +70,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         .runExternal(
           () => ref.read(reminderSchedulerProvider).requestPermission(),
         );
+    if (!mounted) return;
     ref.invalidate(notificationsAllowedProvider);
     if (!ok) {
       await ref.read(lockedProvider.notifier).runExternal(openAppSettings);
+      if (!mounted) return;
       ref.invalidate(notificationsAllowedProvider);
     }
     unawaited(ref.read(reminderSyncProvider).resync());
@@ -82,12 +84,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     final lock = ref.read(lockServiceProvider);
     if (on) {
       final pin = await showPinSetup(context);
-      if (pin == null) return;
+      if (pin == null || !mounted) return;
       await lock.setPin(pin);
+      if (!mounted) return;
       await _set((s) => s.copyWith(lockOn: true));
     } else {
       final ok = await _confirmPin();
-      if (!ok) return;
+      if (!ok || !mounted) return;
       await _set((s) => s.copyWith(lockOn: false));
       await lock.clearPin();
     }
@@ -97,7 +100,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     String title = 'Enter your PIN to turn the lock off',
   }) async {
     final pin = await showPinEntry(context, title: title);
-    if (pin == null) return false;
+    if (pin == null || !mounted) return false;
     if (pin == _phoneLockToken) {
       final ok = await ref
           .read(lockedProvider.notifier)
@@ -130,12 +133,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     if (!await _confirmPin(title: 'Enter your current PIN')) return;
     if (!mounted) return;
     final pin = await showPinSetup(context);
-    if (pin != null) await ref.read(lockServiceProvider).setPin(pin);
+    if (pin != null && mounted) {
+      await ref.read(lockServiceProvider).setPin(pin);
+    }
   }
 
   Future<void> _exportCsv() async {
     try {
       final f = await ref.read(backupServiceProvider).exportCsv();
+      if (!mounted) return;
       await ref
           .read(lockedProvider.notifier)
           .runExternal(
@@ -355,7 +361,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       ],
                     ),
                   );
-                  if (v != null)
+                  if (v != null && mounted)
                     await _set((x) => x.copyWith(lockAfterSeconds: v));
                 },
               ),

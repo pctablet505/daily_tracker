@@ -93,7 +93,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                 final active = l.habits.where((h) => !h.isArchived).toList();
                 final archived = l.habits.where((h) => h.isArchived).toList()
                   ..sort((a, b) => b.endDay!.compareTo(a.endDay!));
-                if (_archived) return _archivedList(archived, use24h);
+                if (_archived) return _archivedList(archived, active, use24h);
                 return _activeList(active, use24h, c);
               },
             ),
@@ -162,7 +162,11 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                   ),
                   for (final a in areas)
                     FilterChip(
-                      label: Text(a),
+                      label: Text(
+                        a,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       selected: selectedArea == a,
                       onSelected: (_) =>
                           setState(() => _area = selectedArea == a ? null : a),
@@ -174,7 +178,8 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
             EmptyState(
               icon: Icons.spa_outlined,
               title: 'No habits yet',
-              message: 'Pick a starter pack above, or add your own with the + button.',
+              message:
+                  'Pick a starter pack above, or add your own with the + button.',
               action: FilledButton(
                 onPressed: () => context.push('/habit/new'),
                 child: const Text('Add a habit'),
@@ -187,7 +192,9 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
         if (selectedArea != null) return;
         final ids = [for (final h in shown) h.id];
         ids.insert(to, ids.removeAt(from));
-        ref.read(actionsProvider).reorder(ids, ids);
+        ref
+            .read(actionsProvider)
+            .reorder(ids, [for (final h in active) h.id]);
       },
       itemBuilder: (context, i) {
         final h = shown[i];
@@ -197,7 +204,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
           child: SurfaceCard(
             radius: 16,
             child: InkWell(
-              onTap: () => context.push('/habit/${h.id}'),
+              onTap: () => context.push('/habit/${Uri.encodeComponent(h.id)}'),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 64),
                 child: Row(
@@ -252,13 +259,18 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     );
   }
 
-  Widget _archivedList(List<Habit> archived, bool use24h) {
+  Widget _archivedList(
+    List<Habit> archived,
+    List<Habit> active,
+    bool use24h,
+  ) {
     final c = context.colors;
     if (archived.isEmpty) {
       return const EmptyState(
         icon: Icons.inventory_2_outlined,
         title: 'Nothing archived',
-        message: 'Archive a habit you are done with. Its history stays, and it leaves your lists.',
+        message:
+            'Archive a habit you are done with. Its history stays, and it leaves your lists.',
       );
     }
     return ListView(
@@ -273,7 +285,8 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   InkWell(
-                    onTap: () => context.push('/habit/${h.id}'),
+                    onTap: () =>
+                        context.push('/habit/${Uri.encodeComponent(h.id)}'),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                       child: Column(
@@ -281,7 +294,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                         children: [
                           Text(h.name, style: AppType.body),
                           Text(
-                            'Ended ${shortDate(h.endDay!)}',
+                            'Ended ${shortDate(h.endDay! < h.createdDay ? h.createdDay : h.endDay!)}',
                             style: AppType.caption.copyWith(color: c.faint),
                           ),
                         ],
@@ -297,6 +310,22 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                             if (!_restarting.add(h.id)) return;
                             final messenger = ScaffoldMessenger.of(context);
                             try {
+                              final alreadyActive = active.any(
+                                (x) =>
+                                    x.name.trim().toLowerCase() ==
+                                    h.name.trim().toLowerCase(),
+                              );
+                              if (alreadyActive) {
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'You already have an active ${h.name}.',
+                                    ),
+                                  ),
+                                );
+                                if (mounted) setState(() => _archived = false);
+                                return;
+                              }
                               final fresh = await ref
                                   .read(actionsProvider)
                                   .startAgain(h, ref.read(todayProvider));
@@ -308,6 +337,15 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                                 ),
                               );
                               if (mounted) setState(() => _archived = false);
+                            } catch (e) {
+                              debugPrint('Restarting habit failed: $e');
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'That did not save. Try again.',
+                                  ),
+                                ),
+                              );
                             } finally {
                               _restarting.remove(h.id);
                             }

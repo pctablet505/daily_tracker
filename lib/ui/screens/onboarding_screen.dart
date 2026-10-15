@@ -8,6 +8,7 @@ import '../../data/models.dart';
 import '../../data/packs.dart';
 import '../../logic/habit_form.dart';
 import '../../services/reminder_sync.dart';
+import '../../state/lock_controller.dart';
 import '../../state/providers.dart';
 import '../format.dart';
 import '../theme/tokens.dart';
@@ -29,23 +30,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      if (allowNotifications)
-        await ref.read(reminderSchedulerProvider).requestPermission();
+      if (allowNotifications) {
+        await ref
+            .read(lockedProvider.notifier)
+            .runExternal(
+              () => ref.read(reminderSchedulerProvider).requestPermission(),
+            );
+      }
+      if (!mounted) return;
       final today = ref.read(todayProvider);
       final actions = ref.read(actionsProvider);
+      final existing =
+          ref.read(ledgerProvider).value?.habits ??
+          (await ref.read(ledgerProvider.future)).habits;
+      if (!mounted) return;
+      final existingNames = {
+        for (final h in existing)
+          if (!h.isArchived) h.name.trim().toLowerCase(),
+      };
       for (final f in [...onboardingDo, ...onboardingAvoid]) {
-        if (_picked.contains(f.name)) {
+        if (_picked.contains(f.name) &&
+            existingNames.add(f.name.trim().toLowerCase())) {
           await actions.addHabit(
             f.toHabit(Habit(id: '', name: 'x', createdDay: today)),
             today: today,
           );
+          if (!mounted) return;
         }
       }
       await ref
           .read(settingsProvider.notifier)
           .update((s) => s.copyWith(onboardingDone: true));
+      if (!mounted) return;
       unawaited(ref.read(reminderSyncProvider).resync());
-      if (mounted) context.go('/');
+      context.go('/');
     } catch (e) {
       debugPrint('Finishing the first-run screen failed: $e');
       if (mounted) {
@@ -58,10 +76,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Future<void> _skip() async {
-    await ref
-        .read(settingsProvider.notifier)
-        .update((s) => s.copyWith(onboardingDone: true));
-    if (mounted) context.go('/');
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(settingsProvider.notifier)
+          .update((s) => s.copyWith(onboardingDone: true));
+      if (mounted) context.go('/');
+    } catch (e) {
+      debugPrint('Skipping onboarding failed: $e');
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
+    }
   }
 
   @override

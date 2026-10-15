@@ -25,6 +25,8 @@ class PacksScreen extends ConsumerStatefulWidget {
 }
 
 class _PacksScreenState extends ConsumerState<PacksScreen> {
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,11 +42,29 @@ class _PacksScreenState extends ConsumerState<PacksScreen> {
   }
 
   Future<void> _import() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    String? text;
     try {
-      final text = await ref
+      text = await ref
           .read(lockedProvider.notifier)
           .runExternal(() => ref.read(fileServiceProvider).pickAndReadText());
-      if (text == null || !mounted) return;
+    } on FormatException catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        _say(e.message);
+      }
+      return;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        _say('Could not read that file.');
+      }
+      return;
+    }
+    if (mounted) setState(() => _busy = false);
+    if (text == null || !mounted) return;
+    try {
       await _preview(decodePack(text));
     } on FormatException catch (e) {
       if (mounted) _say(e.message);
@@ -57,39 +77,49 @@ class _PacksScreenState extends ConsumerState<PacksScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _preview(StarterPack pack) async {
-    final existing =
-        ref.read(ledgerProvider).value?.habits ??
-        (await ref.read(ledgerProvider.future)).habits;
-    if (!mounted) return;
-    final plan = planPackApply(existing, pack);
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (ctx) => _PackSheet(pack: pack, plan: plan),
-    );
-    if (go != true || !mounted) return;
-    final actions = ref.read(actionsProvider);
-    final today = ref.read(todayProvider);
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
-      for (final f in plan.toAdd) {
-        await actions.addHabit(
-          f.toHabit(Habit(id: '', name: 'x', createdDay: today)),
-          today: today,
-        );
+      final existing =
+          ref.read(ledgerProvider).value?.habits ??
+          (await ref.read(ledgerProvider.future)).habits;
+      if (!mounted) return;
+      final plan = planPackApply(existing, pack);
+      final go = await showModalBottomSheet<bool>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (ctx) => _PackSheet(pack: pack, plan: plan),
+      );
+      if (go != true || !mounted) return;
+      final actions = ref.read(actionsProvider);
+      final today = ref.read(todayProvider);
+      try {
+        for (final f in plan.toAdd) {
+          await actions.addHabit(
+            f.toHabit(Habit(id: '', name: 'x', createdDay: today)),
+            today: today,
+          );
+        }
+      } catch (_) {
+        if (mounted)
+          _say('Could not add all of them. Check Habits and try again.');
+        return;
       }
-    } catch (_) {
-      if (mounted)
-        _say('Could not add all of them. Check Habits and try again.');
-      return;
+      if (!mounted) return;
+      final skipped = plan.skipped.length;
+      _say(
+        'Added ${plural(plan.toAdd.length, 'habit')}${skipped > 0 ? '. Skipped $skipped you already have.' : '.'}',
+      );
+      if (Navigator.canPop(context)) {
+        context.pop();
+      } else {
+        context.go('/habits');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    if (!mounted) return;
-    final skipped = plan.skipped.length;
-    _say(
-      'Added ${plural(plan.toAdd.length, 'habit')}${skipped > 0 ? '. Skipped $skipped you already have.' : '.'}',
-    );
-    context.go('/habits');
   }
 
   @override

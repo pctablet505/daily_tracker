@@ -13,7 +13,8 @@ val keyProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-fun signingValue(prop: String, env: String): String? = keyProps.getProperty(prop) ?: System.getenv(env)
+fun signingValue(prop: String, env: String): String? =
+    (keyProps.getProperty(prop) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
 
 val releaseStoreFile = signingValue("storeFile", "KEYSTORE_FILE")
 
@@ -42,7 +43,7 @@ android {
     signingConfigs {
         if (releaseStoreFile != null) {
             create("release") {
-                storeFile = file(releaseStoreFile)
+                storeFile = rootProject.file(releaseStoreFile)
                 storePassword = signingValue("storePassword", "KEYSTORE_PASSWORD")
                 keyAlias = signingValue("keyAlias", "KEY_ALIAS")
                 keyPassword = signingValue("keyPassword", "KEY_PASSWORD")
