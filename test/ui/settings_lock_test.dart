@@ -62,6 +62,53 @@ void main() {
     },
   );
 
+  group('the sheet that sets a PIN', () {
+    Future<void> pumpOff(
+      WidgetTester tester, {
+      required bool fingerprintOn,
+      required bool credentialOnly,
+    }) async {
+      final o = await baseOverrides(
+        ledger: sampleLedger(),
+        prefs: {'lockOn': false, 'lockBiometric': fingerprintOn},
+      );
+      await pumpScreen(
+        tester,
+        const SettingsScreen(),
+        overrides: [
+          ...o,
+          phoneLockCredentialOnlyProvider.overrideWith(
+            (ref) async => credentialOnly,
+          ),
+        ],
+      );
+    }
+
+    testWidgets('says the phone lock opens the app where it is offered', (
+      tester,
+    ) async {
+      await pumpOff(tester, fingerprintOn: true, credentialOnly: false);
+      await open(tester, 'App lock');
+      expect(
+        find.text(
+          '4 to 6 digits. If you forget it, your phone lock can unlock the app.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('does not promise it where it is not offered', (tester) async {
+      await pumpOff(tester, fingerprintOn: false, credentialOnly: false);
+      await open(tester, 'App lock');
+      expect(
+        find.text(
+          '4 to 6 digits. If you forget it, the only way back is clearing the app\'s data.',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('the PIN sheet in Settings', () {
     testWidgets(
       'hides "Use phone lock" with fingerprint unlock off where the phone lock prompt also takes a fingerprint',

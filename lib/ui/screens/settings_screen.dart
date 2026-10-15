@@ -732,10 +732,14 @@ class _PinSetupState extends State<_PinSetup> {
                 style: AppType.title,
               ),
               const SizedBox(height: 4),
-              Text(
-                '4 to 6 digits. If you forget it, your phone lock can unlock the app.',
-                textAlign: TextAlign.center,
-                style: AppType.small.copyWith(color: c.muted),
+              Consumer(
+                builder: (_, ref, _) => Text(
+                  ref.watch(phoneLockAllowedProvider).value ?? false
+                      ? '4 to 6 digits. If you forget it, your phone lock can unlock the app.'
+                      : '4 to 6 digits. If you forget it, the only way back is clearing the app\'s data.',
+                  textAlign: TextAlign.center,
+                  style: AppType.small.copyWith(color: c.muted),
+                ),
               ),
               const SizedBox(height: 12),
               PinPad(

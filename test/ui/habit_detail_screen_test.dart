@@ -28,6 +28,25 @@ void main() {
     expect(find.text('Habit run'), findsOneWidget);
   });
 
+  testWidgets('a stay-clear day answered "I stayed clear" is listed as such', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      const HabitDetailScreen(habitId: 'sugar'),
+      overrides: await baseOverrides(
+        ledger: Ledger(
+          habits: [stayClear('sugar')],
+          entries: [entry('sugar', tue)],
+          seenDays: [sat, sun],
+        ),
+      ),
+      size: const Size(360, 2000),
+    );
+    expect(find.text('Stayed clear'), findsOneWidget);
+    expect(find.text('Done'), findsNothing);
+  });
+
   testWidgets('an archived habit names its last day, not the archive day', (
     tester,
   ) async {

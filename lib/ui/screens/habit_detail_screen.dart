@@ -649,7 +649,12 @@ class _EntryTile extends StatelessWidget {
       _ =>
         v != null
             ? formatAmountUnit(v, habit.unit)
-            : (entry.note ?? (entry.photoPath != null ? 'Photo' : 'Done')),
+            : (entry.note ??
+                  (entry.photoPath != null
+                      ? 'Photo'
+                      : habit.tracksSlips
+                      ? 'Stayed clear'
+                      : 'Done')),
     };
     return DecoratedBox(
       decoration: BoxDecoration(
