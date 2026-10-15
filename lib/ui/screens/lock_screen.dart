@@ -130,16 +130,18 @@ class LockScreen extends ConsumerStatefulWidget {
   ConsumerState<LockScreen> createState() => _LockScreenState();
 }
 
-class _LockScreenState extends ConsumerState<LockScreen> {
+class _LockScreenState extends ConsumerState<LockScreen>
+    with WidgetsBindingObserver {
   final _pad = GlobalKey<PinPadState>();
   String? _error;
   Timer? _tick;
   Duration _wait = Duration.zero;
-  bool _bio = false;
+  bool _bioAvailable = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_init());
   }
 
@@ -152,16 +154,34 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     }
     final available = await lock.biometricsAvailable;
     if (!mounted) return;
-    setState(
-      () => _bio = available && ref.read(settingsProvider).lockBiometric,
-    );
-    if (_bio) unawaited(_biometric());
+    setState(() => _bioAvailable = available);
+    if (available && ref.read(settingsProvider).lockBiometric) {
+      unawaited(_biometric());
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      final wait = ref.read(lockServiceProvider).remainingWait;
+      if (wait > Duration.zero) {
+        setState(() => _error = 'Too many tries. Wait ${_format(wait)}.');
+        _countdown(wait);
+      } else if (_wait > Duration.zero) {
+        _tick?.cancel();
+        setState(() {
+          _wait = Duration.zero;
+          _error = null;
+        });
+      }
+    }
   }
 
   Future<void> _biometric() async {
@@ -172,16 +192,21 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     _tick?.cancel();
     setState(() => _wait = wait);
     _tick = Timer.periodic(const Duration(seconds: 1), (t) {
-      final left = _wait - const Duration(seconds: 1);
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final current = ref.read(lockServiceProvider).remainingWait;
+      final left = current > Duration.zero
+          ? current
+          : _wait - const Duration(seconds: 1);
       if (left <= Duration.zero) {
         t.cancel();
-        if (mounted) {
-          setState(() {
-            _wait = Duration.zero;
-            _error = null;
-          });
-        }
-      } else if (mounted) {
+        setState(() {
+          _wait = Duration.zero;
+          _error = null;
+        });
+      } else {
         setState(() {
           _wait = left;
           _error = 'Too many tries. Wait ${_format(left)}.';
@@ -191,8 +216,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   String _format(Duration d) {
-    if (d.inMinutes >= 1) return '${d.inMinutes} min ${d.inSeconds % 60} s';
-    return '${d.inSeconds} s';
+    final totalSeconds = (d.inMilliseconds / 1000).ceil().clamp(1, 360000);
+    if (totalSeconds >= 60) {
+      return '${totalSeconds ~/ 60} min ${totalSeconds % 60} s';
+    }
+    return '$totalSeconds s';
   }
 
   Future<void> _submit(String pin) async {
@@ -210,6 +238,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final showBio =
+        _bioAvailable &&
+        ref.watch(settingsProvider.select((s) => s.lockBiometric));
     return Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
@@ -259,7 +290,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                     alignment: WrapAlignment.center,
                     spacing: 8,
                     children: [
-                      if (_bio)
+                      if (showBio)
                         TextButton.icon(
                           onPressed: _biometric,
                           icon: const Icon(Icons.fingerprint_rounded),

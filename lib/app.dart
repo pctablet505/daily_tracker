@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -28,14 +29,16 @@ import 'ui/sheets/update_sheet.dart';
 import 'ui/theme/theme.dart';
 import 'ui/widgets/privacy_cover.dart';
 
-final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+const _platformChannel = MethodChannel('daily_tracker/platform');
 
 GoRouter buildRouter({
   required bool Function() onboardingDone,
   String initialLocation = '/',
+  GlobalKey<NavigatorState>? navigatorKey,
 }) {
+  final rootKey = navigatorKey ?? GlobalKey<NavigatorState>(debugLabel: 'root');
   return GoRouter(
-    navigatorKey: _rootKey,
+    navigatorKey: rootKey,
     initialLocation: initialLocation,
     redirect: (context, state) {
       if (!onboardingDone() && state.matchedLocation != '/onboarding')
@@ -68,12 +71,12 @@ GoRouter buildRouter({
       ),
       GoRoute(
         path: '/onboarding',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, _) => const OnboardingScreen(),
       ),
       GoRoute(
         path: '/habits/packs',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, s) => PacksScreen(
           openId: s.uri.queryParameters['open'],
           import: s.uri.queryParameters['import'] == '1',
@@ -81,29 +84,29 @@ GoRouter buildRouter({
       ),
       GoRoute(
         path: '/habit/new',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, s) => HabitEditScreen(
           preset: s.extra is HabitForm ? s.extra! as HabitForm : null,
         ),
       ),
       GoRoute(
         path: '/habit/:id',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, s) => HabitDetailScreen(habitId: s.pathParameters['id']!),
       ),
       GoRoute(
         path: '/habit/:id/edit',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, s) => HabitEditScreen(habitId: s.pathParameters['id']),
       ),
       GoRoute(
         path: '/settings',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, _) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/settings/backup',
-        parentNavigatorKey: _rootKey,
+        parentNavigatorKey: rootKey,
         builder: (_, _) => const BackupScreen(),
       ),
     ],
@@ -119,12 +122,16 @@ class DailyTrackerApp extends ConsumerStatefulWidget {
 
 class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     with WidgetsBindingObserver {
+  final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
   late final GoRouter _router = buildRouter(
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
+    navigatorKey: _rootKey,
   );
   StreamSubscription<String>? _taps;
   Timer? _updateTimer;
   bool _offeringUpdate = false;
+  bool _inForeground = true;
+  String? _pendingPayload;
   late final UpdatePrompter _prompter = UpdatePrompter(
     prefs: ref.read(sharedPrefsProvider),
     now: ref.read(clockProvider),
@@ -139,6 +146,16 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     _updateTimer = Timer(delay, () => unawaited(_offerUpdate()));
   }
 
+  Future<void> _syncSecureWindow(bool secure) async {
+    try {
+      await _platformChannel.invokeMethod<void>('setSecure', {
+        'secure': secure,
+      });
+    } catch (_) {
+      // Ignored in tests or on platforms without the channel.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -147,15 +164,20 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     _taps = scheduler.taps.listen(_openPayload);
     unawaited(
       scheduler.launchPayload().then((p) {
-        if (p != null) _openPayload(p);
+        if (mounted && p != null) _openPayload(p);
       }),
     );
     unawaited(ref.read(cloudBackupProvider).restoreSession());
+    unawaited(_syncSecureWindow(ref.read(settingsProvider).lockOn));
     if (ref.read(lockedProvider)) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => FocusManager.instance.primaryFocus?.unfocus(),
       );
     }
+    ref.listenManual(
+      settingsProvider.select((s) => s.lockOn),
+      (_, now) => unawaited(_syncSecureWindow(now)),
+    );
     // An update offer is held back while locked; offer it once the user is in.
     ref.listenManual(lockedProvider, (was, now) {
       if (now) {
@@ -163,18 +185,23 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
         FocusManager.instance.primaryFocus?.unfocus();
       } else if (was == true) {
         if (ref.read(settingsProvider).onboardingDone) {
-          unawaited(
-            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
-          );
+          if (_inForeground) {
+            unawaited(
+              ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
+            );
+          }
           unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
         }
-        _scheduleUpdateOffer(const Duration(seconds: 2));
+        final pending = _pendingPayload;
+        _pendingPayload = null;
+        if (pending != null) _openPayload(pending);
+        if (_inForeground) _scheduleUpdateOffer(const Duration(seconds: 2));
       }
     });
     ref.listenManual(
       settingsProvider.select((s) => s.onboardingDone),
       (was, now) {
-        if (was == false && now && !ref.read(lockedProvider)) {
+        if (was == false && now && _inForeground && !ref.read(lockedProvider)) {
           unawaited(
             ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
           );
@@ -183,7 +210,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     );
     ref.listenManual(todayProvider, (was, now) {
       if (was != null && was != now) {
-        if (ref.read(settingsProvider).onboardingDone &&
+        if (_inForeground &&
+            ref.read(settingsProvider).onboardingDone &&
             !ref.read(lockedProvider)) {
           unawaited(ref.read(actionsProvider).markSeen(now));
         }
@@ -191,6 +219,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _onForeground();
       _scheduleUpdateOffer(const Duration(seconds: 4));
     });
@@ -206,11 +235,18 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
 
   void _openPayload(String payload) {
     if (!ref.read(settingsProvider).onboardingDone) return;
+    if (ref.read(lockedProvider)) {
+      _pendingPayload = payload;
+      return;
+    }
     final habit = parseHabitPayload(payload);
     if (habit != null) {
-      ref.read(selectedDayProvider.notifier).select(habit.day);
+      final today = ref.read(todayProvider);
+      ref
+          .read(selectedDayProvider.notifier)
+          .select(habit.day == null || habit.day == today ? null : habit.day);
       _router.go('/');
-      unawaited(_router.push('/habit/${habit.habitId}'));
+      unawaited(_router.push('/habit/${Uri.encodeComponent(habit.habitId)}'));
     } else {
       ref.read(selectedDayProvider.notifier).select(null);
       _router.go('/');
@@ -232,18 +268,22 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
   Future<void> _offerUpdate() async {
     if (_offeringUpdate ||
         !mounted ||
+        !_inForeground ||
         ref.read(lockedProvider) ||
         !ref.read(settingsProvider).onboardingDone)
       return;
     _offeringUpdate = true;
     try {
-      final release = await _prompter.releaseToOffer();
+      final release = await _prompter.releaseToOffer(recordOffer: false);
       if (!mounted ||
+          !_inForeground ||
           ref.read(lockedProvider) ||
           !ref.read(settingsProvider).onboardingDone)
         return;
       final ctx = _rootKey.currentContext;
       if (release != null && ctx != null && ctx.mounted) {
+        await _prompter.markOffered(release.version);
+        if (!ctx.mounted) return;
         await showUpdateSheet(
           ctx,
           release,
@@ -259,20 +299,30 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
 
   /// The back button must not walk through the screens hidden behind the lock.
   @override
-  Future<bool> didPopRoute() async => ref.read(lockedProvider);
+  Future<bool> didPopRoute() async {
+    if (ref.read(lockedProvider)) {
+      await SystemNavigator.pop();
+      return true;
+    }
+    return false;
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final lock = ref.read(lockedProvider.notifier);
     switch (state) {
       case AppLifecycleState.paused:
+        _inForeground = false;
+        _updateTimer?.cancel();
         lock.paused();
       case AppLifecycleState.resumed:
+        _inForeground = true;
         lock.resumed();
         _onForeground();
-      case AppLifecycleState.inactive ||
-          AppLifecycleState.hidden ||
-          AppLifecycleState.detached:
+      case AppLifecycleState.hidden || AppLifecycleState.detached:
+        _inForeground = false;
+        _updateTimer?.cancel();
+      case AppLifecycleState.inactive:
         break;
     }
   }
