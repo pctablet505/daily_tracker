@@ -75,6 +75,38 @@ void main() {
       expect(p.description, '');
     });
 
+    test('a long pack description is cut to 300 characters', () {
+      final long = 'Notes from my coach. ' * 15;
+      final p = decodePack(
+        jsonEncode({
+          'format': 'daily-tracker-pack',
+          'version': 1,
+          'name': 'Coach',
+          'description': long,
+          'habits': [
+            {'name': 'Stretch'},
+          ],
+        }),
+      );
+      expect(p.description.runes.length, 300);
+      expect(p.description, '${long.substring(0, 299)}…');
+    });
+
+    test('a short pack description is kept whole', () {
+      final p = decodePack(
+        jsonEncode({
+          'format': 'daily-tracker-pack',
+          'version': 1,
+          'name': 'Coach',
+          'description': 'x' * 300,
+          'habits': [
+            {'name': 'Stretch'},
+          ],
+        }),
+      );
+      expect(p.description, 'x' * 300);
+    });
+
     group('is refused when', () {
       void refused(String why, Object? json) {
         test(

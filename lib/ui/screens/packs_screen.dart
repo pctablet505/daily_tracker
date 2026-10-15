@@ -96,15 +96,12 @@ class _PacksScreenState extends ConsumerState<PacksScreen> {
       final actions = ref.read(actionsProvider);
       final today = ref.read(todayProvider);
       try {
-        for (final f in plan.toAdd) {
-          await actions.addHabit(
+        await actions.addHabits([
+          for (final f in plan.toAdd)
             f.toHabit(Habit(id: '', name: 'x', createdDay: today)),
-            today: today,
-          );
-        }
+        ], today: today);
       } catch (_) {
-        if (mounted)
-          _say('Could not add all of them. Check Habits and try again.');
+        if (mounted) _say('Could not add them. Nothing was changed.');
         return;
       }
       if (!mounted) return;
@@ -194,20 +191,22 @@ class _PackSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(pack.name, style: AppType.title),
-            if (pack.description.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  pack.description,
-                  style: AppType.small.copyWith(color: c.muted),
-                ),
-              ),
-            const SizedBox(height: 12),
+            // A pack file can bring a long name and description: they scroll
+            // with the habits so the Add button stays on the screen.
             Flexible(
               child: ListView(
                 shrinkWrap: true,
                 children: [
+                  Text(pack.name, style: AppType.title),
+                  if (pack.description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        pack.description,
+                        style: AppType.small.copyWith(color: c.muted),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
                   for (final f in plan.toAdd) _line(c, f, false),
                   for (final name in plan.skipped)
                     _line(c, HabitForm(name: name), true),

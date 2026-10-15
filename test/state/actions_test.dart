@@ -260,6 +260,21 @@ void main() {
       },
     );
 
+    test(
+      'adding several gives each an id and stores them together, in order',
+      () async {
+        final added = await act.addHabits([
+          habit('x').copyWith(name: ' Walk '),
+          habit('y').copyWith(name: 'Read'),
+        ], today: sun);
+        expect(added.map((h) => (h.id, h.createdDay)), [
+          ('id0', sun),
+          ('id1', sun),
+        ]);
+        expect((await repo.habits()).map((h) => h.name), ['Walk', 'Read']);
+      },
+    );
+
     test('start again makes a new habit beginning today', () async {
       final h = await repo.addHabit(habit('a', created: mon, end: tue));
       final fresh = await act.startAgain(h, sun);

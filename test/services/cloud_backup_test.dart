@@ -324,6 +324,32 @@ void main() {
       );
     });
 
+    test('after a restore from Drive, the automatic backup carries on over that file', () async {
+      await cloud.setAutoBackup(true);
+      await cloud.backupNow();
+      final id = drive.files.keys.single;
+      final file = drive.files[id]!;
+      drive.files[id] = (
+        name: file.name,
+        content: file.content,
+        modified: drive.now.add(const Duration(hours: 3)),
+      );
+      expect(await cloud.otherBackupOnDrive(), isNotNull);
+
+      final f = (await cloud.fetchForRestore())!;
+      await cloud.restore(f.text);
+      await cloud.restoredFrom(f.file);
+      expect(await cloud.otherBackupOnDrive(), isNull);
+
+      now = now.add(const Duration(days: 1));
+      final uploads = drive.requests.where((r) => r.startsWith('PATCH')).length;
+      await cloud.autoBackupIfDue();
+      expect(
+        drive.requests.where((r) => r.startsWith('PATCH')).length,
+        uploads + 1,
+      );
+    });
+
     test(
       'says there is nothing to restore when nothing was ever uploaded',
       () async {
@@ -504,6 +530,37 @@ void main() {
       drive.failWith = 503;
       await cloud.autoBackupIfDue();
       expect(cloud.lastBackupAt, isNull);
+    });
+
+    test(
+      'a failed automatic backup is remembered until a backup works',
+      () async {
+        drive.failWith = 503;
+        await cloud.autoBackupIfDue();
+        expect(cloud.lastAutoBackupFailure, isNotNull);
+
+        drive.failWith = 0;
+        expect((await cloud.backupNow()).status, BackupStatus.done);
+        expect(cloud.lastAutoBackupFailure, isNull);
+      },
+    );
+
+    test(
+      'a lost session stops the automatic backup with a reason to show',
+      () async {
+        auth.signedIn = false;
+        await cloud.autoBackupIfDue();
+        expect(cloud.lastAutoBackupFailure, 'Sign in to Google first.');
+
+        await cloud.signOut();
+        expect(cloud.lastAutoBackupFailure, isNull);
+      },
+    );
+
+    test('waiting for Wi-Fi is not a failure', () async {
+      net.wifi = false;
+      await cloud.autoBackupIfDue();
+      expect(cloud.lastAutoBackupFailure, isNull);
     });
   });
 }

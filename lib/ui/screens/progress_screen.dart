@@ -50,8 +50,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                   child: EmptyState(
                     icon: Icons.bar_chart_rounded,
                     title: 'Nothing to show yet',
-                    message:
-                        'Once you have a habit and log a few days, your streaks and progress show up here.',
+                    message: 'Once you have a habit and log a few days, your streaks and progress show up here.',
                   ),
                 ),
               ],
@@ -70,7 +69,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           final to = shown.monthEnd > today ? today : shown.monthEnd;
           final attention = to < shown
               ? const <AttentionItem>[]
-              : needsAttention(l, shown, to);
+              : needsAttention(l, shown, to, today: today);
           final areas = to < shown
               ? const <AreaRate>[]
               : areaRates(l, shown, to);

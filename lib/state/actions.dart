@@ -124,24 +124,28 @@ final class HabitActions {
   // Habits
 
   /// Stores a new habit (given a fresh id) starting [today].
-  Future<Habit> addHabit(Habit draft, {required DayKey today}) {
-    final h = Habit(
-      id: _newId(),
-      name: draft.name.trim(),
-      description: draft.description,
-      kind: draft.kind,
-      logType: draft.logType,
-      unit: draft.unit,
-      goal: draft.goal,
-      daysMask: draft.daysMask,
-      dayPart: draft.dayPart,
-      reminderMinutes: draft.reminderMinutes,
-      area: draft.area,
-      avoidMode: draft.avoidMode,
-      createdDay: today,
-    );
-    return repo.addHabit(h);
-  }
+  Future<Habit> addHabit(Habit draft, {required DayKey today}) =>
+      repo.addHabit(_fresh(draft, today));
+
+  /// Stores new habits (each given a fresh id) starting [today], all or none.
+  Future<List<Habit>> addHabits(List<Habit> drafts, {required DayKey today}) =>
+      repo.addHabits([for (final d in drafts) _fresh(d, today)]);
+
+  Habit _fresh(Habit draft, DayKey today) => Habit(
+    id: _newId(),
+    name: draft.name.trim(),
+    description: draft.description,
+    kind: draft.kind,
+    logType: draft.logType,
+    unit: draft.unit,
+    goal: draft.goal,
+    daysMask: draft.daysMask,
+    dayPart: draft.dayPart,
+    reminderMinutes: draft.reminderMinutes,
+    area: draft.area,
+    avoidMode: draft.avoidMode,
+    createdDay: today,
+  );
 
   Future<void> updateHabit(Habit h) => repo.updateHabit(h);
 

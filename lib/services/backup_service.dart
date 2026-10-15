@@ -188,24 +188,32 @@ class BackupService {
   /// Whether there is a copy of what was here before a restore.
   Future<bool> hasSafetyCopy() async => (await _safetyCopies()).isNotEmpty;
 
-  /// Puts back what was on the phone before the last restore. That itself saves
-  /// a copy first, so undoing twice goes back and forth. A damaged newest copy
-  /// stops it: an older copy would quietly put back the wrong data.
-  Future<void> undoLastRestore() async {
+  /// The newest safety copy, checked. A damaged one is refused rather than
+  /// passed over: an older copy would quietly put back the wrong data. Throws
+  /// [FormatException] with a message fit to show.
+  Future<String> _lastSafetyCopy() async {
     final copies = await _safetyCopies();
     if (copies.isEmpty)
       throw const FormatException('There is nothing to undo.');
-    final String text;
     try {
-      text = await copies.first.readAsString();
+      final text = await copies.first.readAsString();
       decodeBackup(text);
+      return text;
     } on Exception {
       throw const FormatException(
         'The copy from before the last restore is damaged, so it cannot be put back. Nothing was changed.',
       );
     }
-    await restore(text);
   }
+
+  /// What [undoLastRestore] would put back, for the confirmation step. Throws
+  /// [FormatException] as [undoLastRestore] does.
+  Future<BackupPreview> lastRestorePreview() async =>
+      preview(await _lastSafetyCopy());
+
+  /// Puts back what was on the phone before the last restore. That itself saves
+  /// a copy first, so undoing twice goes back and forth.
+  Future<void> undoLastRestore() async => restore(await _lastSafetyCopy());
 
   Future<void> _saveSafetyCopy() async {
     final dir = await _safetyDir();

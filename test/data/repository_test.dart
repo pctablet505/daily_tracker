@@ -136,6 +136,41 @@ void main() {
       expect((await repo.habits()).map((h) => h.id), ['top', 'new']);
     });
 
+    test('a batch of habits goes after the ones there, in its order, as one change', () async {
+      await repo.addHabit(habit('a'));
+      changes = 0;
+      final added = await repo.addHabits([habit('b'), habit('c')]);
+      expect(added.map((h) => h.sortOrder), [1, 2]);
+      expect((await repo.habits()).map((h) => h.id), ['a', 'b', 'c']);
+      expect(changes, 1);
+    });
+
+    test('a batch that fails part way stores none of it', () async {
+      await repo.addHabit(habit('a'));
+      changes = 0;
+      await expectLater(
+        repo.addHabits([habit('b'), habit('a')]),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await repo.habits()).map((h) => h.id), ['a']);
+      expect(changes, 0);
+    });
+
+    test(
+      'a batch still goes last when the highest sort position is at the limit',
+      () async {
+        await db.insert('habits', {
+          ...habit('top').toMap(),
+          'sortOrder': 9223372036854775807,
+        });
+        await repo.addHabits([
+          habit('new', created: tue),
+          habit('newer', created: wed),
+        ]);
+        expect((await repo.habits()).map((h) => h.id), ['top', 'new', 'newer']);
+      },
+    );
+
     test('reorder renumbers by the given order and keeps any omitted habits after without colliding', () async {
       for (final id in ['a', 'b', 'c']) {
         await repo.addHabit(habit(id));

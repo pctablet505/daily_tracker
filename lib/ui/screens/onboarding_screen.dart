@@ -48,16 +48,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         for (final h in existing)
           if (!h.isArchived) h.name.trim().toLowerCase(),
       };
-      for (final f in [...onboardingDo, ...onboardingAvoid]) {
-        if (_picked.contains(f.name) &&
-            existingNames.add(f.name.trim().toLowerCase())) {
-          await actions.addHabit(
+      await actions.addHabits([
+        for (final f in [...onboardingDo, ...onboardingAvoid])
+          if (_picked.contains(f.name) &&
+              existingNames.add(f.name.trim().toLowerCase()))
             f.toHabit(Habit(id: '', name: 'x', createdDay: today)),
-            today: today,
-          );
-          if (!mounted) return;
-        }
-      }
+      ], today: today);
+      if (!mounted) return;
       await ref
           .read(settingsProvider.notifier)
           .update((s) => s.copyWith(onboardingDone: true));
@@ -101,14 +98,27 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
-                child: TextButton(
-                  onPressed: _busy ? null : _skip,
-                  child: const Text('Skip'),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Row(
+                children: [
+                  if (_step == 1)
+                    TextButton(
+                      onPressed: _busy ? null : () => setState(() => _step = 0),
+                      child: const Text('Back'),
+                    ),
+                  const Spacer(),
+                  // On the notifications step the habits are already picked:
+                  // Skip keeps them and only passes on notifications.
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : _step == 0
+                        ? _skip
+                        : () => _finish(allowNotifications: false),
+                    child: const Text('Skip'),
+                  ),
+                ],
               ),
             ),
             Expanded(

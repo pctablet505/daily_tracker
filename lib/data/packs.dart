@@ -7,6 +7,9 @@ const packFormat = 'daily-tracker-pack';
 const packVersion = 1;
 const maxPackHabits = 100;
 
+/// Longest pack description kept from a file; a longer one is cut with "…".
+const maxPackDescription = 300;
+
 /// A set of habits to add in one go. Packs are data: the ones below ship with
 /// the app, and anyone can load their own from a file.
 final class StarterPack {
@@ -247,10 +250,14 @@ StarterPack decodePack(String text) {
         throw damaged;
       habits.add(form);
     }
+    final description = (root['description'] as String?) ?? '';
+    final runes = description.runes;
     return StarterPack(
       id: 'file',
       name: name,
-      description: (root['description'] as String?) ?? '',
+      description: runes.length <= maxPackDescription
+          ? description
+          : '${String.fromCharCodes(runes.take(maxPackDescription - 1))}…',
       habits: habits,
     );
   } on TypeError {

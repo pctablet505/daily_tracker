@@ -26,11 +26,27 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   bool _busy = false;
   String? _status;
   bool _canUndo = false;
+  DriveFileInfo? _otherOnDrive;
 
   @override
   void initState() {
     super.initState();
     unawaited(_refreshUndo());
+    unawaited(_lookForOtherBackup());
+  }
+
+  /// Notes a backup on Drive that this phone did not make, which automatic
+  /// backup leaves alone. Offline or signed out, there is nothing to say.
+  Future<void> _lookForOtherBackup() async {
+    DriveFileInfo? other;
+    try {
+      if (_cloud.configured && _cloud.email != null) {
+        other = await _cloud.otherBackupOnDrive();
+      }
+    } catch (e) {
+      debugPrint('Could not look for a backup on Drive: $e');
+    }
+    if (mounted) setState(() => _otherOnDrive = other);
   }
 
   Future<void> _refreshUndo() async {
@@ -70,18 +86,24 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
-  Future<bool> _confirmReplace(BackupPreview p, String source) async {
+  /// When [p] was made, for a dialog.
+  String _madeAt(BackupPreview p) {
     final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
-    final when = p.exportedAt.millisecondsSinceEpoch == 0
+    final at = p.exportedAt.toLocal();
+    return p.exportedAt.millisecondsSinceEpoch == 0
         ? 'an unknown date'
-        : '${shortDate(DayKey.fromDate(p.exportedAt.toLocal()))}, ${formatMinutes(p.exportedAt.toLocal().hour * 60 + p.exportedAt.toLocal().minute, use24h: use24h)}';
+        : '${shortDate(DayKey.fromDate(at))}, ${formatMinutes(at.hour * 60 + at.minute, use24h: use24h)}';
+  }
+
+  Future<bool> _confirmReplace(BackupPreview p, String source) async {
+    final when = _madeAt(p);
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Replace everything on this phone?'),
         content: Text(
           'This backup from $source was made $when. It has ${plural(p.habits, 'habit')} and ${plural(p.entries, 'entry', 'entries')}.\n\n'
-          'Your current habits and history are replaced. A safety copy of them is kept on this phone, and "Undo the last restore" puts it back. Photos are not touched.',
+          'Your current habits and history, and your reminder, streak and theme settings, are replaced. A safety copy of them is kept on this phone, and "Undo the last restore" puts it back. Photos are not touched.',
         ),
         actions: [
           TextButton(
@@ -125,12 +147,16 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   });
 
   Future<void> _undoRestore() => _run(() async {
+    final service = ref.read(backupServiceProvider);
+    final p = await service.lastRestorePreview();
+    if (!mounted) return;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Undo the last restore?'),
-        content: const Text(
-          'The habits and history that were on this phone before it are put back. What is here now is replaced, and kept as a copy you can undo again. Photos are not touched.',
+        content: Text(
+          'The copy from before the last restore was made ${_madeAt(p)}. It has ${plural(p.habits, 'habit')} and ${plural(p.entries, 'entry', 'entries')}.\n\n'
+          'Those habits and history, and your reminder, streak and theme settings, are put back. What is here now is replaced, and kept as a copy you can undo again. Photos are not touched.',
         ),
         actions: [
           TextButton(
@@ -145,7 +171,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       ),
     );
     if (go != true || !mounted) return;
-    await ref.read(backupServiceProvider).undoLastRestore();
+    await service.undoLastRestore();
     _say('Put back what was here before the last restore.');
     await _refreshUndo();
   });
@@ -155,11 +181,36 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         .read(lockedProvider.notifier)
         .runExternal(_cloud.signIn);
     _say('Signed in as $email.');
+    await _lookForOtherBackup();
   });
 
   Future<void> _signOut() => _run(() async {
     await _cloud.signOut();
   });
+
+  /// Asks whether to [action] over mobile data although backups wait for Wi-Fi.
+  Future<bool> _useMobileData(String action) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Not on Wi-Fi'),
+        content: Text(
+          'Your backup is set to wait for Wi-Fi. $action over mobile data instead?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Wait for Wi-Fi'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Use mobile data'),
+          ),
+        ],
+      ),
+    );
+    return go == true;
+  }
 
   Future<void> _backupNow({bool overrideWifi = false}) async {
     if (_busy) return;
@@ -172,28 +223,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       if (!mounted) return;
       switch (r.status) {
         case BackupStatus.done:
+          setState(() => _otherOnDrive = null);
           _say('Backed up to Google Drive.');
         case BackupStatus.waitingForWifi:
-          final go = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Not on Wi-Fi'),
-              content: const Text(
-                'Your backup is set to wait for Wi-Fi. Back up now over mobile data instead?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Wait for Wi-Fi'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Use mobile data'),
-                ),
-              ],
-            ),
-          );
-          if (go == true && mounted) {
+          final go = await _useMobileData('Back up now');
+          if (go && mounted) {
             setState(() => _busy = false);
             return await _backupNow(overrideWifi: true);
           }
@@ -218,7 +252,14 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   }
 
   Future<void> _restoreDrive() => _run(() async {
-    final fetched = await _cloud.fetchForRestore();
+    CloudRestore? fetched;
+    try {
+      fetched = await _cloud.fetchForRestore();
+    } on DriveException catch (e) {
+      if (!e.needsWifi) rethrow;
+      if (!mounted || !await _useMobileData('Restore now')) return;
+      fetched = await _cloud.fetchForRestore(overrideWifiOnly: true);
+    }
     if (fetched == null) {
       _say('There is no backup on Google Drive yet.');
       return;
@@ -226,6 +267,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     if (!mounted || !await _confirmReplace(fetched.preview, 'Google Drive'))
       return;
     await _cloud.restore(fetched.text);
+    await _cloud.restoredFrom(fetched.file);
+    if (mounted) setState(() => _otherOnDrive = null);
     _say(
       'Restored ${plural(fetched.preview.habits, 'habit')} from Google Drive.',
     );
@@ -239,6 +282,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     ref.watch(settingsProvider);
     final s = ref.read(settingsProvider);
     final last = cloud.lastBackupAt;
+    final autoFailure = cloud.lastAutoBackupFailure;
     return Scaffold(
       appBar: AppBar(title: const Text('Backup and restore')),
       body: ListView(
@@ -346,13 +390,36 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       ),
                     ],
                   ),
-                  Text(
-                    last == null
-                        ? 'Not backed up yet.'
-                        : 'Last backup: ${shortDate(DayKey.fromDate(last.toLocal()))}',
-                    style: AppType.small.copyWith(color: c.muted),
-                  ),
+                  if (_otherOnDrive case final other?)
+                    Text(
+                      'A backup from ${shortDate(DayKey.fromDate(other.modified.toLocal()))} is on Drive. Automatic backup leaves it alone; Back up now replaces it.',
+                      style: AppType.small.copyWith(color: c.muted),
+                    ),
+                  if (last != null || _otherOnDrive == null)
+                    Text(
+                      last == null
+                          ? 'Not backed up yet.'
+                          : 'Last backup: ${shortDate(DayKey.fromDate(last.toLocal()))}',
+                      style: AppType.small.copyWith(color: c.muted),
+                    ),
+                  if (autoFailure != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'The last automatic backup did not work: $autoFailure',
+                        style: AppType.small.copyWith(color: c.danger),
+                      ),
+                    ),
                   const SizedBox(height: 12),
+                  // Signing in again, not out and in, keeps automatic backup on.
+                  if (cloud.sessionLost) ...[
+                    FilledButton.icon(
+                      onPressed: _busy ? null : _signIn,
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('Sign in again'),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   FilledButton.icon(
                     onPressed: _busy ? null : _backupNow,
                     icon: const Icon(Icons.cloud_upload_outlined),
@@ -365,26 +432,37 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                     label: const Text('Restore from Google Drive'),
                   ),
                   const SizedBox(height: 4),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Back up automatically', style: AppType.body),
-                    subtitle: Text(
-                      'About once a day, when you open the app.',
-                      style: AppType.small.copyWith(color: c.muted),
+                  // The card's colour would hide the switches' ink.
+                  Material(
+                    type: MaterialType.transparency,
+                    child: Column(
+                      children: [
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Back up automatically',
+                            style: AppType.body,
+                          ),
+                          subtitle: Text(
+                            'About once a day, when you open the app.',
+                            style: AppType.small.copyWith(color: c.muted),
+                          ),
+                          value: cloud.autoBackup,
+                          onChanged: (v) async {
+                            await cloud.setAutoBackup(v);
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Only on Wi-Fi', style: AppType.body),
+                          value: s.wifiOnlyBackup,
+                          onChanged: (v) => ref
+                              .read(settingsProvider.notifier)
+                              .update((x) => x.copyWith(wifiOnlyBackup: v)),
+                        ),
+                      ],
                     ),
-                    value: cloud.autoBackup,
-                    onChanged: (v) async {
-                      await cloud.setAutoBackup(v);
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Only on Wi-Fi', style: AppType.body),
-                    value: s.wifiOnlyBackup,
-                    onChanged: (v) => ref
-                        .read(settingsProvider.notifier)
-                        .update((x) => x.copyWith(wifiOnlyBackup: v)),
                   ),
                 ],
               ],

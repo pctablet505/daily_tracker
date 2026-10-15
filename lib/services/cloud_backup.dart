@@ -35,10 +35,10 @@ final class BackupOutcome {
 }
 
 final class CloudRestore {
-  const CloudRestore(this.text, this.preview, this.modified);
+  const CloudRestore(this.text, this.preview, this.file);
   final String text;
   final BackupPreview preview;
-  final DateTime? modified;
+  final DriveFileInfo file;
 }
 
 /// Backup to the app's private Google Drive folder: sign-in state, the Wi-Fi
@@ -68,6 +68,7 @@ class CloudBackup {
   static const _fileIdKey = 'cloud.fileId';
   static const _fileModifiedKey = 'cloud.fileModified';
   static const _sessionLostKey = 'cloud.sessionLost';
+  static const _autoFailureKey = 'cloud.autoFailure';
   static const autoEvery = Duration(hours: 20);
 
   @visibleForTesting
@@ -81,6 +82,10 @@ class CloudBackup {
   /// account stays shown meanwhile: a session that did not come back at start
   /// may only mean there was no network.
   bool get sessionLost => _prefs.getBool(_sessionLostKey) ?? false;
+
+  /// Why the last automatic backup did not run through, until a backup works.
+  /// Waiting for Wi-Fi or a network is not a failure.
+  String? get lastAutoBackupFailure => _prefs.getString(_autoFailureKey);
 
   DateTime? get lastBackupAt {
     final ms = _prefs.getInt(_lastKey);
@@ -133,6 +138,7 @@ class CloudBackup {
     await _prefs.remove(_autoKey);
     await _prefs.remove(_lastKey);
     await _prefs.remove(_sessionLostKey);
+    await _prefs.remove(_autoFailureKey);
   }
 
   /// Runs a Drive call, noting when Google wants the user to sign in again.
@@ -206,6 +212,7 @@ class CloudBackup {
       await _prefs.setString(_fileIdKey, f.id);
       await _prefs.setInt(_fileModifiedKey, f.modified.millisecondsSinceEpoch);
       await _prefs.remove(_sessionLostKey);
+      await _prefs.remove(_autoFailureKey);
       return const BackupOutcome(BackupStatus.done);
     } on DriveException catch (e) {
       if (e.needsSignIn) await _prefs.setBool(_sessionLostKey, true);
@@ -235,10 +242,17 @@ class CloudBackup {
     if (info == null) return null;
     final text = await _onDrive(() => _drive.download(file: info));
     if (text == null) return null;
-    return CloudRestore(text, _backup.preview(text), info.modified);
+    return CloudRestore(text, _backup.preview(text), info);
   }
 
   Future<void> restore(String text) => _backup.restore(text);
+
+  /// Takes [file] as this install's own once its backup is restored here: the
+  /// phone now holds what it holds, so automatic backup may write over it.
+  Future<void> restoredFrom(DriveFileInfo file) async {
+    await _prefs.setString(_fileIdKey, file.id);
+    await _prefs.setInt(_fileModifiedKey, file.modified.millisecondsSinceEpoch);
+  }
 
   Future<void>? _autoRunning;
 
@@ -257,6 +271,7 @@ class CloudBackup {
   }
 
   Future<void> _doAutoBackup() async {
+    String? failure;
     try {
       if (_restoringSession != null) await _restoringSession;
       await _oneAtATime(() async {
@@ -272,10 +287,18 @@ class CloudBackup {
         if (await _blocked(overrideWifiOnly: false) != null) return;
         final remote = await _onDrive(_drive.info);
         if (remote != null && !_wroteThis(remote)) return;
-        await _backupNow(overrideWifiOnly: false);
+        final r = await _backupNow(overrideWifiOnly: false);
+        if (r.status != BackupStatus.done) failure = r.message;
       });
     } catch (e) {
       debugPrint('Automatic backup skipped: $e');
+      failure = e is DriveException ? e.message : 'The backup failed.';
+    }
+    if (failure == null) return;
+    try {
+      await _prefs.setString(_autoFailureKey, failure!);
+    } catch (e) {
+      debugPrint('Could not note the failed automatic backup: $e');
     }
   }
 }

@@ -77,7 +77,7 @@ void main() {
 
       final found = await cloud.fetchForRestore();
       expect(found!.preview.habits, 1);
-      expect(found.modified, now);
+      expect(found.file.modified, now);
     },
   );
 }

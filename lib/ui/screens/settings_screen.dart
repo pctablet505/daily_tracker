@@ -34,6 +34,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   bool _checkingUpdate = false;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -141,6 +142,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   Future<void> _exportCsv() async {
+    setState(() => _exporting = true);
     try {
       final f = await ref.read(backupServiceProvider).exportCsv();
       if (!mounted) return;
@@ -161,6 +163,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not create the file.')),
         );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -270,9 +274,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             _SwitchRow(
               icon: Icons.bedtime_outlined,
               title: 'Quiet hours',
-              subtitle: s.quietHoursOn
-                  ? 'No reminders from ${t(s.quietStartMinutes)} to ${t(s.quietEndMinutes)}'
-                  : 'Hold reminders back at night.',
+              subtitle: !s.quietHoursOn
+                  ? 'Hold reminders back at night.'
+                  // The planner ignores a window that ends where it starts.
+                  : s.quietStartMinutes == s.quietEndMinutes
+                  ? 'Quiet hours are off (start and end are the same)'
+                  : 'No reminders from ${t(s.quietStartMinutes)} to ${t(s.quietEndMinutes)}',
               value: s.quietHoursOn,
               onChanged: (v) => _set((x) => x.copyWith(quietHoursOn: v)),
             ),
@@ -321,6 +328,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               subtitle: 'Ask for a PIN when the app opens.',
               value: s.lockOn,
               onChanged: _toggleLock,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(54, 0, 16, 12),
+              child: Text(
+                'If you forget the PIN and have no phone screen lock, the only way back is clearing the app\'s data.',
+                style: AppType.small.copyWith(color: c.muted),
+              ),
             ),
             if (s.lockOn) ...[
               _SwitchRow(
@@ -382,7 +396,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               icon: Icons.table_chart_outlined,
               title: 'Export entries as a spreadsheet',
               subtitle: 'A CSV file of every entry.',
-              onTap: _exportCsv,
+              trailing: _exporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : null,
+              onTap: _exporting ? null : _exportCsv,
             ),
           ]),
           const _Group('App'),

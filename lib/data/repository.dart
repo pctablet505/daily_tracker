@@ -68,17 +68,27 @@ final class HabitRepository {
   }
 
   /// Stores [habit] at the end of the list and returns it as stored.
-  Future<Habit> addHabit(Habit habit) async {
+  Future<Habit> addHabit(Habit habit) async =>
+      (await addHabits([habit])).single;
+
+  /// Stores [habits] at the end of the list, in order, all or none, and
+  /// returns them as stored.
+  Future<List<Habit>> addHabits(List<Habit> habits) async {
     final stored = await _db.transaction((txn) async {
-      final maxOrder = Sqflite.firstIntValue(
+      var last = Sqflite.firstIntValue(
         await txn.rawQuery('SELECT MAX(sortOrder) FROM habits'),
       );
-      final next = maxOrder == null || maxOrder < -1
-          ? 0
-          : (maxOrder >= 0x7fffffff ? maxOrder : maxOrder + 1);
-      final h = habit.copyWith(sortOrder: next);
-      await txn.insert('habits', h.toMap());
-      return h;
+      final out = <Habit>[];
+      for (final habit in habits) {
+        final next = last == null || last < -1
+            ? 0
+            : (last >= 0x7fffffff ? last : last + 1);
+        final h = habit.copyWith(sortOrder: next);
+        await txn.insert('habits', h.toMap());
+        out.add(h);
+        last = next;
+      }
+      return out;
     });
     _changed();
     return stored;

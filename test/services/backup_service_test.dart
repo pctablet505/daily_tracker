@@ -265,6 +265,56 @@ void main() {
     },
   );
 
+  test('the copy an undo would put back can be previewed', () async {
+    await seed();
+    final text = (await service.export()).text;
+    await repo.addHabit(habit('mine'));
+    await service.restore(text);
+
+    final p = await service.lastRestorePreview();
+    expect((p.habits, p.entries, p.exportedAt), (3, 2, now));
+    expect(
+      (await repo.habits()).length,
+      2,
+      reason: 'previewing changes nothing',
+    );
+  });
+
+  test(
+    'previewing with no safety copy says there is nothing to undo',
+    () async {
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            'There is nothing to undo.',
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'previewing a damaged safety copy says it is damaged, as undo does',
+    () async {
+      await seed();
+      await service.restore((await service.export()).text);
+      safety.listSync().whereType<File>().single.writeAsStringSync('{corrupt');
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('damaged'),
+          ),
+        ),
+      );
+    },
+  );
+
   test('a bad file is refused before anything is touched or saved', () async {
     await seed();
     await expectLater(service.restore('garbage'), throwsFormatException);
