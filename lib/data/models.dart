@@ -322,11 +322,15 @@ final class Entry {
     if (logged is String && parsedLogged == null) {
       throw FormatException('Entry with unparseable loggedAt', habitId);
     }
+    final value = _finite(m['value']);
+    if (value != null && value < 0) {
+      throw FormatException('Entry with negative value', habitId);
+    }
     return Entry(
       habitId: habitId,
       day: DayKey.parse(day),
       state: _byName(EntryState.values, m['state'], EntryState.done),
-      value: _finite(m['value']),
+      value: value,
       note: _optString(m['note']),
       photoPath: _photoName(m['photoPath']),
       loggedAt:
