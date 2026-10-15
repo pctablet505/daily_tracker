@@ -161,6 +161,46 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     }
   }
 
+  Future<void> _archiveHabit() async {
+    if (_saving || _original == null) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(actionsProvider).archive(
+            _original!,
+            ref.read(todayProvider),
+          );
+      _dirty = false;
+      _popOrHome();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteHabit() async {
+    if (_saving || _original == null) return;
+    setState(() => _saving = true);
+    try {
+      if (await confirmAndDeleteHabit(context, ref, _original!)) {
+        _dirty = false;
+        _popOrHome(deletedId: _original!.id);
+      } else if (mounted) {
+        setState(() => _saving = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
+    }
+  }
+
   Future<bool> _confirmDiscard() async {
     final discard = await showDialog<bool>(
       context: context,
@@ -559,32 +599,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                     const SizedBox(height: 28),
                     if (!_original!.isArchived) ...[
                       OutlinedButton.icon(
-                        onPressed: _saving
-                            ? null
-                            : () async {
-                                setState(() => _saving = true);
-                                try {
-                                  await ref
-                                      .read(actionsProvider)
-                                      .archive(
-                                        _original!,
-                                        ref.read(todayProvider),
-                                      );
-                                  _dirty = false;
-                                  _popOrHome();
-                                } catch (e) {
-                                  if (mounted) {
-                                    setState(() => _saving = false);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'That did not save. Try again.',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
+                        onPressed: _saving ? null : _archiveHabit,
                         icon: const Icon(Icons.inventory_2_outlined),
                         label: const Text('Archive, keep history'),
                       ),
@@ -592,34 +607,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                     ],
                     TextButton.icon(
                       style: TextButton.styleFrom(foregroundColor: c.danger),
-                      onPressed: _saving
-                          ? null
-                          : () async {
-                              setState(() => _saving = true);
-                              try {
-                                if (await confirmAndDeleteHabit(
-                                  context,
-                                  ref,
-                                  _original!,
-                                )) {
-                                  _dirty = false;
-                                  _popOrHome(deletedId: _original!.id);
-                                } else if (mounted) {
-                                  setState(() => _saving = false);
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  setState(() => _saving = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'That did not save. Try again.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
+                      onPressed: _saving ? null : _deleteHabit,
                       icon: const Icon(Icons.delete_outline_rounded),
                       label: const Text('Delete habit and history'),
                     ),
