@@ -186,11 +186,13 @@ class StreakChip extends StatelessWidget {
               color: c.amberInk,
             ),
             const SizedBox(width: 3),
-            Text(
-              label,
-              style: AppType.caption.copyWith(
-                color: c.amberInk,
-                fontWeight: FontWeight.w700,
+            Flexible(
+              child: Text(
+                label,
+                style: AppType.caption.copyWith(
+                  color: c.amberInk,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
