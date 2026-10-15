@@ -22,19 +22,48 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
   });
 
-  test('exists is true for a stored photo, false once it is gone or never was', () async {
-    final name = await store.importFile(source.path);
-    expect(store.exists(name), isTrue);
-    await store.delete(name);
-    expect(store.exists(name), isFalse);
-    expect(store.exists('never-stored.jpg'), isFalse);
-  });
+  test(
+    'exists is true for a stored photo, false once it is gone or never was',
+    () async {
+      final name = await store.importFile(source.path);
+      expect(store.exists(name), isTrue);
+      await store.delete(name);
+      expect(store.exists(name), isFalse);
+      expect(store.exists('never-stored.jpg'), isFalse);
+    },
+  );
 
-  test('exists says false, not an error, for a name that could leave the folder', () {
-    for (final bad in ['../x.jpg', '/etc/passwd', '', '.hidden', 'a/b.jpg']) {
-      expect(store.exists(bad), isFalse, reason: bad);
-    }
-  });
+  test(
+    'exists asks the disk once per name; import and delete keep it current',
+    () async {
+      final file = File(p.join(media.path, 'id0.jpg'));
+      expect(store.exists('id0.jpg'), isFalse);
+      file.createSync(recursive: true);
+      expect(
+        store.exists('id0.jpg'),
+        isFalse,
+        reason: 'the first answer is kept',
+      );
+
+      final name = await store.importFile(source.path);
+      expect(name, 'id0.jpg');
+      expect(store.exists(name), isTrue);
+      file.deleteSync();
+      expect(store.exists(name), isTrue, reason: 'the import answered it');
+
+      await store.delete(name);
+      expect(store.exists(name), isFalse);
+    },
+  );
+
+  test(
+    'exists says false, not an error, for a name that could leave the folder',
+    () {
+      for (final bad in ['../x.jpg', '/etc/passwd', '', '.hidden', 'a/b.jpg']) {
+        expect(store.exists(bad), isFalse, reason: bad);
+      }
+    },
+  );
 
   test('copies the photo into the media folder and returns its name', () async {
     final name = await store.importFile(source.path);

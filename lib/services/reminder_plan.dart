@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../core/day_key.dart';
 import '../data/models.dart';
 import '../data/stats.dart';
@@ -52,20 +54,36 @@ final class PlannedReminder {
 String habitPayload(String habitId, DayKey? day) =>
     day == null ? 'habit:$habitId' : 'habit:$habitId@$day';
 
-/// The reverse of [habitPayload]; null for any other payload ("today").
+/// The reverse of [habitPayload]; null for any other payload ("today"), and
+/// for a day that does not parse, which must not be taken for today.
 ({String habitId, DayKey? day})? parseHabitPayload(String payload) {
   if (!payload.startsWith('habit:')) return null;
   final rest = payload.substring('habit:'.length);
   final at = rest.lastIndexOf('@');
   if (at < 0) return rest.isEmpty ? null : (habitId: rest, day: null);
   final id = rest.substring(0, at);
-  return id.isEmpty
-      ? null
-      : (habitId: id, day: DayKey.tryParse(rest.substring(at + 1)));
+  final day = DayKey.tryParse(rest.substring(at + 1));
+  return id.isEmpty || day == null ? null : (habitId: id, day: day);
 }
 
 /// Android allows an app 500 pending alarms; keep well under that, soonest first.
 const maxPlannedReminders = 400;
+
+/// Planned reminders take ids below this; snoozed ones take ids from it.
+const snoozeIdBase = 1 << 30;
+
+/// The same reminder gets the same id in every plan (FNV-1a of what it is for).
+/// Ids by position would move on each re-plan, and cancelling a pending id
+/// also removes a notification with that id already in the shade.
+int _idFor(PlannedReminder r) {
+  var h = 0x811c9dc5;
+  for (final b in utf8.encode(
+    '${r.kind.name}|${r.habitId ?? ''}|${r.forDay}',
+  )) {
+    h = ((h ^ b) * 0x01000193) & 0xffffffff;
+  }
+  return 1 + h % (snoozeIdBase - 1);
+}
 
 /// A reminder time moved out of quiet hours: to the moment the window ends.
 /// Returns minutes after midnight and whether it moved to the next day.
@@ -173,8 +191,19 @@ List<PlannedReminder> planReminders(
       );
     }
   }
-  out.sort((a, b) => a.when.compareTo(b.when));
-  // Ids are the position in time order; the whole plan replaces the old one each time.
-  final kept = out.take(maxPlannedReminders).toList();
-  return [for (var i = 0; i < kept.length; i++) kept[i].withId(i + 1)];
+  out.sort((a, b) {
+    final byTime = a.when.compareTo(b.when);
+    return byTime != 0 ? byTime : a.payload.compareTo(b.payload);
+  });
+  final used = <int>{};
+  final kept = <PlannedReminder>[];
+  for (final r in out.take(maxPlannedReminders)) {
+    var id = _idFor(r);
+    // Two reminders of one plan that hash alike: the later one steps on.
+    while (!used.add(id)) {
+      id = id == snoozeIdBase - 1 ? 1 : id + 1;
+    }
+    kept.add(r.withId(id));
+  }
+  return kept;
 }

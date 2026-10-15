@@ -192,7 +192,6 @@ Future<bool> markDoneFromNotification(
 }
 
 /// A snoozed reminder gets an id in its own range so a re-plan leaves it alone.
-const snoozeIdBase = 1 << 30;
 bool isSnoozeId(int id) => id >= snoozeIdBase;
 int snoozeIdFor(int id) => isSnoozeId(id) ? id : snoozeIdBase + id;
 
@@ -257,7 +256,8 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
         r.id ?? DateTime.now().millisecondsSinceEpoch & 0xffff,
       );
       while (pending.any((p) => p.id == snoozeId && p.payload != r.payload)) {
-        snoozeId++;
+        // Android notification ids are 32-bit.
+        snoozeId = snoozeId == 0x7fffffff ? snoozeIdBase : snoozeId + 1;
       }
       await plugin.zonedSchedule(
         id: snoozeId,

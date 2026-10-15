@@ -14,6 +14,7 @@ import 'data/repository.dart';
 import 'services/files.dart';
 import 'services/lock.dart';
 import 'services/notifications.dart';
+import 'services/photo_picker.dart';
 import 'services/photo_store.dart';
 import 'state/lock_controller.dart';
 import 'state/providers.dart';
@@ -33,23 +34,34 @@ Future<void> main() async {
   final support = await getApplicationSupportDirectory();
   final scheduler = LocalNotificationsScheduler();
   await scheduler.init();
+  final container = ProviderContainer(
+    overrides: [
+      databaseProvider.overrideWithValue(db),
+      sharedPrefsProvider.overrideWithValue(prefs),
+      photoStoreProvider.overrideWithValue(
+        DiskPhotoStore(Directory(p.join(support.path, 'media'))),
+      ),
+      reminderSchedulerProvider.overrideWithValue(scheduler),
+      lockServiceProvider.overrideWithValue(
+        LockService(
+          prefs: prefs,
+          biometrics: LocalAuthBiometrics(),
+          now: DateTime.now,
+        ),
+      ),
+    ],
+  );
+  unawaited(
+    recoverLostPhoto(
+      prefs,
+      lostPhoto: lostImagePickerPhoto,
+      repo: container.read(repositoryProvider),
+      actions: container.read(actionsProvider),
+    ),
+  );
   runApp(
-    ProviderScope(
-      overrides: [
-        databaseProvider.overrideWithValue(db),
-        sharedPrefsProvider.overrideWithValue(prefs),
-        photoStoreProvider.overrideWithValue(
-          DiskPhotoStore(Directory(p.join(support.path, 'media'))),
-        ),
-        reminderSchedulerProvider.overrideWithValue(scheduler),
-        lockServiceProvider.overrideWithValue(
-          LockService(
-            prefs: prefs,
-            biometrics: LocalAuthBiometrics(),
-            now: DateTime.now,
-          ),
-        ),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const DailyTrackerApp(),
     ),
   );

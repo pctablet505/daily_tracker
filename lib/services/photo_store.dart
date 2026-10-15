@@ -12,7 +12,8 @@ abstract interface class PhotoStore {
   /// restore onto a new phone, since backups do not carry photos).
   File fileFor(String name);
 
-  /// Whether the photo for [name] is on the phone. Never throws.
+  /// Whether the photo for [name] is on the phone. Never throws. Cheap enough
+  /// to call for every row on each rebuild.
   bool exists(String name);
 
   /// Removes a stored photo; a name that is already gone is fine.
@@ -26,6 +27,10 @@ final class DiskPhotoStore implements PhotoStore {
   final Directory directory;
   final String Function() _newId;
 
+  /// What [exists] found, so a rebuild does not stat every photo again. Photos
+  /// only come and go through this store.
+  final _exists = <String, bool>{};
+
   static int _n = 0;
   static String _timeId() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${(_n++).toRadixString(36)}';
@@ -37,6 +42,7 @@ final class DiskPhotoStore implements PhotoStore {
     if (!RegExp(r'^\.[a-z0-9]{1,5}$').hasMatch(ext)) ext = '.jpg';
     final name = '${_newId()}$ext';
     await File(sourcePath).copy(p.join(directory.path, name));
+    _exists[name] = true;
     return name;
   }
 
@@ -59,17 +65,18 @@ final class DiskPhotoStore implements PhotoStore {
   }
 
   @override
-  bool exists(String name) {
+  bool exists(String name) => _exists.putIfAbsent(name, () {
     try {
       return fileFor(name).existsSync();
     } on ArgumentError {
       return false;
     }
-  }
+  });
 
   @override
   Future<void> delete(String name) async {
     final f = fileFor(name);
     if (await f.exists()) await f.delete();
+    _exists[name] = false;
   }
 }

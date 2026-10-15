@@ -14,10 +14,13 @@ const githubOwner = 'pctablet505';
 const githubRepo = 'daily_tracker';
 const sourceUrl = 'https://github.com/$githubOwner/$githubRepo';
 
-List<int>? _parts(String v) {
+({List<int> numbers, List<String> pre})? _parts(String v) {
   var s = v.trim();
   if (s.startsWith('v') || s.startsWith('V')) s = s.substring(1);
-  s = s.split('+').first.split('-').first;
+  s = s.split('+').first;
+  final dash = s.indexOf('-');
+  final pre = dash < 0 ? const <String>[] : s.substring(dash + 1).split('.');
+  if (dash >= 0) s = s.substring(0, dash);
   if (s.isEmpty) return null;
   final out = <int>[];
   for (final part in s.split('.')) {
@@ -25,22 +28,44 @@ List<int>? _parts(String v) {
     if (n == null || n < 0) return null;
     out.add(n);
   }
-  return out;
+  return (numbers: out, pre: pre);
+}
+
+/// Orders prerelease labels as semver does: field by field, numbers below
+/// words, and a longer label above its own prefix.
+int _comparePre(List<String> a, List<String> b) {
+  for (var i = 0; i < a.length && i < b.length; i++) {
+    final x = int.tryParse(a[i]);
+    final y = int.tryParse(b[i]);
+    final c = x != null && y != null
+        ? x.compareTo(y)
+        : x != null
+        ? -1
+        : y != null
+        ? 1
+        : a[i].compareTo(b[i]);
+    if (c != 0) return c;
+  }
+  return a.length.compareTo(b.length);
 }
 
 /// True when [remote] is a higher version than [current]. Accepts a leading
-/// "v" and ignores a "+build" or "-suffix". Anything unreadable is not newer.
+/// "v" and ignores a "+build". A "-suffix" marks a prerelease, which is older
+/// than the same version without one. Anything unreadable is not newer.
 bool isNewerVersion(String remote, String current) {
   final r = _parts(remote);
   final c = _parts(current);
   if (r == null || c == null) return false;
-  final n = r.length > c.length ? r.length : c.length;
+  final n = r.numbers.length > c.numbers.length
+      ? r.numbers.length
+      : c.numbers.length;
   for (var i = 0; i < n; i++) {
-    final a = i < r.length ? r[i] : 0;
-    final b = i < c.length ? c[i] : 0;
+    final a = i < r.numbers.length ? r.numbers[i] : 0;
+    final b = i < c.numbers.length ? c.numbers[i] : 0;
     if (a != b) return a > b;
   }
-  return false;
+  if (r.pre.isEmpty || c.pre.isEmpty) return r.pre.isEmpty && c.pre.isNotEmpty;
+  return _comparePre(r.pre, c.pre) > 0;
 }
 
 final class ReleaseInfo {
@@ -48,12 +73,16 @@ final class ReleaseInfo {
     required this.version,
     required this.notes,
     required this.apkUrl,
+    this.apkName,
     this.apkSize,
     this.sha256Url,
   });
   final String version;
   final String notes;
   final String apkUrl;
+
+  /// The apk's file name on the release; the checksum file names it.
+  final String? apkName;
   final int? apkSize;
 
   /// A `.sha256` file published next to the apk, when there is one.
@@ -71,9 +100,8 @@ ReleaseInfo? parseRelease(Map<String, Object?> json) {
   if (json['draft'] == true || json['prerelease'] == true) return null;
   final tag = json['tag_name'];
   if (tag is! String ||
-      !RegExp(
-        r'^[vV]?\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$',
-      ).hasMatch(tag) ||
+      !RegExp(r'^[vV]?\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$')
+          .hasMatch(tag) ||
       tag.contains('..') ||
       _parts(tag) == null) {
     return null;
@@ -89,13 +117,17 @@ ReleaseInfo? parseRelease(Map<String, Object?> json) {
       .firstOrNull;
   final apk = find((n) => n.endsWith('.apk'));
   if (apk == null || !_isHttpsUrl(apk['browser_download_url'])) return null;
-  final sha = find((n) => n.endsWith('.apk.sha256') || n.endsWith('.sha256'));
+  final apkName = apk['name']! as String;
+  final sha =
+      find((n) => n == '${apkName.toLowerCase()}.sha256') ??
+      find((n) => n.endsWith('.sha256'));
   final rawShaUrl = sha?['browser_download_url'];
   final body = (json['body'] as String?)?.replaceAll(r'\n', '\n').trim() ?? '';
   return ReleaseInfo(
     version: tag.replaceFirst(RegExp('^[vV]'), ''),
     notes: body.isEmpty ? 'No release notes.' : body,
     apkUrl: apk['browser_download_url']! as String,
+    apkName: apkName,
     apkSize: (apk['size'] as num?)?.toInt(),
     sha256Url: _isHttpsUrl(rawShaUrl) ? rawShaUrl as String : null,
   );
@@ -137,6 +169,36 @@ class CancelToken {
   void cancel() {
     if (!_c.isCompleted) _c.complete();
   }
+}
+
+/// Waits for [work], but throws [UpdateCancelled] as soon as [cancel] fires
+/// instead of waiting for a server that may take its time to answer.
+Future<T> _unlessCancelled<T>(Future<T> work, CancelToken? cancel) async {
+  if (cancel == null) return work;
+  final value = await Future.any([
+    work,
+    cancel.whenCancelled.then<T>((_) => throw const UpdateCancelled()),
+  ]);
+  if (cancel.isCancelled) throw const UpdateCancelled();
+  return value;
+}
+
+/// The hash a `sha256sum` file gives for [fileName]. A file holding one bare
+/// hash, or one line when the name is unknown, applies to the apk too.
+String? _checksumFor(String text, String? fileName) {
+  final hashes = <String?, String>{};
+  for (final line in const LineSplitter().convert(text)) {
+    final m = RegExp(r'^\s*([0-9a-fA-F]{64})(?:\s+\*?(\S.*?))?\s*$')
+        .firstMatch(line);
+    if (m == null) continue;
+    final name = m[2] == null ? null : p.basename(m[2]!);
+    hashes.putIfAbsent(name, () => m[1]!.toLowerCase());
+  }
+  if (fileName != null && hashes.containsKey(fileName)) return hashes[fileName];
+  if (hashes.length != 1) return null;
+  return fileName == null || hashes.keys.single == null
+      ? hashes.values.single
+      : null;
 }
 
 class UpdateService {
@@ -190,19 +252,24 @@ class UpdateService {
     }
   }
 
-  Future<String?> _publishedSha(String url) async {
+  Future<String> _publishedSha(ReleaseInfo r, CancelToken? cancel) async {
+    final url = r.sha256Url!;
     if (!_isHttpsUrl(url)) {
       throw const UpdateException('Could not read the published checksum.');
     }
-    final res = await _client.get(Uri.parse(url)).timeout(_timeout);
+    final res = await _unlessCancelled(
+      _client.get(Uri.parse(url)).timeout(_timeout),
+      cancel,
+    );
     if (res.statusCode != 200)
       throw const UpdateException('Could not read the published checksum.');
-    final m = RegExp(r'\b([0-9a-fA-F]{64})\b')
-        .firstMatch(utf8.decode(res.bodyBytes));
-    if (m == null)
+    final sha = _checksumFor(utf8.decode(res.bodyBytes), r.apkName);
+    if (sha == null)
       throw const UpdateException('The published checksum is not readable.');
-    return m[1]!.toLowerCase();
+    return sha;
   }
+
+  static int _nextPart = 0;
 
   /// Downloads the apk and checks it against the published checksum (or, when
   /// the release has none, its size). A file that fails is deleted. Android
@@ -217,15 +284,24 @@ class UpdateService {
     }
     final dir = await _cacheDir();
     final target = File(p.join(dir.path, 'daily-tracker-${r.version}.apk'));
-    final part = File('${target.path}.part');
+    // Its own name, so a cancelled download that ends late cannot delete the
+    // file of the one that replaced it.
+    final part = File(
+      '${target.path}.${DateTime.now().microsecondsSinceEpoch}-${_nextPart++}.part',
+    );
     try {
       final expected = r.sha256Url == null
           ? null
-          : await _publishedSha(r.sha256Url!);
-      if (cancel?.isCancelled ?? false) throw const UpdateCancelled();
-      final req = http.Request('GET', Uri.parse(r.apkUrl));
-      final res = await _client.send(req).timeout(_timeout);
-      if (cancel?.isCancelled ?? false) throw const UpdateCancelled();
+          : await _publishedSha(r, cancel);
+      final req = http.AbortableRequest(
+        'GET',
+        Uri.parse(r.apkUrl),
+        abortTrigger: cancel?.whenCancelled,
+      );
+      final res = await _unlessCancelled(
+        _client.send(req).timeout(_timeout),
+        cancel,
+      );
       if (res.statusCode != 200)
         throw UpdateException('The download failed (${res.statusCode}).');
       final total = res.contentLength ?? r.apkSize ?? -1;
@@ -233,28 +309,16 @@ class UpdateService {
       final digest = AccumulatorSink<Digest>();
       final hasher = sha256.startChunkedConversion(digest);
       var received = 0;
-      final done = Completer<void>();
-      late final StreamSubscription<List<int>> sub;
-      sub = res.stream.timeout(_timeout).listen(
-        (chunk) {
-          sink.add(chunk);
-          hasher.add(chunk);
-          received += chunk.length;
-          onProgress(received, total);
-        },
-        onDone: () => done.complete(),
-        onError: done.completeError,
-        cancelOnError: true,
-      );
-      unawaited(
-        cancel?.whenCancelled.then((_) {
-          if (!done.isCompleted) done.completeError(const UpdateCancelled());
-          return sub.cancel();
-        }),
-      );
+      final sub = res.stream.timeout(_timeout).listen((chunk) {
+        sink.add(chunk);
+        hasher.add(chunk);
+        received += chunk.length;
+        onProgress(received, total);
+      });
       try {
-        await done.future;
+        await _unlessCancelled(sub.asFuture<void>(), cancel);
       } finally {
+        await sub.cancel();
         await sink.close();
         hasher.close();
       }
@@ -272,11 +336,17 @@ class UpdateService {
       if (await target.exists()) await target.delete();
       await part.rename(target.path);
       try {
+        final stale = DateTime.now().subtract(const Duration(hours: 1));
         for (final f in dir.listSync().whereType<File>()) {
           final base = p.basename(f.path);
-          if (f.path != target.path &&
-              base.startsWith('daily-tracker-') &&
-              (base.endsWith('.apk') || base.endsWith('.apk.part'))) {
+          if (!base.startsWith('daily-tracker-') || f.path == target.path) {
+            continue;
+          }
+          // Another download may still be writing its part file; only one
+          // nothing has written to for an hour is left over.
+          if (base.endsWith('.apk') ||
+              (base.endsWith('.part') &&
+                  f.lastModifiedSync().isBefore(stale))) {
             await f.delete();
           }
         }
