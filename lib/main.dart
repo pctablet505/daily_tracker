@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import 'app.dart';
 import 'data/database.dart';
 import 'data/repository.dart';
+import 'services/files.dart';
 import 'services/lock.dart';
 import 'services/notifications.dart';
 import 'services/photo_store.dart';
@@ -27,6 +29,7 @@ Future<void> main() async {
   );
   final prefs = await SharedPreferences.getInstance();
   await markSetUpIfHabitsExist(HabitRepository(db), prefs);
+  unawaited(SystemFileService().clearOldShares());
   final support = await getApplicationSupportDirectory();
   final scheduler = LocalNotificationsScheduler();
   await scheduler.init();
