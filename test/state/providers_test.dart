@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/database.dart';
+import 'package:daily_tracker/data/models.dart';
+import 'package:daily_tracker/services/photo_store.dart';
 import 'package:daily_tracker/state/providers.dart';
 import 'package:daily_tracker/state/settings.dart';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +21,7 @@ void main() {
   Future<ProviderContainer> makeContainer({
     DateTime Function()? clock,
     Map<String, Object> prefs = const {},
+    Directory? photos,
   }) async {
     SharedPreferences.setMockInitialValues(prefs);
     final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
@@ -24,6 +30,10 @@ void main() {
         databaseProvider.overrideWithValue(db),
         sharedPrefsProvider.overrideWithValue(
           await SharedPreferences.getInstance(),
+        ),
+        // The Today view checks which photo files exist; none do here.
+        photoStoreProvider.overrideWithValue(
+          DiskPhotoStore(photos ?? Directory('/definitely/not/here')),
         ),
         if (clock != null) clockProvider.overrideWithValue(clock),
       ],
@@ -150,6 +160,31 @@ void main() {
         expect(v.toDo, isEmpty);
         expect(v.finished.map((r) => r.habit.id), ['a']);
         expect(v.summary.done, 1);
+      },
+    );
+
+    test(
+      'the Today view counts only the photos that are on the phone',
+      () async {
+        final dir = await Directory.systemTemp.createTemp('dt_prov_photos_');
+        addTearDown(() => dir.delete(recursive: true));
+        File('${dir.path}/here.jpg').writeAsBytesSync([1]);
+        final c = await makeContainer(
+          clock: () => DateTime(2026, 10, 11, 9),
+          photos: dir,
+        );
+        final repo = c.read(repositoryProvider);
+        await repo.addHabit(habit('p', logType: LogType.photo));
+        // After a restore the entry is there but its photo file is not.
+        await repo.setEntry(
+          entry('p', mon).copyWith(photoPath: () => 'here.jpg'),
+        );
+        await repo.setEntry(
+          entry('p', tue).copyWith(photoPath: () => 'gone.jpg'),
+        );
+        await c.read(ledgerProvider.future);
+        final v = c.read(todayViewProvider).requireValue;
+        expect([...v.toDo, ...v.finished].single.photoCount, 1);
       },
     );
 

@@ -52,6 +52,9 @@ final class NoPhotos implements PhotoStore {
   }
 
   @override
+  bool exists(String name) => false;
+
+  @override
   Future<void> delete(String name) async {}
 }
 

@@ -12,6 +12,9 @@ abstract interface class PhotoStore {
   /// restore onto a new phone, since backups do not carry photos).
   File fileFor(String name);
 
+  /// Whether the photo for [name] is on the phone. Never throws.
+  bool exists(String name);
+
   /// Removes a stored photo; a name that is already gone is fine.
   Future<void> delete(String name);
 }
@@ -53,6 +56,15 @@ final class DiskPhotoStore implements PhotoStore {
       );
     }
     return File(p.join(directory.path, name));
+  }
+
+  @override
+  bool exists(String name) {
+    try {
+      return fileFor(name).existsSync();
+    } on ArgumentError {
+      return false;
+    }
   }
 
   @override

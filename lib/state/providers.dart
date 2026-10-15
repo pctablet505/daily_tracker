@@ -154,10 +154,17 @@ final todayViewProvider = Provider<AsyncValue<TodayView>>((ref) {
   final threshold = ref.watch(
     settingsProvider.select((s) => s.streakThreshold),
   );
+  final photos = ref.watch(photoStoreProvider);
   return ref
       .watch(ledgerProvider)
       .whenData(
-        (l) => buildTodayView(l, day, query: query, threshold: threshold),
+        (l) => buildTodayView(
+          l,
+          day,
+          query: query,
+          threshold: threshold,
+          photoExists: photos.exists,
+        ),
       );
 });
 

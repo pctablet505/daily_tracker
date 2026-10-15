@@ -72,6 +72,7 @@ TodayView buildTodayView(
   DayKey day, {
   String query = '',
   int threshold = defaultStreakThreshold,
+  bool Function(String photoName)? photoExists,
 }) {
   final q = query.trim().toLowerCase();
   final toDo = <HabitRow>[];
@@ -135,7 +136,8 @@ TodayView buildTodayView(
                   (x) =>
                       x.day <= day &&
                       x.photoPath != null &&
-                      x.state != EntryState.skipped,
+                      x.state != EntryState.skipped &&
+                      (photoExists?.call(x.photoPath!) ?? true),
                 )
                 .length
           : 0,

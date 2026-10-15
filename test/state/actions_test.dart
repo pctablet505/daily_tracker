@@ -27,6 +27,9 @@ final class FakePhotos implements PhotoStore {
   File fileFor(String name) => File('/nope/$name');
 
   @override
+  bool exists(String name) => stored.contains(name);
+
+  @override
   Future<void> delete(String name) async {
     stored.remove(name);
     deleted.add(name);

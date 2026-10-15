@@ -243,5 +243,41 @@ void main() {
       expect(buildTodayView(l, tue).toDo.single.photoCount, 1);
       expect(buildTodayView(l, fri).finished.single.photoCount, 2);
     });
+
+    test('a photo whose file is gone is not counted (a restore brings no photos)', () {
+      final p = habit('p', logType: LogType.photo);
+      Entry photo(DayKey d, String name) => Entry(
+        habitId: 'p',
+        day: d,
+        state: EntryState.done,
+        photoPath: name,
+        loggedAt: DateTime.utc(2026),
+      );
+      final l = ledger(
+        [p],
+        [photo(mon, 'here.jpg'), photo(tue, 'gone.jpg'), photo(wed, 'also-gone.jpg')],
+      );
+      expect(
+        buildTodayView(
+          l,
+          wed,
+          photoExists: (name) => name == 'here.jpg',
+        ).finished.single.photoCount,
+        1,
+      );
+      expect(
+        buildTodayView(
+          l,
+          wed,
+          photoExists: (_) => false,
+        ).finished.single.photoCount,
+        0,
+      );
+      expect(
+        buildTodayView(l, wed).finished.single.photoCount,
+        3,
+        reason: 'without a check every recorded photo counts, as before',
+      );
+    });
   });
 }
