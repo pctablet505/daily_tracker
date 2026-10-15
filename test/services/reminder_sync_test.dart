@@ -29,7 +29,10 @@ final class FakeScheduler implements ReminderScheduler {
   }
 
   @override
-  Future<void> replaceAll(List<PlannedReminder> plan) async => plans.add(plan);
+  Future<void> replaceAll(
+    List<PlannedReminder> plan, {
+    bool Function(String? payload)? keepSnooze,
+  }) async => plans.add(plan);
   @override
   Stream<String> get taps => tapController.stream;
   @override

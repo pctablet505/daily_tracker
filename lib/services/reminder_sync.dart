@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/day_key.dart';
+import '../data/models.dart';
 import '../state/providers.dart';
 import 'reminder_plan.dart';
 
@@ -48,13 +50,33 @@ class ReminderSync {
       final ledger = await _ref.read(ledgerProvider.future);
       final scheduler = _ref.read(reminderSchedulerProvider);
       if (!await scheduler.hasPermission()) return;
+      final settings = _ref.read(settingsProvider);
+      final now = _ref.read(clockProvider)();
+      final today = DayKey.fromDate(now);
       final plan = planReminders(
         ledger,
-        settings: _ref.read(settingsProvider),
-        now: _ref.read(clockProvider)(),
+        settings: settings,
+        now: now,
         horizonDays: horizonDays,
+        includeCarryOver: true,
       );
-      await scheduler.replaceAll(plan);
+      final byId = {for (final h in ledger.habits) h.id: h};
+      await scheduler.replaceAll(
+        plan,
+        keepSnooze: (payload) {
+          if (!settings.remindersOn || payload == null) return false;
+          final parsed = parseHabitPayload(payload);
+          if (parsed == null) return true;
+          final h = byId[parsed.habitId];
+          if (h == null || h.tracksSlips || h.reminderMinutes == null) {
+            return false;
+          }
+          final day = parsed.day ?? today;
+          if (!h.isActiveOn(day)) return false;
+          final state = ledger.entryOf(h.id, day)?.state;
+          return state != EntryState.done && state != EntryState.skipped;
+        },
+      );
     } catch (e) {
       debugPrint('Rescheduling reminders failed: $e');
     }

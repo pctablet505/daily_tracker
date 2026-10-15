@@ -29,7 +29,10 @@ final class NoNotifications implements ReminderScheduler {
   @override
   Future<bool> requestPermission() async => true;
   @override
-  Future<void> replaceAll(List<PlannedReminder> plan) async {}
+  Future<void> replaceAll(
+    List<PlannedReminder> plan, {
+    bool Function(String? payload)? keepSnooze,
+  }) async {}
   @override
   Stream<String> get taps => const Stream.empty();
   @override
