@@ -31,6 +31,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     return SafeArea(
       bottom: false,
       child: ledger.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,

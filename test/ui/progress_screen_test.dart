@@ -40,6 +40,27 @@ void main() {
     );
   }
 
+  testWidgets('a write does not blank Progress to a spinner', (tester) async {
+    const d1 = DayKey(2026, 10, 1);
+    final l = Ledger(
+      habits: [Habit(id: 'a', name: 'Stretch', createdDay: d1)],
+      entries: const [],
+      seenDays: const [d1],
+    );
+    await pumpScreen(
+      tester,
+      const Scaffold(body: ProgressScreen()),
+      overrides: [
+        ...await baseOverrides(now: DateTime(2026, 10, 1, 8)),
+        ledgerByRevision(l, l),
+      ],
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    bumpRevision(tester);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   group('needs attention', () {
     testWidgets(
       'leaves out a habit done every day so far, on the morning of the 3rd',

@@ -144,6 +144,19 @@ void main() {
       expect(HabitForm.fromHabit(readBack({'goal': 1.234})).goalError, isNull);
     });
 
+    test('area, unit and description are cut to the form limits', () {
+      final h = readBack({
+        'area': 'a' * 60,
+        'unit': ' ${'u' * 30}',
+        'description': 'd' * 300,
+      });
+      expect(h.area, 'a' * HabitForm.maxAreaLength);
+      expect(h.unit, 'u' * HabitForm.maxUnitLength);
+      expect(h.description, 'd' * HabitForm.maxDescriptionLength);
+      expect(HabitForm.fromHabit(h).areaError, isNull);
+      expect(HabitForm.fromHabit(h).descriptionError, isNull);
+    });
+
     test('empty area, unit and description read as none', () {
       final h = readBack({'area': '', 'unit': ' ', 'description': ''});
       expect((h.area, h.unit, h.description), (null, null, null));

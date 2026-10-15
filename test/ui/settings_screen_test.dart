@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/services/backup_service.dart';
 import 'package:daily_tracker/services/files.dart';
+import 'package:daily_tracker/services/updater.dart';
 import 'package:daily_tracker/state/services.dart';
 import 'package:daily_tracker/state/settings.dart';
 import 'package:daily_tracker/ui/screens/settings_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart' show Database;
 
@@ -30,6 +32,17 @@ final class _CountingBackup extends BackupService {
   Future<ExportedFile> exportCsv() async {
     csvExports++;
     return const ExportedFile('entries.csv', 'habit\r\n');
+  }
+}
+
+/// An update check that throws the first time (a bug elsewhere), then says up to date.
+final class _ThrowingUpdates extends Fake implements UpdateService {
+  int checks = 0;
+  @override
+  Future<UpdateCheck> check() async {
+    checks++;
+    if (checks == 1) throw StateError('boom');
+    return const UpToDate();
   }
 }
 
@@ -101,6 +114,29 @@ void main() {
       expect(backup.csvExports, 2, reason: 'free again once the first is done');
     },
   );
+
+  testWidgets('an update check that throws does not leave the row spinning', (
+    tester,
+  ) async {
+    final updates = _ThrowingUpdates();
+    final overrides = await baseOverrides(ledger: sampleLedger())
+      ..add(updateServiceProvider.overrideWithValue(updates));
+    await pumpScreen(tester, const SettingsScreen(), overrides: overrides);
+    final row = find.text('Check for updates');
+    await tester.scrollUntilVisible(row, 200);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Could not check for updates.'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(row);
+    await tester.pump();
+    await tester.pump();
+    expect(updates.checks, 2, reason: 'the row can be used again');
+  });
 
   testWidgets('the App lock setting says what forgetting the PIN costs', (
     tester,

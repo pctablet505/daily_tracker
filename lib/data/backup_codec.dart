@@ -10,7 +10,6 @@ const backupVersion = 1;
 
 /// No phone dates a day before this; an earlier day in a backup is damage, and
 /// would send every streak count back through the centuries.
-const _earliestDay = DayKey(1970, 1, 1);
 
 /// What a backup file holds once read.
 final class BackupData {
@@ -89,9 +88,9 @@ BackupData decodeBackup(String text) {
     };
     // A habit's end needs no check of its own: fromMap holds it to no earlier
     // than the day before the start.
-    if (habits.any((h) => h.createdDay < _earliestDay) ||
-        entries.any((e) => e.day < _earliestDay) ||
-        seen.any((d) => d < _earliestDay)) {
+    if (habits.any((h) => h.createdDay < earliestDay) ||
+        entries.any((e) => e.day < earliestDay) ||
+        seen.any((d) => d < earliestDay)) {
       throw damaged;
     }
     final snapshot = Snapshot(habits: habits, entries: entries, seenDays: seen)
@@ -125,25 +124,25 @@ BackupData decodeBackup(String text) {
 /// An older version let in values the form no longer allows. They are brought
 /// within its limits rather than refused, so such a backup still restores.
 Habit _withinFormLimits(Habit h) {
-  String? text(String? v) => v == null || v.trim().isEmpty ? null : v;
+  String? text(String? v, int max) =>
+      v == null || v.trim().isEmpty ? null : _cut(v.trim(), max);
   final goal = h.goal;
   return h.copyWith(
-    name: _cutName(h.name.trim()),
-    description: () => text(h.description),
-    unit: () => text(h.unit),
-    area: () => text(h.area),
+    name: _cut(h.name.trim(), HabitForm.maxNameLength),
+    description: () => text(h.description, HabitForm.maxDescriptionLength),
+    unit: () => text(h.unit, HabitForm.maxUnitLength),
+    area: () => text(h.area, HabitForm.maxAreaLength),
     goal: () => goal == null
         ? null
         : (goal.clamp(0.01, HabitForm.maxGoal) * 100).roundToDouble() / 100,
   );
 }
 
-String _cutName(String name) {
-  const max = HabitForm.maxNameLength;
-  if (name.length <= max) return name;
+String _cut(String text, int max) {
+  if (text.length <= max) return text;
   // Never keep the first half of a two-unit character such as an emoji.
-  final cut = name.codeUnitAt(max - 1) & 0xFC00 == 0xD800 ? max - 1 : max;
-  return name.substring(0, cut).trimRight();
+  final cut = text.codeUnitAt(max - 1) & 0xFC00 == 0xD800 ? max - 1 : max;
+  return text.substring(0, cut).trimRight();
 }
 
 List<Object?> _list(Object? v) => v as List<Object?>;

@@ -170,7 +170,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
   Future<void> _checkUpdate() async {
     setState(() => _checkingUpdate = true);
-    final r = await ref.read(updateServiceProvider).check();
+    UpdateCheck r;
+    try {
+      r = await ref.read(updateServiceProvider).check();
+    } catch (_) {
+      // check() reports its own failures; anything thrown is a bug that must not leave the row spinning.
+      r = const UpdateCheckFailed('Could not check for updates.');
+    }
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
     switch (r) {
