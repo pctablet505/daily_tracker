@@ -141,6 +141,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
   /// A fingerprint or phone lock prompt is up; a second one would fail as busy.
   bool _checking = false;
 
+  /// A PIN is being checked; guesses wait for its answer and the wait it may start.
+  bool _checkingPin = false;
+
   @override
   void initState() {
     super.initState();
@@ -216,14 +219,20 @@ class _LockScreenState extends ConsumerState<LockScreen>
   }
 
   Future<void> _submit(String pin) async {
-    final r = await ref.read(lockedProvider.notifier).unlockWithPin(pin);
-    if (r.ok || !mounted) return;
-    if (r.waitFor > Duration.zero) {
-      await _showWait();
-    } else {
-      setState(() => _error = 'That PIN is not right.');
+    if (_checkingPin) return;
+    setState(() => _checkingPin = true);
+    try {
+      final r = await ref.read(lockedProvider.notifier).unlockWithPin(pin);
+      if (r.ok || !mounted) return;
+      if (r.waitFor > Duration.zero) {
+        await _showWait();
+      } else {
+        setState(() => _error = 'That PIN is not right.');
+      }
+      unawaited(HapticFeedback.heavyImpact());
+    } finally {
+      if (mounted) setState(() => _checkingPin = false);
     }
-    unawaited(HapticFeedback.heavyImpact());
   }
 
   @override
@@ -233,11 +242,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
       settingsProvider.select((s) => s.lockBiometric),
     );
     final showBio = _bioAvailable && fingerprintOn;
-    // Where the phone's prompt also takes a fingerprint, it would get round
-    // fingerprint unlock being switched off.
-    final showPhoneLock =
-        fingerprintOn ||
-        (ref.watch(phoneLockCredentialOnlyProvider).value ?? false);
+    final showPhoneLock = ref.watch(phoneLockAllowedProvider).value ?? false;
     // Not a Scaffold: the app's ScaffoldMessenger would show its snackbars
     // (habit names, an Undo) on this one too.
     return Material(
@@ -281,7 +286,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
                   PinPad(
                     key: _pad,
                     onSubmit: _submit,
-                    enabled: _wait == Duration.zero,
+                    enabled: _wait == Duration.zero && !_checkingPin,
                     errorText: _error,
                   ),
                   const SizedBox(height: 8),

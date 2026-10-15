@@ -15,6 +15,8 @@ import 'package:daily_tracker/state/services.dart';
 import 'package:daily_tracker/ui/screens/habit_detail_screen.dart';
 import 'package:daily_tracker/ui/screens/habit_edit_screen.dart';
 import 'package:daily_tracker/ui/screens/lock_screen.dart';
+import 'package:daily_tracker/ui/screens/progress_screen.dart';
+import 'package:daily_tracker/ui/screens/today_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -271,7 +273,73 @@ void main() {
       expect(find.text('Half-typed habit'), findsOneWidget);
     });
 
-    testWidgets('with nothing unsaved goes back to Today below the habit', (
+    testWidgets('a second tap keeps the half-typed habit below the habit', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.bySemanticsLabel('Add a habit'));
+      await app.settle();
+      await tester.enterText(find.byType(TextField).first, 'Half-typed habit');
+      await app.settle();
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      expect(find.byType(HabitEditScreen, skipOffstage: false), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.text('Half-typed habit'), findsOneWidget);
+    });
+
+    testWidgets('three taps for the open habit leave one habit page', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.bySemanticsLabel('Add a habit'));
+      await app.settle();
+      await tester.enterText(find.byType(TextField).first, 'Half-typed habit');
+      await app.settle();
+      for (var i = 0; i < 3; i++) {
+        app.notifications.tap('habit:run@2026-10-11');
+        await app.settle();
+      }
+      expect(
+        find.byType(HabitDetailScreen, skipOffstage: false),
+        findsOneWidget,
+      );
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.text('Half-typed habit'), findsOneWidget);
+    });
+
+    testWidgets('a tap for another habit opens it above the first', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.bySemanticsLabel('Add a habit'));
+      await app.settle();
+      await tester.enterText(find.byType(TextField).first, 'Half-typed habit');
+      await app.settle();
+      String shown() => tester
+          .widget<HabitDetailScreen>(find.byType(HabitDetailScreen))
+          .habitId;
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      app.notifications.tap('habit:read@2026-10-11');
+      await app.settle();
+      expect(shown(), 'read');
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(shown(), 'run');
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.text('Half-typed habit'), findsOneWidget);
+    });
+
+    testWidgets('a page above the tabs stays below the habit, saved or not', (
       tester,
     ) async {
       final app = _App(tester);
@@ -283,7 +351,21 @@ void main() {
       expect(find.byType(HabitDetailScreen), findsOneWidget);
       await tester.binding.handlePopRoute();
       await app.settle();
-      expect(find.byType(HabitEditScreen), findsNothing);
+      expect(find.byType(HabitEditScreen), findsOneWidget);
+    });
+
+    testWidgets('from another tab opens the habit above Today', (tester) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.text('Progress').last);
+      await app.settle();
+      expect(find.byType(ProgressScreen), findsOneWidget);
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      expect(find.byType(HabitDetailScreen), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
   });
 
@@ -457,6 +539,25 @@ void main() {
       await app.settle();
       expect(find.text('Skip this version'), findsOneWidget);
     });
+
+    testWidgets(
+      'an offer given up in the background is made on the next return',
+      (tester) async {
+        final app = _App(tester);
+        app.network.online = true;
+        app.updates.hold = Completer();
+        await app.pump();
+        await tester.pump(const Duration(seconds: 5));
+        await app.background();
+        app.updates.hold!.complete(const UpdateAvailable(_release));
+        await app.settle();
+        await app.foreground();
+        expect(find.text('Skip this version'), findsNothing);
+        await tester.pump(const Duration(seconds: 5));
+        await app.settle();
+        expect(find.text('Skip this version'), findsOneWidget);
+      },
+    );
   });
 
   group('the app lock setting', () {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 
 import 'package:daily_tracker/services/lock.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -290,15 +291,27 @@ void main() {
     });
 
     test(
-      'after the phone restarts the wait is at most its full length again',
+      'after the phone restarts the wall clock alone times the wait',
       () async {
         await fiveWrong();
-        boot = const Duration(seconds: 40);
-        now = now.add(const Duration(seconds: 40));
-        expect(await lock.waitLeft(), const Duration(seconds: 30));
-        boot = boot! + const Duration(seconds: 31);
-        now = now.add(const Duration(seconds: 31));
+        boot = const Duration(seconds: 10);
+        now = now.add(const Duration(seconds: 10));
+        expect(await lock.waitLeft(), const Duration(seconds: 20));
+        expect(prefs.getKeys(), isNot(contains('lock.untilBoot')));
+        boot = boot! + const Duration(seconds: 21);
+        now = now.add(const Duration(seconds: 21));
         expect(await lock.waitLeft(), Duration.zero);
+      },
+    );
+
+    test(
+      'a wait that ended days ago does not come back after a restart',
+      () async {
+        await fiveWrong();
+        now = now.add(const Duration(days: 2));
+        boot = const Duration(minutes: 3);
+        expect(await lock.waitLeft(), Duration.zero);
+        expect((await lock.checkPin('1234')).ok, isTrue);
       },
     );
 
@@ -312,6 +325,21 @@ void main() {
         expect((await lock.checkPin('1234')).ok, isTrue);
       },
     );
+
+    test('guesses sent together are checked in turn: the fifth starts the wait, the sixth is refused', () async {
+      await lock.setPin('1234');
+      for (var i = 0; i < 4; i++) {
+        await lock.checkPin('0000');
+      }
+      final r = await Future.wait([
+        for (final g in ['1111', '2222', '1234']) lock.checkPin(g),
+      ]);
+      expect(r[0].failures, 5);
+      expect(r[0].waitFor, const Duration(seconds: 30));
+      expect(r[1].waitFor, const Duration(seconds: 30));
+      expect(r[2].ok, isFalse);
+      expect(r[2].waitFor, const Duration(seconds: 30));
+    });
 
     test('salt and hash are stored as one value, so a kill mid-way cannot split them', () async {
       await lock.setPin('1234');
@@ -355,5 +383,23 @@ void main() {
         expect(timerRan, isTrue, reason: 'checkPin hashed without yielding');
       },
     );
+
+    test('setting and checking a PIN hash on the background runner', () async {
+      var runs = 0;
+      final counted = LockService(
+        prefs: prefs,
+        biometrics: bio,
+        now: () => now,
+        elapsed: () async => boot,
+        runHash: (hash) {
+          runs++;
+          return Isolate.run(hash);
+        },
+      );
+      await counted.setPin('1234');
+      expect(runs, 1);
+      expect((await counted.checkPin('1234')).ok, isTrue);
+      expect(runs, 2);
+    });
   });
 }

@@ -32,6 +32,9 @@ void main() {
 
   late DateTime now;
   late _HeldPrompts prompts;
+  // Each PIN hash waits for [hashGate] when set.
+  Completer<void>? hashGate;
+  var hashes = 0;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -61,6 +64,11 @@ void main() {
             biometrics: prompts,
             now: () => now,
             elapsed: () async => null,
+            runHash: (hash) async {
+              hashes++;
+              await hashGate?.future;
+              return hash();
+            },
           ),
         ),
         phoneLockCredentialOnlyProvider.overrideWith(
@@ -73,6 +81,54 @@ void main() {
   setUp(() {
     now = DateTime(2026, 10, 11, 12);
     prompts = _HeldPrompts();
+    hashGate = null;
+    hashes = 0;
+  });
+
+  Future<void> enter(WidgetTester tester, String pin) async {
+    for (final d in pin.split('')) {
+      await tester.tap(find.text(d));
+    }
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('OK'));
+    await tester.pump();
+  }
+
+  testWidgets('a PIN being checked holds the pad until the answer', (
+    tester,
+  ) async {
+    await pump(tester);
+    hashGate = Completer();
+    await enter(tester, '1111');
+    expect(hashes, 1);
+    await tester.tap(find.text('2'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('No digits entered'), findsOneWidget);
+    await enter(tester, '2222');
+    hashGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('That PIN is not right.'), findsOneWidget);
+    expect(hashes, 1, reason: 'the guess typed meanwhile was not sent');
+    await enter(tester, '2222');
+    expect(hashes, 2);
+  });
+
+  testWidgets('OK pressed twice before the pad redraws sends one guess', (
+    tester,
+  ) async {
+    await pump(tester);
+    hashGate = Completer();
+    for (final d in ['1', '1', '1', '1']) {
+      await tester.tap(find.text(d));
+    }
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('OK'));
+    await tester.tap(find.bySemanticsLabel('OK'));
+    hashGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(hashes, 1);
   });
 
   group('"Use phone lock"', () {

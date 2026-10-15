@@ -13,6 +13,15 @@ final phoneLockCredentialOnlyProvider = FutureProvider<bool>(
   (ref) => phoneLockIsCredentialOnly(),
 );
 
+/// Whether the phone's screen lock may open the app ("Forgot PIN? Use phone
+/// lock"). Where the phone's prompt also takes a fingerprint (Android 10 and
+/// older) it would get round fingerprint unlock being switched off.
+final phoneLockAllowedProvider = FutureProvider<bool>(
+  (ref) async =>
+      ref.watch(settingsProvider.select((s) => s.lockBiometric)) ||
+      await ref.watch(phoneLockCredentialOnlyProvider.future),
+);
+
 /// Whether the lock screen is showing.
 class LockController extends Notifier<bool> {
   /// A camera, picker or share sheet takes the user out of the app on purpose, so
@@ -152,6 +161,7 @@ class LockController extends Notifier<bool> {
   }
 
   Future<bool> unlockWithDeviceCredential() async {
+    if (!await ref.read(phoneLockAllowedProvider.future)) return false;
     final ok = await runExternal(
       () => ref.read(lockServiceProvider).unlockWithDeviceCredential(),
     );

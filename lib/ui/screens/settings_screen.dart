@@ -337,9 +337,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(54, 0, 16, 12),
-              child: Text(
-                'If you forget the PIN and have no phone screen lock, the only way back is clearing the app\'s data.',
-                style: AppType.small.copyWith(color: c.muted),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'If you forget the PIN and have no phone screen lock, the only way back is clearing the app\'s data.',
+                    style: AppType.small.copyWith(color: c.muted),
+                  ),
+                  Text(
+                    'On Android 10 and older with "Use fingerprint" off, the phone lock is not offered either, so a forgotten PIN means clearing the app\'s data.',
+                    style: AppType.small.copyWith(color: c.muted),
+                  ),
+                ],
               ),
             ),
             if (s.lockOn) ...[
@@ -664,9 +673,14 @@ Future<String?> showPinEntry(BuildContext context, {required String title}) {
               const SizedBox(height: 12),
               PinPad(onSubmit: (p) => Navigator.pop(ctx, p)),
               const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, _phoneLockToken),
-                child: const Text('Forgot PIN? Use phone lock'),
+              Consumer(
+                builder: (_, ref, _) =>
+                    ref.watch(phoneLockAllowedProvider).value ?? false
+                    ? TextButton(
+                        onPressed: () => Navigator.pop(ctx, _phoneLockToken),
+                        child: const Text('Forgot PIN? Use phone lock'),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),

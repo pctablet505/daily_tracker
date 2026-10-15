@@ -246,13 +246,17 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     // The midnight timer runs late after deep sleep.
     ref.read(todayProvider.notifier).refresh();
     final habit = parseHabitPayload(payload);
-    final keepPages = _busyOnTop();
+    final keepPages = _pageAboveTabs();
     if (habit != null) {
       final today = ref.read(todayProvider);
       ref
           .read(selectedDayProvider.notifier)
           .select(habit.day == null || habit.day == today ? null : habit.day);
-      if (!keepPages) _router.go('/');
+      if (!keepPages) {
+        _router.go('/');
+      } else if (_showsHabit(habit.habitId)) {
+        return;
+      }
       unawaited(_router.push('/habit/${Uri.encodeComponent(habit.habitId)}'));
     } else {
       ref.read(selectedDayProvider.notifier).select(null);
@@ -266,17 +270,15 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     if (pending != null) _openPayload(pending);
   }
 
-  /// Whether replacing the pages would lose what the user is in the middle of: a
-  /// form that asks before closing (unsaved changes), or a dialog or sheet.
-  bool _busyOnTop() {
-    Route<dynamic>? top;
-    // Navigator has no public "top route"; a test that holds at once pops nothing.
-    _rootKey.currentState?.popUntil((route) {
-      top = route;
-      return true;
-    });
-    return top is PopupRoute ||
-        top?.popDisposition == RoutePopDisposition.doNotPop;
+  /// Whether a page, dialog or sheet sits above the tabs. Replacing the pages
+  /// would drop it, and an unsaved form can be anywhere under it (an earlier tap
+  /// opens a habit above the form), so a tap then opens its page on top.
+  bool _pageAboveTabs() => _rootKey.currentState?.canPop() ?? false;
+
+  /// Whether the top page is this habit's page; a second one would only stack up.
+  bool _showsHabit(String id) {
+    final top = _router.state;
+    return top.fullPath == '/habit/:id' && top.pathParameters['id'] == id;
   }
 
   void _waitForLockCheck() {

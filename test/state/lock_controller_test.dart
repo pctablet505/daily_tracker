@@ -21,6 +21,8 @@ void main() {
     bool lockOn = true,
     bool withPin = true,
     int after = 60,
+    bool fingerprintOn = true,
+    bool credentialOnly = false,
   }) async {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
@@ -32,13 +34,20 @@ void main() {
       elapsed: () async => boot,
     );
     if (withPin) await lock.setPin('1234');
-    await Settings(lockOn: lockOn, lockAfterSeconds: after).write(prefs);
+    await Settings(
+      lockOn: lockOn,
+      lockAfterSeconds: after,
+      lockBiometric: fingerprintOn,
+    ).write(prefs);
     c = ProviderContainer(
       overrides: [
         sharedPrefsProvider.overrideWithValue(prefs),
         clockProvider.overrideWithValue(() => now),
         elapsedRealtimeProvider.overrideWithValue(() async => boot),
         lockServiceProvider.overrideWithValue(lock),
+        phoneLockCredentialOnlyProvider.overrideWith(
+          (ref) async => credentialOnly,
+        ),
       ],
     );
     addTearDown(c.dispose);
@@ -102,6 +111,19 @@ void main() {
       isTrue,
     );
     expect(c.read(lockedProvider), isFalse);
+  });
+
+  test('the phone lock is refused with fingerprint unlock off where its prompt also takes a fingerprint', () async {
+    await setup(fingerprintOn: false);
+    final n = c.read(lockedProvider.notifier);
+    expect(await n.unlockWithDeviceCredential(), isFalse);
+    expect(bio.asked, 0, reason: 'the prompt was not even shown');
+    expect(c.read(lockedProvider), isTrue);
+    await setup(fingerprintOn: false, credentialOnly: true);
+    expect(
+      await c.read(lockedProvider.notifier).unlockWithDeviceCredential(),
+      isTrue,
+    );
   });
 
   group('coming back to the app', () {
