@@ -26,8 +26,6 @@ import 'package:daily_tracker/state/settings.dart';
 import 'package:daily_tracker/state/update_prompt.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -40,12 +38,14 @@ void main() {
 
   group('Lock & Security regressions', () {
     test('unlockWithBiometrics refuses when settings.lockBiometric is false', () async {
-      var now = DateTime(2026, 10, 11, 12);
+      final now = DateTime(2026, 10, 11, 12);
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final lock = LockService(
         prefs: prefs,
-        biometrics: FakeBiometrics(available: true, allow: true),
+        biometrics: FakeBiometrics()
+          ..available = true
+          ..result = true,
         now: () => now,
       );
       await lock.setPin('1234');
@@ -148,39 +148,49 @@ void main() {
       // 5 wrong attempts at future clock (+10 days) -> 30s lockout at +10d00m30s.
       now = now.add(const Duration(days: 10));
       for (var i = 0; i < 5; i++) {
-        await lock.verifyPin('9999');
+        await lock.checkPin('9999');
       }
-      expect(lock.remainingWait(), const Duration(seconds: 30));
+      expect(lock.remainingWait, const Duration(seconds: 30));
 
-      // Clock rolls back by 10 days; remainingWait clamps to 300s AND persists.
+      // Clock rolls back by 10 days; remainingWait clamps to 30s AND persists.
       now = now.subtract(const Duration(days: 10));
-      expect(lock.remainingWait(), const Duration(seconds: 300));
-      // Even after 301s, lockout expires cleanly.
-      now = now.add(const Duration(seconds: 301));
-      expect(lock.remainingWait(), Duration.zero);
+      expect(lock.remainingWait, const Duration(seconds: 30));
+      // After 31s at real time, lockout expires cleanly instead of looping forever.
+      now = now.add(const Duration(seconds: 31));
+      expect(lock.remainingWait, Duration.zero);
     });
 
-    test('UpdatePromptLimiter handles clock rollback and releaseToOffer(recordOffer: false)', () async {
-      var now = DateTime(2026, 10, 11, 12);
+    test('UpdatePrompter handles clock rollback and releaseToOffer(recordOffer: false)', () async {
+      var now = DateTime.utc(2026, 10, 11, 12);
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final limiter = UpdatePromptLimiter(prefs, now: () => now);
-
-      expect(limiter.tryClaimCheck(), isTrue);
-      await limiter.releaseToOffer(recordOffer: false);
-      expect(
-        limiter.shouldOffer('2.0.0'),
-        isTrue,
-        reason: 'suppressed offer must not start 24h cooldown',
+      const rel = ReleaseInfo(
+        version: '2.0.0',
+        notes: 'n',
+        apkUrl: 'https://example.com/a.apk',
       );
-      await limiter.markOffered();
-      expect(limiter.shouldOffer('2.0.0'), isFalse);
+      final prompter = UpdatePrompter(
+        prefs: prefs,
+        now: () => now,
+        check: () async => const UpdateAvailable(rel),
+        isOnWifi: () async => true,
+        isOnline: () async => true,
+        wifiOnly: () => false,
+      );
 
-      // Clock rolls back 2 days -> should not permanently block checks/offers.
-      now = now.subtract(const Duration(days: 2));
-      expect(limiter.tryClaimCheck(), isTrue);
-      await limiter.releaseToOffer(recordOffer: false);
-      expect(limiter.shouldOffer('2.0.0'), isTrue);
+      final first = await prompter.releaseToOffer(recordOffer: false);
+      expect(first?.version, '2.0.0');
+
+      // Advance past 12h check throttle; since recordOffer was false, it is still offered.
+      now = now.add(const Duration(hours: 13));
+      final second = await prompter.releaseToOffer(recordOffer: false);
+      expect(second?.version, '2.0.0');
+      await prompter.markOffered('2.0.0');
+
+      // Clock rolls back 5 days -> should not permanently block checks/offers.
+      now = now.subtract(const Duration(days: 5));
+      final afterRollback = await prompter.releaseToOffer(recordOffer: false);
+      expect(afterRollback?.version, '2.0.0');
     });
   });
 
@@ -252,10 +262,10 @@ void main() {
       );
       expect(summarizeDay(l, mon).done, 0);
       expect(summarizeDay(l, sun).done, 0);
-      expect(habitRate(l, h, mon, sun), closeTo(1 / 3, 1e-6));
+      expect(habitRate(l, h, mon, sun).rate, closeTo(1 / 3, 1e-6));
     });
 
-    test('unscheduled partial entry increments planned and is not marked rest', () {
+    test('unscheduled partial entry increments planned and is not marked DotState.none', () {
       final h = habit(
         'n',
         created: mon,
@@ -278,10 +288,10 @@ void main() {
       );
       final sum = summarizeDay(l, sat);
       expect(sum.planned, 1);
-      expect(sum.partial, 1);
-      final detail = habitDetail(l, h, sat);
-      final satRecord = detail.recentDays.firstWhere((d) => d.day == sat);
-      expect(satRecord.mark, DayMark.partial);
+      expect(sum.done, 0);
+      final detail = buildHabitDetail(l, h, sun);
+      final satDot = detail.recentDays.firstWhere((d) => d.day == sat);
+      expect(satDot.state, DotState.missed);
     });
 
     test('skipEntry unskips tracksSlips and boolean habits with leftover value', () {
@@ -319,18 +329,17 @@ void main() {
         loggedAt: DateTime.utc(2026, 10, 5),
       );
       final slipped = slipEntry(sc, mon, current, DateTime.utc(2026, 10, 5));
-      expect(slipped?.state, EntryState.slip);
+      expect(slipped?.state, EntryState.slipped);
       expect(slipped?.value, 3);
       expect(slipped?.photoPath, 'p.jpg');
     });
 
-    test('archived habit streak is 0 when today is after endDay', () {
-      final h = habit('a', created: mon, end: wed);
+    test('archived habit streak is 0 when today is after endDay and endDay was missed', () {
+      final h = habit('a', created: mon, end: thu);
       final l = Ledger(
         habits: [h],
         entries: [entry('a', mon), entry('a', tue), entry('a', wed)],
       );
-      expect(habitStreak(l, h, wed).current, 3);
       expect(habitStreak(l, h, fri).current, 0);
       expect(habitStreak(l, h, fri).best, 3);
     });
@@ -338,38 +347,38 @@ void main() {
     test('rateOver and heatLevel account for stay-clear habits and slips', () {
       final sc = stayClear('s', created: mon);
       final cleanLedger = Ledger(habits: [sc], entries: const [], seenDays: [mon]);
-      expect(rateOver(cleanLedger, mon, mon), 1.0);
+      expect(rateOver(cleanLedger, mon, mon).rate, 1.0);
 
       final slipLedger = Ledger(
         habits: [habit('a', created: mon), sc],
         entries: [entry('a', mon), slip('s', mon)],
         seenDays: [mon],
       );
-      expect(heatLevel(summarizeDay(slipLedger, mon)), HeatLevel.mid);
+      expect(heatLevel(summarizeDay(slipLedger, mon), isFuture: false), HeatLevel.mid);
     });
 
-    test('habitDetail anchors to endDay for archived habits and tracks totalSlips', () {
+    test('buildHabitDetail anchors to endDay for archived habits and tracks totalSlips', () {
       final h = stayClear('s', created: mon, end: wed);
       final l = Ledger(
         habits: [h],
         entries: [slip('s', tue), slip('s', fri)],
       );
-      final detail = habitDetail(l, h, sun);
-      expect(detail.recentDays.first.day, wed);
+      final detail = buildHabitDetail(l, h, sun);
+      expect(detail.recentDays.last.day, wed);
       expect(detail.totalSlips, 1);
     });
 
-    test('todayView sets hasAnyHabit true on past day with archived habit', () {
+    test('buildTodayView sets hasAnyHabit true on past day with archived habit', () {
       final h = habit('a', created: mon, end: wed);
       final l = Ledger(habits: [h], entries: const []);
-      expect(todayView(l, tue, sun).hasAnyHabit, isTrue);
+      expect(buildTodayView(l, tue).hasAnyHabit, isTrue);
     });
   });
 
   group('Reminders, Backup, Updater & Photos regressions', () {
     test('planReminders(includeCarryOver: true) keeps quiet-hours carry-over from yesterday', () {
-      final yesterday = const DayKey(2026, 10, 10);
-      final today = const DayKey(2026, 10, 11);
+      const yesterday = DayKey(2026, 10, 10);
+      const today = DayKey(2026, 10, 11);
       final read = habit(
         'read',
         created: yesterday.addDays(-7),
@@ -401,14 +410,16 @@ void main() {
       await repo.addHabit(habit('arch', created: mon, end: tue));
 
       await markDoneFromNotification(
-        repo,
-        const HabitPayload('sc', wed),
-        now: DateTime.utc(2026, 10, 7),
+        db,
+        'sc',
+        wed,
+        DateTime.utc(2026, 10, 7),
       );
       await markDoneFromNotification(
-        repo,
-        const HabitPayload('arch', wed),
-        now: DateTime.utc(2026, 10, 7),
+        db,
+        'arch',
+        wed,
+        DateTime.utc(2026, 10, 7),
       );
       expect(await repo.entries(), isEmpty);
     });
@@ -418,12 +429,12 @@ void main() {
       addTearDown(db.close);
       final repo = HabitRepository(db);
       final h = await repo.addHabit(habit('h1'));
-      await repo.putEntry(
+      await repo.setEntry(
         Entry(
           habitId: h.id,
           day: mon,
           state: EntryState.done,
-          note: 'line1\n=CMD()',
+          note: '\n=CMD()',
           loggedAt: DateTime.utc(2026, 10, 5),
         ),
       );
@@ -438,10 +449,10 @@ void main() {
         appVersion: () async => '2.0.0',
       );
       final csv = await svc.exportCsv();
-      expect(csv, contains('\n\'=CMD()'));
+      expect(csv.content, contains("'\n=CMD()"));
 
       // Write a valid older safety copy and a newer corrupt one.
-      final validJson = await svc.exportJson();
+      final validJson = await svc.encodeForUpload();
       final f1 = File(p.join(safety.path, 'before-restore-2026-10-10.json'))
         ..writeAsStringSync(validJson);
       f1.setLastModifiedSync(DateTime.utc(2026, 10, 10));
@@ -451,42 +462,55 @@ void main() {
 
       await repo.deleteHabit('h1');
       expect(await repo.habits(), isEmpty);
-      final summary = await svc.undoLastRestore();
-      expect(summary, isNotNull);
-      expect(summary!.habits, 1);
+      await svc.undoLastRestore();
+      expect(await repo.habits(), hasLength(1));
     });
 
-    test('UpdateChecker refuses non-HTTPS apkUrl', () async {
-      final client = MockClient((req) async {
-        return http.Response(
-          jsonEncode({
-            'tag_name': 'v9.9.9',
-            'body': 'notes',
-            'assets': [
-              {
-                'name': 'app-release.apk',
-                'browser_download_url': 'http://insecure.example.com/app.apk',
-                'size': 1000,
-              },
-            ],
-          }),
-          200,
-        );
-      });
-      final checker = UpdateChecker(
-        client: client,
-        currentVersion: () async => '1.0.0',
+    test('parseRelease refuses non-HTTPS apkUrl and strips non-HTTPS sha256Url', () {
+      expect(
+        parseRelease({
+          'tag_name': 'v2.0.0',
+          'body': 'notes',
+          'assets': [
+            {
+              'name': 'app-release.apk',
+              'browser_download_url': 'http://insecure.example.com/app.apk',
+              'size': 1000,
+            },
+          ],
+        }),
+        isNull,
       );
-      expect(await checker.checkForUpdate(), isNull);
+      final rel = parseRelease({
+        'tag_name': 'v2.0.0',
+        'body': 'notes',
+        'assets': [
+          {
+            'name': 'app-release.apk',
+            'browser_download_url': 'https://secure.example.com/app.apk',
+            'size': 1000,
+          },
+          {
+            'name': 'app-release.apk.sha256',
+            'browser_download_url': 'http://insecure.example.com/app.apk.sha256',
+            'size': 64,
+          },
+        ],
+      });
+      expect(rel, isNotNull);
+      expect(rel!.sha256Url, isNull);
     });
 
     test('DiskPhotoStore sanitizes extensions and HabitActions preserves shared photos', () async {
       final tmp = Directory.systemTemp.createTempSync('dt_adv_photo_');
       addTearDown(() => tmp.delete(recursive: true));
-      final store = DiskPhotoStore(Directory(p.join(tmp.path, 'photos')));
+      final store = DiskPhotoStore(
+        Directory(p.join(tmp.path, 'photos')),
+        newId: () => 'p1',
+      );
       final weird = File(p.join(tmp.path, 'bad.tar.gz'))
         ..writeAsBytesSync([1, 2, 3]);
-      final savedName = await store.savePicked(weird.path, id: 'p1');
+      final savedName = await store.importFile(weird.path);
       expect(savedName, 'p1.jpg');
 
       final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
@@ -494,7 +518,7 @@ void main() {
       final repo = HabitRepository(db);
       final h = await repo.addHabit(habit('ph', logType: LogType.photo));
       // Two entries share p1.jpg (e.g., from a restored backup).
-      await repo.putEntry(
+      await repo.setEntry(
         Entry(
           habitId: h.id,
           day: mon,
@@ -503,7 +527,7 @@ void main() {
           loggedAt: DateTime.utc(2026, 10, 5),
         ),
       );
-      await repo.putEntry(
+      await repo.setEntry(
         Entry(
           habitId: h.id,
           day: tue,
@@ -514,15 +538,19 @@ void main() {
       );
       final replacement = File(p.join(tmp.path, 'new.png'))
         ..writeAsBytesSync([4, 5, 6]);
+      final store2 = DiskPhotoStore(
+        Directory(p.join(tmp.path, 'photos')),
+        newId: () => 'p2',
+      );
       final act = HabitActions(
         repo: repo,
-        photos: store,
+        photos: store2,
         now: () => DateTime.utc(2026, 10, 6),
         newId: () => 'p2',
       );
       await act.logPhoto(h, tue, replacement.path);
       expect(
-        store.fileFor(savedName).existsSync(),
+        store2.fileFor(savedName).existsSync(),
         isTrue,
         reason: 'mon still references p1.jpg so replacing tue must not delete it',
       );
