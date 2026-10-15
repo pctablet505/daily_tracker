@@ -4,6 +4,7 @@ import 'package:daily_tracker/data/database.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/data/stats.dart';
+import 'package:daily_tracker/logic/habit_form.dart';
 import 'package:daily_tracker/state/providers.dart';
 import 'package:daily_tracker/ui/screens/habit_edit_screen.dart';
 import 'package:daily_tracker/ui/theme/theme.dart';
@@ -70,6 +71,31 @@ void main() {
       semantics.dispose();
     },
   );
+
+  testWidgets('the area chips leave out an area over the limit', (
+    tester,
+  ) async {
+    // Areas kept from 2.0.2, which had no limit; picking the long one would be refused.
+    final long = 'L' * (HabitForm.maxAreaLength + 1);
+    final most = 'M' * HabitForm.maxAreaLength;
+    await pumpScreen(
+      tester,
+      const HabitEditScreen(),
+      overrides: await baseOverrides(
+        ledger: Ledger(
+          habits: [
+            habit('a').copyWith(area: () => long),
+            habit('b').copyWith(area: () => most),
+          ],
+          entries: const [],
+        ),
+      ),
+      size: const Size(360, 2000),
+    );
+    expect(find.widgetWithText(ActionChip, most), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Health'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, long), findsNothing);
+  });
 
   testWidgets('a too-long unit, area or note is pointed out on save', (
     tester,

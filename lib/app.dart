@@ -35,10 +35,12 @@ GoRouter buildRouter({
   required bool Function() onboardingDone,
   String initialLocation = '/',
   GlobalKey<NavigatorState>? navigatorKey,
+  List<NavigatorObserver>? observers,
 }) {
   final rootKey = navigatorKey ?? GlobalKey<NavigatorState>(debugLabel: 'root');
   return GoRouter(
     navigatorKey: rootKey,
+    observers: observers,
     initialLocation: initialLocation,
     redirect: (context, state) {
       if (!onboardingDone() && state.matchedLocation != '/onboarding')
@@ -113,6 +115,39 @@ GoRouter buildRouter({
   );
 }
 
+/// The root navigator's routes, bottom first: [Navigator] does not list them.
+final class _RootRoutes extends NavigatorObserver {
+  final routes = <Route<dynamic>>[];
+
+  // go_router also reports the tab navigators' routes here.
+  bool _isRoot(Route<dynamic> route) => route.navigator == navigator;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (_isRoot(route)) routes.add(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      routes.remove(route);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    final at = oldRoute == null ? -1 : routes.indexOf(oldRoute);
+    if (at < 0) {
+      if (newRoute != null && _isRoot(newRoute)) routes.add(newRoute);
+    } else if (newRoute == null) {
+      routes.removeAt(at);
+    } else {
+      routes[at] = newRoute;
+    }
+  }
+}
+
 class DailyTrackerApp extends ConsumerStatefulWidget {
   const DailyTrackerApp({super.key});
 
@@ -124,9 +159,11 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     with WidgetsBindingObserver {
   final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _rootRoutes = _RootRoutes();
   late final GoRouter _router = buildRouter(
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
     navigatorKey: _rootKey,
+    observers: [_rootRoutes],
   );
   StreamSubscription<String>? _taps;
   Timer? _updateTimer;
@@ -246,7 +283,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     // The midnight timer runs late after deep sleep.
     ref.read(todayProvider.notifier).refresh();
     final habit = parseHabitPayload(payload);
-    final keepPages = _pageAboveTabs();
+    final keepPages = _wouldLoseSomething();
     if (habit != null) {
       final today = ref.read(todayProvider);
       ref
@@ -270,10 +307,13 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     if (pending != null) _openPayload(pending);
   }
 
-  /// Whether a page, dialog or sheet sits above the tabs. Replacing the pages
-  /// would drop it, and an unsaved form can be anywhere under it (an earlier tap
-  /// opens a habit above the form), so a tap then opens its page on top.
-  bool _pageAboveTabs() => _rootKey.currentState?.canPop() ?? false;
+  /// Whether replacing the pages would drop a dialog, a sheet or a page that
+  /// refuses Back (an unsaved form). An earlier tap can have opened a habit
+  /// above the form, so every route counts, not only the top one; a tap then
+  /// opens its page on top instead.
+  bool _wouldLoseSomething() => _rootRoutes.routes.any(
+    (r) => r is PopupRoute || r.popDisposition == RoutePopDisposition.doNotPop,
+  );
 
   /// Whether the top page is this habit's page; a second one would only stack up.
   bool _showsHabit(String id) {

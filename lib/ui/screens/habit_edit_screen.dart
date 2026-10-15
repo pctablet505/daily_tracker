@@ -315,10 +315,12 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     final f = _form;
     final editing = _original != null;
     final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
+    // A 2.0.2 area can be over the limit, and picking it would be refused.
     final areas = {
       ..._suggestedAreas,
       for (final h in ledger.value?.habits ?? const <Habit>[])
-        if (h.area != null) h.area!,
+        if (h.area != null && h.area!.trim().length <= HabitForm.maxAreaLength)
+          h.area!,
     }.toList();
 
     return PopScope(

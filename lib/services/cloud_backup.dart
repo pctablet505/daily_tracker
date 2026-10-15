@@ -65,8 +65,9 @@ class CloudBackup {
   static const _emailKey = 'cloud.email';
   static const _autoKey = 'cloud.auto';
   static const _lastKey = 'cloud.last';
-  static const _fileIdKey = 'cloud.fileId';
-  static const _fileModifiedKey = 'cloud.fileModified';
+  static const _fileKey = 'cloud.file';
+  static const _oldFileIdKey = 'cloud.fileId';
+  static const _oldFileModifiedKey = 'cloud.fileModified';
   static const _sessionLostKey = 'cloud.sessionLost';
   static const _autoFailureKey = 'cloud.autoFailure';
   static const autoEvery = Duration(hours: 20);
@@ -153,6 +154,36 @@ class CloudBackup {
     }
   }
 
+  /// The Drive file this install wrote or restored last, and its modified
+  /// time. Both go in one setting, `id@ms`: kept apart, a stop between the two
+  /// writes paired a new file with an old time, and this install's own backup
+  /// read as another phone's. Earlier versions kept two settings; they are read
+  /// until the next write replaces them.
+  ({String id, int modified})? _fileOnRecord() {
+    final kept = _prefs.getString(_fileKey);
+    if (kept == null) {
+      final id = _prefs.getString(_oldFileIdKey);
+      final modified = _prefs.getInt(_oldFileModifiedKey);
+      return id == null || modified == null
+          ? null
+          : (id: id, modified: modified);
+    }
+    final at = kept.lastIndexOf('@');
+    final modified = at < 0 ? null : int.tryParse(kept.substring(at + 1));
+    return modified == null
+        ? null
+        : (id: kept.substring(0, at), modified: modified);
+  }
+
+  Future<void> _keepFileOnRecord(DriveFileInfo f) async {
+    await _prefs.setString(
+      _fileKey,
+      '${f.id}@${f.modified.millisecondsSinceEpoch}',
+    );
+    await _prefs.remove(_oldFileIdKey);
+    await _prefs.remove(_oldFileModifiedKey);
+  }
+
   /// Whether this install wrote [f] and nothing changed it since. Versions
   /// that did not keep the file id kept the time of the last backup, and a
   /// file no newer than that is the one this install wrote then. That time is
@@ -161,13 +192,13 @@ class CloudBackup {
   /// automatic backup for good. The cost is that another phone's backup made
   /// within that margin of this one's is written over.
   bool _wroteThis(DriveFileInfo f) {
-    final id = _prefs.getString(_fileIdKey);
-    if (id == null) {
+    final kept = _fileOnRecord();
+    if (kept == null) {
       final last = lastBackupAt;
       return last != null && !f.modified.isAfter(last.add(_clockMargin));
     }
-    return id == f.id &&
-        _prefs.getInt(_fileModifiedKey) == f.modified.millisecondsSinceEpoch;
+    return kept.id == f.id &&
+        kept.modified == f.modified.millisecondsSinceEpoch;
   }
 
   /// The backup on Drive when this install did not write it or it changed
@@ -218,8 +249,7 @@ class CloudBackup {
     try {
       final f = await _drive.upload(await _backup.encodeForUpload());
       await _prefs.setInt(_lastKey, _now().millisecondsSinceEpoch);
-      await _prefs.setString(_fileIdKey, f.id);
-      await _prefs.setInt(_fileModifiedKey, f.modified.millisecondsSinceEpoch);
+      await _keepFileOnRecord(f);
       await _prefs.remove(_sessionLostKey);
       await _prefs.remove(_autoFailureKey);
       return const BackupOutcome(BackupStatus.done);
@@ -265,16 +295,17 @@ class CloudBackup {
   /// Takes [file] as this install's own once its backup is restored here: the
   /// phone now holds what it holds, so automatic backup may write over it.
   /// A backup this install wrote over [file] since it was fetched, while the
-  /// user was confirming, stays the one on record.
+  /// user was confirming, stays the one on record; it holds the data just
+  /// replaced, so the next automatic backup is due at once.
   Future<void> restoredFrom(DriveFileInfo file) => _oneAtATime(() async {
-    final modified = _prefs.getInt(_fileModifiedKey);
-    if (_prefs.getString(_fileIdKey) == file.id &&
-        modified != null &&
-        modified > file.modified.millisecondsSinceEpoch) {
+    final kept = _fileOnRecord();
+    if (kept != null &&
+        kept.id == file.id &&
+        kept.modified > file.modified.millisecondsSinceEpoch) {
+      await _prefs.remove(_lastKey);
       return;
     }
-    await _prefs.setString(_fileIdKey, file.id);
-    await _prefs.setInt(_fileModifiedKey, file.modified.millisecondsSinceEpoch);
+    await _keepFileOnRecord(file);
   });
 
   Future<void>? _autoRunning;

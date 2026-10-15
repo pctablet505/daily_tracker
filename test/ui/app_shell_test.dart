@@ -339,7 +339,7 @@ void main() {
       expect(find.text('Half-typed habit'), findsOneWidget);
     });
 
-    testWidgets('a page above the tabs stays below the habit, saved or not', (
+    testWidgets('with nothing unsaved goes back to Today below the habit', (
       tester,
     ) async {
       final app = _App(tester);
@@ -351,8 +351,137 @@ void main() {
       expect(find.byType(HabitDetailScreen), findsOneWidget);
       await tester.binding.handlePopRoute();
       await app.settle();
-      expect(find.byType(HabitEditScreen), findsOneWidget);
+      expect(find.byType(HabitEditScreen), findsNothing);
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
+
+    testWidgets('taps for two habits with nothing unsaved leave one page', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      final pages = find.byType(HabitDetailScreen, skipOffstage: false);
+      for (final id in ['run', 'read', 'run', 'read']) {
+        app.notifications.tap('habit:$id@2026-10-11');
+        await app.settle();
+        expect(pages, findsOneWidget);
+        expect(tester.widget<HabitDetailScreen>(pages).habitId, id);
+      }
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
+    testWidgets('the check-in tap goes to Today from a clean habit page', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      expect(find.byType(HabitDetailScreen), findsOneWidget);
+      app.notifications.tap('today');
+      await app.settle();
+      expect(find.byType(HabitDetailScreen, skipOffstage: false), findsNothing);
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
+    testWidgets('the check-in tap goes to Today from Settings', (tester) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.byTooltip('Settings').first);
+      await app.settle();
+      expect(find.byType(TodayScreen), findsNothing);
+      app.notifications.tap('today');
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
+    testWidgets('the check-in tap keeps a half-typed habit', (tester) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.bySemanticsLabel('Add a habit'));
+      await app.settle();
+      await tester.enterText(find.byType(TextField).first, 'Half-typed habit');
+      await app.settle();
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      app.notifications.tap('today');
+      await app.settle();
+      expect(find.byType(HabitDetailScreen), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.text('Half-typed habit'), findsOneWidget);
+    });
+
+    testWidgets('a dialog on a tab\'s own navigator does not hold the tap', (
+      tester,
+    ) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.text('Progress').last);
+      await app.settle();
+      // The tab keeps it: going to Today loses nothing.
+      unawaited(
+        showDialog<void>(
+          context: tester.element(find.byType(ProgressScreen)),
+          useRootNavigator: false,
+          builder: (_) => const AlertDialog(content: Text('Tab popup')),
+        ),
+      );
+      await app.settle();
+      app.notifications.tap('today');
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(find.text('Tab popup'), findsNothing);
+    });
+
+    for (final (what, open) in <(String, void Function(BuildContext))>[
+      (
+        'dialog',
+        (context) => unawaited(
+          showDialog<void>(
+            context: context,
+            builder: (_) => const AlertDialog(content: Text('Open popup')),
+          ),
+        ),
+      ),
+      (
+        'sheet',
+        (context) => unawaited(
+          showModalBottomSheet<void>(
+            context: context,
+            useRootNavigator: true,
+            builder: (_) => const Text('Open popup'),
+          ),
+        ),
+      ),
+    ]) {
+      testWidgets('an open $what stays below the habit a tap opens', (
+        tester,
+      ) async {
+        final app = _App(tester);
+        await app.pump();
+        app.notifications.tap('habit:run@2026-10-11');
+        await app.settle();
+        open(tester.element(find.byType(HabitDetailScreen)));
+        await app.settle();
+        app.notifications.tap('today');
+        await app.settle();
+        expect(find.text('Open popup'), findsOneWidget);
+        app.notifications.tap('habit:read@2026-10-11');
+        await app.settle();
+        expect(
+          tester
+              .widget<HabitDetailScreen>(find.byType(HabitDetailScreen))
+              .habitId,
+          'read',
+        );
+        await tester.binding.handlePopRoute();
+        await app.settle();
+        expect(find.text('Open popup'), findsOneWidget);
+      });
+    }
 
     testWidgets('from another tab opens the habit above Today', (tester) async {
       final app = _App(tester);

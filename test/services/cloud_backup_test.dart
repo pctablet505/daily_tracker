@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:daily_tracker/data/database.dart';
@@ -394,6 +395,61 @@ void main() {
       expect(uploads(), before + 1);
     });
 
+    test('a restore confirmed after an automatic backup wrote over the fetched file puts the restored data on Drive at the next return', () async {
+      await cloud.setAutoBackup(true);
+      await cloud.backupNow();
+      // The phone's data goes wrong; the user goes to restore Drive's copy.
+      await repo.deleteHabit('a');
+      await repo.addHabit(habit('mistake'));
+      final f = (await cloud.fetchForRestore())!;
+      // The daily backup writes the wrong data over it meanwhile.
+      nextDay();
+      await cloud.autoBackupIfDue();
+      await cloud.restore(f.text);
+      await cloud.restoredFrom(f.file);
+      expect((await repo.habits()).map((h) => h.id), ['a']);
+
+      // An hour later, not a day.
+      now = now.add(const Duration(hours: 1));
+      drive.now = drive.now.add(const Duration(hours: 1));
+      await cloud.autoBackupIfDue();
+      final onDrive = drive.files.values.single.content;
+      expect(onDrive, contains('"a"'));
+      expect(onDrive, isNot(contains('"mistake"')));
+    });
+
+    test('a restore confirmed while a backup is uploading waits for it, and the next return backs up the restored data', () async {
+      await cloud.setAutoBackup(true);
+      await cloud.backupNow();
+      final f = (await cloud.fetchForRestore())!;
+      final uploading = Completer<void>();
+      final land = Completer<void>();
+      send = (r) async {
+        if (r.method == 'PATCH') {
+          uploading.complete();
+          await land.future;
+        }
+        return drive.handle(r);
+      };
+      nextDay();
+      // The data from before the restore, on its way to Drive.
+      final backingUp = cloud.backupNow();
+      await uploading.future;
+      await cloud.restore(f.text);
+      final restoring = cloud.restoredFrom(f.file);
+      land.complete();
+      await restoring;
+      expect((await backingUp).status, BackupStatus.done);
+      send = drive.handle;
+      expect(await cloud.otherBackupOnDrive(), isNull);
+
+      now = now.add(const Duration(hours: 1));
+      drive.now = drive.now.add(const Duration(hours: 1));
+      final before = uploads();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), before + 1);
+    });
+
     test('a restore asked for while the first backup is being written finds that backup', () async {
       drive.createDelay = const Duration(milliseconds: 200);
       final backingUp = cloud.backupNow();
@@ -555,8 +611,7 @@ void main() {
     test('after an update from a version that did not remember the file, it carries on over its own backup only', () async {
       await cloud.autoBackupIfDue();
       final id = drive.files.keys.single;
-      await prefs.remove('cloud.fileId');
-      await prefs.remove('cloud.fileModified');
+      await prefs.remove('cloud.file');
       now = now.add(const Duration(days: 1));
       final uploads = drive.requests.where((r) => r.startsWith('PATCH')).length;
       await cloud.autoBackupIfDue();
@@ -566,8 +621,7 @@ void main() {
         reason: 'the file on Drive is the one this phone wrote last',
       );
 
-      await prefs.remove('cloud.fileId');
-      await prefs.remove('cloud.fileModified');
+      await prefs.remove('cloud.file');
       drive.files[id] = (
         name: driveFileName,
         content: 'written by another phone',
@@ -581,11 +635,60 @@ void main() {
     test('after an update from a version that did not remember the file, a phone clock a little behind Google\'s still finds its own backup', () async {
       drive.now = now.add(const Duration(seconds: 3));
       await cloud.autoBackupIfDue();
-      await prefs.remove('cloud.fileId');
-      await prefs.remove('cloud.fileModified');
+      await prefs.remove('cloud.file');
       nextDay();
       await cloud.autoBackupIfDue();
       expect(uploads(), 2);
+    });
+
+    test('keeps the file it wrote and that file\'s time in one setting, so a stop between two writes cannot split them', () async {
+      await cloud.autoBackupIfDue();
+      final MapEntry(key: id, value: file) = drive.files.entries.single;
+      expect(
+        prefs.getString('cloud.file'),
+        '$id@${file.modified.millisecondsSinceEpoch}',
+      );
+      expect(prefs.getKeys().where((k) => k.startsWith('cloud.file')), [
+        'cloud.file',
+      ]);
+    });
+
+    test('after an update from a version that kept the file in two settings, it carries on over its own backup only', () async {
+      await cloud.autoBackupIfDue();
+      final MapEntry(key: id, value: file) = drive.files.entries.single;
+      // As on a phone that restored this file and never backed up itself:
+      // only the file on record says whose it is.
+      Future<void> asBefore() async {
+        await prefs.remove('cloud.file');
+        await prefs.remove('cloud.last');
+        await prefs.setString('cloud.fileId', id);
+        await prefs.setInt(
+          'cloud.fileModified',
+          drive.files[id]!.modified.millisecondsSinceEpoch,
+        );
+      }
+
+      await asBefore();
+      expect(await cloud.otherBackupOnDrive(), isNull);
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), 2);
+      expect(
+        prefs.getString('cloud.file'),
+        '$id@${drive.files[id]!.modified.millisecondsSinceEpoch}',
+      );
+      expect(prefs.getString('cloud.fileId'), isNull);
+      expect(prefs.getInt('cloud.fileModified'), isNull);
+
+      await asBefore();
+      drive.files[id] = (
+        name: file.name,
+        content: 'written by another phone',
+        modified: drive.now.add(const Duration(hours: 1)),
+      );
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(drive.files[id]!.content, 'written by another phone');
     });
 
     test('carries on over its own backup when the connection dropped right after the upload landed', () async {

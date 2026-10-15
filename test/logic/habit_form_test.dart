@@ -64,12 +64,56 @@ void main() {
         );
         expect(f.isValid, isTrue);
         expect(f.toHabit(old).description, 'd' * 319);
-        // Any other text over the limit is new typing.
-        expect(f.copyWith(area: 'b' * 41).areaError, isNotNull);
-        expect(f.copyWith(unit: 'v' * 13).unitError, isNotNull);
+        // Text longer than the stored text is new typing.
+        expect(f.copyWith(area: 'b' * 42).areaError, isNotNull);
+        expect(f.copyWith(unit: 'v' * 14).unitError, isNotNull);
         expect(f.copyWith(description: 'd' * 320).descriptionError, isNotNull);
       },
     );
+
+    test(
+      'old text over the limit can be edited as long as it does not grow',
+      () {
+        final old = habit('h1', logType: LogType.number).copyWith(
+          area: () => 'a' * 41,
+          unit: () => 'u' * 13,
+          description: () => '${'d' * 318}x',
+        );
+        final f = HabitForm.fromHabit(old);
+        // A typo fixed, the length kept.
+        expect(
+          f.copyWith(description: '${'d' * 318}y').descriptionError,
+          isNull,
+        );
+        expect(f.copyWith(area: '${'a' * 40}b').areaError, isNull);
+        expect(f.copyWith(unit: '${'u' * 12}v').unitError, isNull);
+        // Shortened, still over the limit.
+        expect(f.copyWith(description: 'd' * 250).descriptionError, isNull);
+        expect(f.copyWith(description: 'd' * 250).isValid, isTrue);
+        // Grown by one.
+        expect(f.copyWith(description: 'd' * 320).descriptionError, isNotNull);
+        expect(f.copyWith(area: 'a' * 42).areaError, isNotNull);
+        expect(f.copyWith(unit: 'u' * 14).unitError, isNotNull);
+      },
+    );
+
+    test('a habit keeps its own goal with more decimals or over the limit', () {
+      // 2.0.2 took any positive goal; the newer rules apply only to new typing.
+      for (final goal in [2.125, 12345678.5]) {
+        final old = habit('h1', logType: LogType.number, goal: goal);
+        final f = HabitForm.fromHabit(old).copyWith(dayPart: DayPart.evening);
+        expect(f.goalError, isNull, reason: '$goal');
+        expect(f.isValid, isTrue, reason: '$goal');
+        expect(f.toHabit(old).goal, goal);
+        // Typed again, the same value is still the habit's own.
+        expect(f.copyWith(goalText: '$goal').goalError, isNull);
+      }
+      final f = HabitForm.fromHabit(
+        habit('h1', logType: LogType.number, goal: 2.125),
+      );
+      expect(f.copyWith(goalText: '2.126').goalError, isNotNull);
+      expect(f.copyWith(goalText: '12345678.5').goalError, isNotNull);
+    });
 
     test('at least one day must be chosen', () {
       expect(form().copyWith(daysMask: 0).daysError, isNotNull);

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../data/models.dart';
 
 /// The values on the add/edit screen, and the rules for turning them into a [Habit].
@@ -60,7 +62,8 @@ final class HabitForm {
   final AvoidMode avoidMode;
 
   /// The habit being edited. 2.0.2 had no limits on area, unit and note, so
-  /// its own text stays valid: the limits apply only to new typing.
+  /// its own text stays valid, and editing it is fine while it does not grow:
+  /// the limits apply only to new typing.
   final Habit? original;
 
   /// An avoid habit that is ticked like a Do habit, or a Do habit.
@@ -76,7 +79,7 @@ final class HabitForm {
   }
 
   static String? _tooLong(String text, int max, String? kept) =>
-      text.trim().length > max && text.trim() != kept?.trim()
+      text.trim().length > math.max(max, kept?.trim().length ?? 0)
       ? 'Keep it under $max characters'
       : null;
 
@@ -108,6 +111,8 @@ final class HabitForm {
     if (!isNumber) return null;
     if (goalText.trim().isEmpty) return null;
     final g = goal;
+    // The habit's own goal: 2.0.2 took any number of decimals and size.
+    if (g != null && g == original?.goal) return null;
     if (g == null || g <= 0) return 'Enter a number above zero';
     if ((g * 100 - (g * 100).round()).abs() > 1e-6) {
       return 'Use at most 2 decimal places';

@@ -212,11 +212,16 @@ Future<bool> markDoneFromNotification(
   return true;
 }
 
-/// Whether App Lock is on, read from the stored settings: the notification
-/// buttons run in their own isolate, without the app's state. That isolate
-/// lives on between presses and its copy of the settings is the one it read
-/// first, so the setting is read from the phone again each time.
-Future<bool> _readAppLockOn() async {
+/// Whether App Lock is on, read from the app's settings.
+Future<bool> _readAppLockOn() async =>
+    Settings.read(await SharedPreferences.getInstance()).lockOn;
+
+/// [_readAppLockOn] for the notification buttons, which run in their own
+/// isolate, without the app's state. That isolate lives on between presses and
+/// its copy of the settings is the one it read first, so the setting is read
+/// from the phone again each time. Only there: a reload replaces the copy with
+/// what the phone returns, dropping a write the app makes meanwhile.
+Future<bool> _readAppLockOnFromPhone() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.reload();
   return Settings.read(prefs).lockOn;
@@ -242,7 +247,7 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
   final habitId = target.habitId;
   try {
     // Buttons on a notification posted before App Lock was turned on.
-    if (await _readAppLockOn()) return;
+    if (await _readAppLockOnFromPhone()) return;
     if (r.actionId == 'done') {
       final dir = await getDatabasesPath();
       // Its own connection: closing the app's shared one would break the open app.
