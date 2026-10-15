@@ -60,6 +60,10 @@ android {
             manifestPlaceholders["appLabel"] = "Daily Tracker (debug)"
         }
         release {
+            // Phones only: the workflow builds arm and arm64. Without this, a library
+            // that ships x86_64 code (androidx datastore) makes the APK look installable
+            // on an x86_64 device, where the app crashes because the engine is not in it.
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
             signingConfig = if (releaseStoreFile != null) {
                 signingConfigs.getByName("release")
             } else {

@@ -98,6 +98,10 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
+      - name: Check the APK only carries phone libraries
+        if: github.event_name != 'pull_request'
+        run: bash tool/check_apk_abis.sh build/app/outputs/flutter-apk/app-release.apk
+
       - name: Name the files and write the checksum
         if: github.event_name != 'pull_request'
         run: |
