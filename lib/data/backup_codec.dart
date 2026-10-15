@@ -61,6 +61,9 @@ BackupData decodeBackup(String text) {
   final version = root['version'];
   if (version is! int)
     throw const FormatException('The backup has no version number.');
+  if (version < 1) {
+    throw const FormatException('The backup file is damaged.');
+  }
   if (version > backupVersion) {
     throw const FormatException(
       'This backup was made by a newer version of the app. Update the app and try again.',
@@ -81,13 +84,17 @@ BackupData decodeBackup(String text) {
     final snapshot = Snapshot(habits: habits, entries: entries, seenDays: seen)
       ..validate();
     final exported = root['exportedAt'];
+    if (exported != null && exported is! String) throw damaged;
+    final exportedAt = exported is String ? DateTime.tryParse(exported) : null;
+    if (exported is String && exportedAt == null) throw damaged;
+    final app = root['app'];
+    if (app != null && app is! String) throw damaged;
     return BackupData(
       snapshot: snapshot,
       settings: _settings(root['settings']),
       exportedAt:
-          (exported is String ? DateTime.tryParse(exported) : null) ??
-          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      appVersion: root['app'] as String?,
+          exportedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      appVersion: app as String?,
     );
   } on TypeError {
     throw damaged;
@@ -106,10 +113,15 @@ List<Object?> _list(Object? v) => v as List<Object?>;
 Map<String, Object?> _map(Object? v) => v! as Map<String, Object?>;
 
 Map<String, Object> _settings(Object? raw) {
-  if (raw is! Map<String, Object?>) return const {};
+  if (raw == null) return const {};
+  if (raw is! Map<String, Object?>) {
+    throw const FormatException('The backup file is damaged.');
+  }
   return {
     for (final e in raw.entries)
-      if (e.value is bool || e.value is num || e.value is String)
+      if (e.value is bool ||
+          (e.value is num && (e.value! as num).isFinite) ||
+          e.value is String)
         e.key: e.value!,
   };
 }

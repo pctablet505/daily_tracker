@@ -17,7 +17,7 @@ HeatLevel heatLevel(DaySummary s, {required bool isFuture}) {
   final f = s.done / s.planned;
   if (f == 0) return HeatLevel.missed;
   if (f < 0.5) return HeatLevel.low;
-  if (f < 1) return HeatLevel.mid;
+  if (f < 1 || s.slips > 0) return HeatLevel.mid;
   return HeatLevel.full;
 }
 

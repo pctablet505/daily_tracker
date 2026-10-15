@@ -82,6 +82,17 @@ TodayView buildTodayView(
     final e = l.entryOf(h.id, day);
     if (h.tracksSlips) {
       if (!_matches(h, q)) continue;
+      if (e?.state == EntryState.skipped) {
+        finished.add(
+          HabitRow(
+            habit: h,
+            entry: e,
+            kind: RowKind.skipped,
+            streak: habitStreak(l, h, day).current,
+          ),
+        );
+        continue;
+      }
       stayClear.add(
         HabitRow(
           habit: h,
@@ -142,6 +153,6 @@ TodayView buildTodayView(
     stayClear: stayClear,
     finished: finished,
     summary: summarizeDay(l, day, threshold: threshold),
-    hasAnyHabit: l.habits.isNotEmpty,
+    hasAnyHabit: l.habits.any((h) => !h.isArchived || h.isActiveOn(day)),
   );
 }
