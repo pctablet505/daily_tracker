@@ -488,6 +488,41 @@ void main() {
       expect(await (await b).readAsBytes(), apkBytes);
     });
 
+    test('a second download of one version replaces the file with no moment it is gone', () async {
+      final bodies = [
+        StreamController<List<int>>(),
+        StreamController<List<int>>(),
+      ];
+      var calls = 0;
+      final s = service(
+        MockClient.streaming(
+          (_, _) async => http.StreamedResponse(bodies[calls++].stream, 200),
+        ),
+      );
+      final a = s.download(info(sha: null), onProgress: (_, _) {});
+      final b = s.download(info(sha: null), onProgress: (_, _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final target = File('${dir.path}/daily-tracker-2.1.0.apk');
+      var seen = false;
+      var gone = false;
+      final probe = Timer.periodic(Duration.zero, (_) {
+        if (target.existsSync()) {
+          seen = true;
+        } else if (seen) {
+          gone = true;
+        }
+      });
+      bodies[0].add(apkBytes);
+      await bodies[0].close();
+      await a;
+      bodies[1].add(apkBytes);
+      await bodies[1].close();
+      await b;
+      probe.cancel();
+      expect(seen, isTrue);
+      expect(gone, isFalse);
+    });
+
     test("a finished download clears old files but not another download's part file", () async {
       File put(String name) => File('${dir.path}/$name')..writeAsBytesSync([0]);
       final old = put('daily-tracker-2.0.9.apk');

@@ -333,7 +333,8 @@ class UpdateService {
           'The downloaded file is the wrong size. Try again.',
         );
       }
-      if (await target.exists()) await target.delete();
+      // Renaming over the old file replaces it in one step; deleting it first
+      // leaves a moment in which another download's caller finds nothing.
       await part.rename(target.path);
       try {
         final stale = DateTime.now().subtract(const Duration(hours: 1));
