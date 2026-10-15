@@ -67,9 +67,12 @@ int _byPartThenOrder(HabitRow a, HabitRow b) {
   return o != 0 ? o : a.habit.name.compareTo(b.habit.name);
 }
 
+/// The list for [day]. [today] is the real day ([day] when not given): only it
+/// is still open, so a past day not done ends a row's streak.
 TodayView buildTodayView(
   Ledger l,
   DayKey day, {
+  DayKey? today,
   String query = '',
   int threshold = defaultStreakThreshold,
   bool Function(String photoName)? photoExists,
@@ -89,7 +92,7 @@ TodayView buildTodayView(
             habit: h,
             entry: e,
             kind: RowKind.skipped,
-            streak: habitStreak(l, h, day).current,
+            streak: habitStreak(l, h, day, today: today).current,
           ),
         );
         continue;
@@ -101,16 +104,21 @@ TodayView buildTodayView(
           kind: e?.state == EntryState.slipped
               ? RowKind.slipped
               : RowKind.onTrack,
-          streak: habitStreak(l, h, day).current,
+          streak: habitStreak(l, h, day, today: today).current,
         ),
       );
       continue;
     }
-    if (!(h.isScheduledOn(day) || e != null) || !_matches(h, q)) continue;
+    // A slip on a Do habit (left by an edit from stay-clear) counts for
+    // nothing in the day summary, so it does not bring an unplanned day here.
+    final listed =
+        h.isScheduledOn(day) || (e != null && e.state != EntryState.slipped);
+    if (!listed || !_matches(h, q)) continue;
     final kind = switch (e?.state) {
       EntryState.done => RowKind.done,
       EntryState.skipped => RowKind.skipped,
-      EntryState.partial => RowKind.partial,
+      // Only an amount can be part of the way; any other kind is still to do.
+      EntryState.partial when h.logType == LogType.number => RowKind.partial,
       _ => RowKind.todo,
     };
     final history = l.entriesOf(h.id);
@@ -118,7 +126,7 @@ TodayView buildTodayView(
       habit: h,
       entry: e,
       kind: kind,
-      streak: habitStreak(l, h, day).current,
+      streak: habitStreak(l, h, day, today: today).current,
       lastValue: h.logType == LogType.number
           ? history
                 .where(

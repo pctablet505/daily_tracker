@@ -224,6 +224,24 @@ void main() {
       final slippedToday = ledger([s], [slip('s', sun)], [fri, sat, sun]);
       expect(currentStreak(slippedToday, sun), 0);
     });
+
+    for (final early in [const DayKey(1970, 1, 1), const DayKey(1, 1, 1)]) {
+      test('a seen day of $early, long before any habit, does not slow it', () {
+        final l = ledger(
+          [for (var i = 0; i < 20; i++) habit('h$i')],
+          [
+            for (var i = 0; i < 20; i++)
+              for (final d in mon.through(sun)) entry('h$i', d),
+          ],
+          [early, ...mon.through(sun)],
+        );
+        final sw = Stopwatch()..start();
+        final n = currentStreak(l, sun);
+        sw.stop();
+        expect(n, 7);
+        expect(sw.elapsedMilliseconds, lessThan(50));
+      });
+    }
   });
 
   group('bestStreak', () {
@@ -313,6 +331,17 @@ void main() {
         expect(perfectDays(l, mon, sun), 2); // Mon and Wed
       },
     );
+
+    test(
+      'with only stay-clear habits, a seen day without a slip is perfect',
+      () {
+        final l = ledger([stayClear('s')], [slip('s', tue)], [mon, tue, wed]);
+        expect(summarizeDay(l, mon).perfect, isTrue);
+        expect(summarizeDay(l, tue).perfect, isFalse); // slipped
+        expect(summarizeDay(l, thu).perfect, isFalse); // not seen: neutral
+        expect(perfectDays(l, mon, sun), 2); // Mon and Wed
+      },
+    );
   });
 
   group('habitStreak: a Do habit', () {
@@ -355,11 +384,38 @@ void main() {
       expect(habitStreak(l, a, sun), const HabitStreak(current: 3, best: 3));
     });
 
+    test('an archived habit missed on its last day has no streak, on that day or after', () {
+      final a = habit('a', end: wed);
+      final l = ledger([a], [entry('a', mon), entry('a', tue)]);
+      expect(habitStreak(l, a, wed), const HabitStreak(current: 0, best: 2));
+      expect(habitStreak(l, a, thu), const HabitStreak(current: 0, best: 2));
+    });
+
     test('a missed day today is not yet a miss', () {
       final a = habit('a');
       final l = ledger([a], [entry('a', mon)]);
       expect(habitStreak(l, a, tue), const HabitStreak(current: 1, best: 1));
       expect(habitStreak(l, a, wed), const HabitStreak(current: 0, best: 1));
+    });
+
+    test('a past day looked back on is not open: missing it was a miss', () {
+      final a = habit('a');
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue), entry('a', wed)],
+      );
+      expect(
+        habitStreak(l, a, thu, today: fri),
+        const HabitStreak(current: 0, best: 3),
+      );
+      expect(
+        habitStreak(l, a, fri, today: fri),
+        const HabitStreak(current: 0, best: 3),
+      );
+      expect(
+        habitStreak(l, a, thu, today: thu),
+        const HabitStreak(current: 3, best: 3),
+      );
     });
   });
 

@@ -1,6 +1,7 @@
 import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/stats.dart';
+import 'package:daily_tracker/logic/habit_detail.dart';
 import 'package:daily_tracker/logic/today_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,6 +40,33 @@ void main() {
       },
     );
 
+    test(
+      'a tick taken off a day that holds a photo is to do again everywhere',
+      () {
+        final t = habit('t', mask: Habit.weekdaysOnly);
+        final kept = Entry(
+          habitId: 't',
+          day: mon,
+          state: EntryState.partial,
+          photoPath: 'a.jpg',
+          loggedAt: DateTime.utc(2026),
+        );
+        final l = ledger([t], [kept, entry('t', tue)], [mon, tue, wed]);
+        final v = buildTodayView(l, mon);
+        expect(ids(v.toDo), ['t']);
+        expect(v.toDo.single.kind, RowKind.todo);
+        expect((v.summary.done, v.summary.planned), (0, 1));
+        final d = buildHabitDetail(l, t, wed);
+        expect(
+          d.recentDays.firstWhere((x) => x.day == mon).state,
+          DotState.missed,
+        );
+        expect(d.totalDone, 1);
+        expect(d.streak, const HabitStreak(current: 1, best: 1));
+        expect(d.photos.single.photoPath, 'a.jpg');
+      },
+    );
+
     test('a skipped day is listed with the finished ones', () {
       final v = buildTodayView(
         ledger([habit('a')], [entry('a', mon, EntryState.skipped)]),
@@ -54,6 +82,15 @@ void main() {
       expect(v.stayClear.single.kind, RowKind.onTrack);
       expect(v.toDo, isEmpty);
       expect(v.finished, isEmpty);
+    });
+
+    test('a skipped stay-clear day is listed with the finished ones', () {
+      final v = buildTodayView(
+        ledger([stayClear('s')], [entry('s', mon, EntryState.skipped)], [mon]),
+        mon,
+      );
+      expect(v.stayClear, isEmpty);
+      expect(v.finished.single.kind, RowKind.skipped);
     });
 
     test('a slip shows as slipped', () {
@@ -85,12 +122,45 @@ void main() {
       },
     );
 
-    test('not before it was created and not after it ended, even with an entry', () {
-      final a = habit('a', created: wed, end: thu);
-      expect(buildTodayView(ledger([a]), tue).isEmpty, isTrue);
-      expect(buildTodayView(ledger([a]), wed).isEmpty, isFalse);
-      expect(buildTodayView(ledger([a]), thu).isEmpty, isFalse);
-      expect(buildTodayView(ledger([a], [entry('a', fri)]), fri).isEmpty, isTrue);
+    test(
+      'not before it was created and not after it ended, even with an entry',
+      () {
+        final a = habit('a', created: wed, end: thu);
+        expect(buildTodayView(ledger([a]), tue).isEmpty, isTrue);
+        expect(buildTodayView(ledger([a]), wed).isEmpty, isFalse);
+        expect(buildTodayView(ledger([a]), thu).isEmpty, isFalse);
+        expect(
+          buildTodayView(ledger([a], [entry('a', fri)]), fri).isEmpty,
+          isTrue,
+        );
+      },
+    );
+
+    test('a slip left from before an edit to "Do this" agrees with the summary and the habit page', () {
+      // Stay-clear until it was edited to a weekday Do habit; the edit keeps
+      // the slipped rows of Friday and Saturday.
+      final h = habit('h', mask: Habit.weekdaysOnly);
+      final o = habit('o');
+      final l = ledger(
+        [h, o],
+        [slip('h', fri), slip('h', sat), entry('o', fri), entry('o', sat)],
+        [fri, sat],
+      );
+      final dots = {
+        for (final d in buildHabitDetail(l, h, sat).recentDays) d.day: d.state,
+      };
+
+      final saturday = buildTodayView(l, sat);
+      expect(ids(saturday.toDo), isEmpty);
+      expect(ids(saturday.finished), ['o']);
+      expect((saturday.summary.done, saturday.summary.planned), (1, 1));
+      expect(dots[sat], DotState.none);
+
+      final friday = buildTodayView(l, fri);
+      expect(ids(friday.toDo), ['h']);
+      expect(friday.toDo.single.kind, RowKind.todo);
+      expect((friday.summary.done, friday.summary.planned), (1, 2));
+      expect(dots[fri], DotState.missed);
     });
 
     test('a stay-clear habit ignores the weekday mask', () {
@@ -165,6 +235,12 @@ void main() {
         expect((none.isEmpty, none.hasAnyHabit), (true, false));
       },
     );
+
+    test('once every habit has ended there is nothing to track, not just nothing planned', () {
+      final l = ledger([habit('a', end: wed), stayClear('s', end: wed)]);
+      expect(buildTodayView(l, thu).hasAnyHabit, isFalse);
+      expect(buildTodayView(l, wed).hasAnyHabit, isTrue);
+    });
   });
 
   group('streak on each row', () {
@@ -178,6 +254,17 @@ void main() {
       expect(buildTodayView(l, thu).toDo.single.streak, 3); // today still open
     });
 
+    test('a missed day looked back on from a later day shows no streak', () {
+      final a = habit('a');
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue), entry('a', wed)],
+        [mon, tue, wed, thu, fri],
+      );
+      expect(buildTodayView(l, thu, today: fri).toDo.single.streak, 0);
+      expect(buildTodayView(l, thu, today: thu).toDo.single.streak, 3);
+    });
+
     test('a stay-clear row counts days since the last slip', () {
       final s = stayClear('s');
       final l = ledger([s], [slip('s', tue)], [mon, tue, wed, thu]);
@@ -186,24 +273,27 @@ void main() {
   });
 
   group('what a row remembers', () {
-    test('a number habit knows the last non-skipped amount from an earlier day', () {
-      final w = habit('w', logType: LogType.number);
-      final l = ledger(
-        [w],
-        [
-          entry('w', mon, EntryState.done, 75.9),
-          entry('w', tue, EntryState.done, 75.5),
-          entry('w', wed, EntryState.skipped, 99.0),
-        ],
-      );
-      expect(buildTodayView(l, thu).toDo.single.lastValue, 75.5);
-      expect(
-        buildTodayView(l, tue).finished.single.lastValue,
-        75.9,
-        reason: 'today is not "last"',
-      );
-      expect(buildTodayView(l, mon).finished.single.lastValue, isNull);
-    });
+    test(
+      'a number habit knows the last non-skipped amount from an earlier day',
+      () {
+        final w = habit('w', logType: LogType.number);
+        final l = ledger(
+          [w],
+          [
+            entry('w', mon, EntryState.done, 75.9),
+            entry('w', tue, EntryState.done, 75.5),
+            entry('w', wed, EntryState.skipped, 99.0),
+          ],
+        );
+        expect(buildTodayView(l, thu).toDo.single.lastValue, 75.5);
+        expect(
+          buildTodayView(l, tue).finished.single.lastValue,
+          75.9,
+          reason: 'today is not "last"',
+        );
+        expect(buildTodayView(l, mon).finished.single.lastValue, isNull);
+      },
+    );
 
     test('a photo habit counts its non-skipped photos up to the day shown', () {
       final p = habit('p', logType: LogType.photo);
@@ -244,40 +334,47 @@ void main() {
       expect(buildTodayView(l, fri).finished.single.photoCount, 2);
     });
 
-    test('a photo whose file is gone is not counted (a restore brings no photos)', () {
-      final p = habit('p', logType: LogType.photo);
-      Entry photo(DayKey d, String name) => Entry(
-        habitId: 'p',
-        day: d,
-        state: EntryState.done,
-        photoPath: name,
-        loggedAt: DateTime.utc(2026),
-      );
-      final l = ledger(
-        [p],
-        [photo(mon, 'here.jpg'), photo(tue, 'gone.jpg'), photo(wed, 'also-gone.jpg')],
-      );
-      expect(
-        buildTodayView(
-          l,
-          wed,
-          photoExists: (name) => name == 'here.jpg',
-        ).finished.single.photoCount,
-        1,
-      );
-      expect(
-        buildTodayView(
-          l,
-          wed,
-          photoExists: (_) => false,
-        ).finished.single.photoCount,
-        0,
-      );
-      expect(
-        buildTodayView(l, wed).finished.single.photoCount,
-        3,
-        reason: 'without a check every recorded photo counts, as before',
-      );
-    });
+    test(
+      'a photo whose file is gone is not counted (a restore brings no photos)',
+      () {
+        final p = habit('p', logType: LogType.photo);
+        Entry photo(DayKey d, String name) => Entry(
+          habitId: 'p',
+          day: d,
+          state: EntryState.done,
+          photoPath: name,
+          loggedAt: DateTime.utc(2026),
+        );
+        final l = ledger(
+          [p],
+          [
+            photo(mon, 'here.jpg'),
+            photo(tue, 'gone.jpg'),
+            photo(wed, 'also-gone.jpg'),
+          ],
+        );
+        expect(
+          buildTodayView(
+            l,
+            wed,
+            photoExists: (name) => name == 'here.jpg',
+          ).finished.single.photoCount,
+          1,
+        );
+        expect(
+          buildTodayView(
+            l,
+            wed,
+            photoExists: (_) => false,
+          ).finished.single.photoCount,
+          0,
+        );
+        expect(
+          buildTodayView(l, wed).finished.single.photoCount,
+          3,
+          reason: 'without a check every recorded photo counts, as before',
+        );
+      },
+    );
   });
 }

@@ -58,8 +58,11 @@ final class DaySummary {
 
   double? get fraction => planned == 0 ? null : done / planned;
 
-  /// Everything planned was done and nothing was slipped.
-  bool get perfect => planned > 0 && done == planned && slips == 0;
+  /// Everything planned was done and nothing was slipped. With no Do habit
+  /// planned, a good day is perfect: the stay-clear habits held on a day the
+  /// app was seen.
+  bool get perfect =>
+      planned > 0 ? done == planned && slips == 0 : status == DayStatus.good;
 }
 
 /// All habits, entries and seen days, indexed for the counting functions.
@@ -117,6 +120,12 @@ final class Ledger {
 
   /// The earliest day that was seen or has an entry, or null if none.
   DayKey? get _firstActiveDay => _activeDays.firstOrNull;
+
+  /// The earliest day any habit started, or null when there are no habits.
+  late final DayKey? _firstStart = habits.fold<DayKey?>(
+    null,
+    (first, h) => first == null || h.createdDay < first ? h.createdDay : first,
+  );
 }
 
 DaySummary summarizeDay(
@@ -173,8 +182,11 @@ int currentStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = l._firstActiveDay;
-  if (first == null) return 0;
+  final seen = l._firstActiveDay;
+  final started = l._firstStart;
+  if (seen == null || started == null) return 0;
+  // Before the first habit started every day is neutral.
+  final first = seen > started ? seen : started;
   var n = 0;
   for (var d = today; d >= first; d = d.addDays(-1)) {
     final s = summarizeDay(l, d, threshold: threshold);
@@ -250,7 +262,7 @@ Ratio rateOver(
   return Ratio(done, planned);
 }
 
-/// Days in [from]..[to] on which every planned "Do" habit was done.
+/// Days in [from]..[to] that were [DaySummary.perfect].
 int perfectDays(Ledger l, DayKey from, DayKey to) =>
     from.through(to).where((d) => summarizeDay(l, d).perfect).length;
 
@@ -271,13 +283,16 @@ final class HabitStreak {
   String toString() => 'HabitStreak(current: $current, best: $best)';
 }
 
-/// One habit's streaks as of [today].
+/// One habit's streaks as of [day], looked at on [today] (the real day; [day]
+/// when not given).
 ///
 /// Do habit: consecutive planned days done; skipped days are passed over and
-/// [today], while still open, does not break the run.
+/// [today], while still open, does not break the run. A [day] before [today]
+/// is over, so missing it does.
 /// Stay-clear habit: days since the last slip, counting only days the app saw.
-HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
-  final last = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+HabitStreak habitStreak(Ledger l, Habit h, DayKey day, {DayKey? today}) {
+  final open = today ?? day;
+  final last = (h.endDay != null && h.endDay! < day) ? h.endDay! : day;
   final entries = l.entriesOf(h.id);
   final DayKey? earliest = h.tracksSlips
       ? l._firstActiveDay
@@ -316,7 +331,7 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
       if (e?.state == EntryState.done) {
         run++;
         if (run > best) best = run;
-      } else if (h.isScheduledOn(d) && (d != today || h.isArchived)) {
+      } else if (h.isScheduledOn(d) && (d != open || h.isArchived)) {
         run = 0;
       }
     }
@@ -330,7 +345,15 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
 Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
   var done = 0;
   var planned = 0;
-  for (final d in from.through(to)) {
+  // Days before the habit started, and (for a stay-clear habit) before the
+  // app was first seen, count for nothing: start the walk after them.
+  var start = from < h.createdDay ? h.createdDay : from;
+  if (h.tracksSlips) {
+    final seen = l._firstActiveDay;
+    if (seen == null) return const Ratio(0, 0);
+    if (start < seen) start = seen;
+  }
+  for (final d in start.through(to)) {
     if (!h.isActiveOn(d)) continue;
     final e = l.entryOf(h.id, d);
     if (e?.state == EntryState.skipped) continue;

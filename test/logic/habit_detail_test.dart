@@ -163,4 +163,17 @@ void main() {
     expect(byDay[wed], DotState.missed);
     expect(byDay[fri], DotState.none, reason: 'not opened, nothing known');
   });
+
+  test(
+    'a stay-clear habit started in year 1 counts its clear days quickly',
+    () {
+      final s = stayClear('s', created: const DayKey(1, 1, 1));
+      final l = ledger([s], [slip('s', sat)], [fri, sat, sun]);
+      final sw = Stopwatch()..start();
+      final d = buildHabitDetail(l, s, sun);
+      sw.stop();
+      expect((d.totalDone, d.totalSlips), (2, 1));
+      expect(sw.elapsedMilliseconds, lessThan(50));
+    },
+  );
 }
