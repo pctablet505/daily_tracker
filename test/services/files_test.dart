@@ -21,9 +21,9 @@ final class _Picked implements PickedFile {
   Future<int?> length() async => reportedLength ?? _bytes.length;
 
   @override
-  Future<Uint8List> readAsBytes() async {
+  Stream<List<int>> readAsByteStream() {
     events.add('read');
-    return _bytes;
+    return Stream.value(_bytes);
   }
 }
 
@@ -186,6 +186,27 @@ void main() {
       expect(text, 'abc');
     });
 
+    test('a file of unknown size is read only until it is too large', () async {
+      final big = _Unsized(chunks: 256, chunkSize: 4096);
+      await expectLater(
+        service(
+          pick: () async => big,
+          clearPicked: () async {},
+        ).pickAndReadText(maxBytes: 10000),
+        throwsA(isA<FormatException>()),
+      );
+      expect(big.pulled, lessThanOrEqualTo(10000 + 4096));
+    });
+
+    test('a small file of unknown size is read whole', () async {
+      final small = _Unsized(chunks: 3, chunkSize: 5);
+      final text = await service(
+        pick: () async => small,
+        clearPicked: () async {},
+      ).pickAndReadText(maxBytes: 15);
+      expect(text, 'x' * 15);
+    });
+
     test('backing out returns null', () async {
       expect(await service(pick: () async => null).pickAndReadText(), isNull);
     });
@@ -201,8 +222,27 @@ final class _PickedBytes implements PickedFile {
   Future<int?> length() async => bytes.length;
 
   @override
-  Future<Uint8List> readAsBytes() async {
+  Stream<List<int>> readAsByteStream() {
     events.add('read');
-    return bytes;
+    return Stream.value(bytes);
+  }
+}
+
+/// A picked file whose size the picker could not tell, read in chunks.
+final class _Unsized implements PickedFile {
+  _Unsized({required this.chunks, required this.chunkSize});
+  final int chunks;
+  final int chunkSize;
+  int pulled = 0;
+
+  @override
+  Future<int?> length() async => null;
+
+  @override
+  Stream<List<int>> readAsByteStream() async* {
+    for (var i = 0; i < chunks; i++) {
+      pulled += chunkSize;
+      yield Uint8List.fromList(List.filled(chunkSize, 0x78));
+    }
   }
 }

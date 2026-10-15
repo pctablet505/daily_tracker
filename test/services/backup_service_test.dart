@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:daily_tracker/data/backup_codec.dart';
@@ -166,6 +167,101 @@ void main() {
     expect((await repo.habits()).map((h) => h.id), contains('mine'));
   });
 
+  test('undo puts back the copy made last, even when the clock was ahead for an older one', () async {
+    var clock = now.add(const Duration(days: 9));
+    final s = BackupService(
+      repo: repo,
+      readSettings: () => settings,
+      applySettings: (_) async {},
+      safetyDir: () async => safety,
+      now: () => clock,
+      appVersion: () async => '2.0.0',
+    );
+    await seed();
+    final text = (await s.export()).text;
+    await repo.addHabit(habit('older'));
+    await s.restore(text);
+    for (final f in safety.listSync().whereType<File>()) {
+      f.setLastModifiedSync(DateTime.now().add(const Duration(days: 9)));
+    }
+    clock = now;
+    await repo.addHabit(habit('newer'));
+    await s.restore(text);
+
+    await s.undoLastRestore();
+    expect(
+      (await repo.habits()).map((h) => h.id),
+      allOf(contains('newer'), isNot(contains('older'))),
+    );
+  });
+
+  test('restores made in the same second each keep their own copy', () async {
+    await seed();
+    final text = (await service.export()).text;
+    await repo.addHabit(habit('first'));
+    await service.restore(text);
+    await repo.addHabit(habit('second'));
+    await service.restore(text);
+    expect(safety.listSync().whereType<File>(), hasLength(2));
+
+    await service.undoLastRestore();
+    expect((await repo.habits()).map((h) => h.id), contains('second'));
+  });
+
+  test(
+    'pruning keeps the three copies made last, whatever their times',
+    () async {
+      await seed();
+      final text = (await service.export()).text;
+      for (var i = 0; i < 5; i++) {
+        await repo.addHabit(habit('v$i'));
+        await service.restore(text);
+      }
+      final kept = [
+        for (final f in safety.listSync().whereType<File>())
+          decodeBackup(f.readAsStringSync()).snapshot.habits
+              .map((h) => h.id)
+              .where((id) => id.startsWith('v'))
+              .single,
+      ]..sort();
+      expect(kept, ['v2', 'v3', 'v4']);
+    },
+  );
+
+  test(
+    'when the newest safety copy is damaged, undo says so and changes nothing',
+    () async {
+      await seed();
+      final text = (await service.export()).text;
+      await repo.addHabit(habit('first'));
+      await service.restore(text);
+      final before = safety.listSync().map((f) => f.path).toSet();
+      await repo.addHabit(habit('second'));
+      await service.restore(text);
+      final newest = safety.listSync().whereType<File>().singleWhere(
+        (f) => !before.contains(f.path),
+      );
+
+      for (final damage in [
+        utf8.encode('{corrupt'),
+        [0xff, 0xfe, 0x00],
+      ]) {
+        newest.writeAsBytesSync(damage);
+        await expectLater(
+          service.undoLastRestore(),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('damaged'),
+            ),
+          ),
+        );
+        expect((await repo.habits()).map((h) => h.id).toSet(), {'a', 's'});
+      }
+    },
+  );
+
   test('a bad file is refused before anything is touched or saved', () async {
     await seed();
     await expectLater(service.restore('garbage'), throwsFormatException);
@@ -192,9 +288,43 @@ void main() {
 
     test('a cell that a spreadsheet would run as a formula is neutralised', () {
       expect(
-        csvRow(['=SUM(A1)', '+1', '-2', '@x', '\t=1', 'ok', ' =not a formula']),
-        "'=SUM(A1),'+1,'-2,'@x,'\t=1,ok, =not a formula",
+        csvRow(['=SUM(A1)', '+1', '-2', '@x', '\t=1', 'ok']),
+        "'=SUM(A1),'+1,'-2,'@x,'\t=1,ok",
+      );
+    });
+
+    test('a formula behind leading spaces is neutralised too', () {
+      expect(
+        csvRow([' =CMD()', '   +1', ' @x', ' plain', 'a =b']),
+        "' =CMD(),'   +1,' @x, plain,a =b",
       );
     });
   });
+
+  test(
+    'exported files are named for the local date, not the UTC one',
+    () async {
+      for (final local in [
+        DateTime(2026, 10, 12, 0, 30),
+        DateTime(2026, 10, 12, 23, 30),
+      ]) {
+        final s = BackupService(
+          repo: repo,
+          readSettings: () => settings,
+          applySettings: (_) async {},
+          safetyDir: () async => safety,
+          now: () => local,
+          appVersion: () async => '2.0.0',
+        );
+        expect(
+          (await s.export()).fileName,
+          'daily-tracker-backup-2026-10-12.json',
+        );
+        expect(
+          (await s.exportCsv()).fileName,
+          'daily-tracker-entries-2026-10-12.csv',
+        );
+      }
+    },
+  );
 }

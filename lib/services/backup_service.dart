@@ -27,8 +27,10 @@ final class ExportedFile {
 }
 
 /// A cell a spreadsheet might run as a formula gets a leading apostrophe.
-String _safeCell(String s) =>
-    s.isNotEmpty && '=+-@\t\r\n'.contains(s[0]) ? "'$s" : s;
+/// Spreadsheets skip leading spaces, so a formula behind them counts too.
+final _formula = RegExp(r'^([\t\r\n]|\s*[=+\-@])');
+
+String _safeCell(String s) => _formula.hasMatch(s) ? "'$s" : s;
 
 String csvRow(List<String> cells) => cells
     .map((c) {
@@ -40,8 +42,8 @@ String csvRow(List<String> cells) => cells
     .join(',');
 
 String _date(DateTime d) {
-  final u = d.toUtc();
-  return '${u.year.toString().padLeft(4, '0')}-${u.month.toString().padLeft(2, '0')}-${u.day.toString().padLeft(2, '0')}';
+  final l = d.toLocal();
+  return '${l.year.toString().padLeft(4, '0')}-${l.month.toString().padLeft(2, '0')}-${l.day.toString().padLeft(2, '0')}';
 }
 
 /// Export, preview and restore of the local backup file.
@@ -125,9 +127,17 @@ class BackupService {
     await _applySettings(backup.settings);
   }
 
-  /// The copies made before restores, newest first. The order comes from when
-  /// each was written, not from its name: a phone clock that was wrong once
-  /// must not make an old copy look new.
+  static final _numbered = RegExp(r'-n(\d+)\.json$');
+
+  static int? _number(File f) {
+    final m = _numbered.firstMatch(p.basename(f.path));
+    return m == null ? null : int.tryParse(m[1]!);
+  }
+
+  /// The copies made before restores, newest first. Each copy is numbered one
+  /// above the copies before it, so the order never depends on the phone's
+  /// clock, which may have been wrong once. Copies from versions that did not
+  /// number them are older than any numbered one, and go by when they were written.
   Future<List<File>> _safetyCopies() async {
     final dir = await _safetyDir();
     if (!dir.existsSync()) return [];
@@ -142,6 +152,8 @@ class BackupService {
         .toList();
     DateTime when(File f) => f.statSync().modified;
     copies.sort((a, b) {
+      final (na, nb) = (_number(a), _number(b));
+      if (na != null || nb != null) return (nb ?? -1).compareTo(na ?? -1);
       final byTime = when(b).compareTo(when(a));
       return byTime != 0
           ? byTime
@@ -154,22 +166,22 @@ class BackupService {
   Future<bool> hasSafetyCopy() async => (await _safetyCopies()).isNotEmpty;
 
   /// Puts back what was on the phone before the last restore. That itself saves
-  /// a copy first, so undoing twice goes back and forth.
+  /// a copy first, so undoing twice goes back and forth. A damaged newest copy
+  /// stops it: an older copy would quietly put back the wrong data.
   Future<void> undoLastRestore() async {
     final copies = await _safetyCopies();
     if (copies.isEmpty)
       throw const FormatException('There is nothing to undo.');
-    for (final copy in copies) {
-      final text = await copy.readAsString();
-      try {
-        decodeBackup(text);
-      } on FormatException {
-        continue;
-      }
-      await restore(text);
-      return;
+    final String text;
+    try {
+      text = await copies.first.readAsString();
+      decodeBackup(text);
+    } on Exception {
+      throw const FormatException(
+        'The copy from before the last restore is damaged, so it cannot be put back. Nothing was changed.',
+      );
     }
-    throw const FormatException('The safety copy is damaged.');
+    await restore(text);
   }
 
   Future<void> _saveSafetyCopy() async {
@@ -179,13 +191,15 @@ class BackupService {
       RegExp(r'[:.]'),
       '-',
     );
-    final written = File(p.join(dir.path, 'before-restore-$stamp.json'));
+    final copies = await _safetyCopies();
+    final number = (copies.isEmpty ? 0 : _number(copies.first) ?? 0) + 1;
+    final written = File(
+      p.join(dir.path, 'before-restore-$stamp-n$number.json'),
+    );
     final tmp = File('${written.path}.tmp');
     await tmp.writeAsString(await _encode(), flush: true);
     await tmp.rename(written.path);
-    // Keep the copy just made, plus the newest of the others.
-    final others = (await _safetyCopies()).where((f) => f.path != written.path);
-    for (final old in others.skip(_keepSafetyCopies - 1)) {
+    for (final old in (await _safetyCopies()).skip(_keepSafetyCopies)) {
       await old.delete();
     }
   }

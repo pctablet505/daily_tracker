@@ -435,7 +435,7 @@ void main() {
       expect(await repo.entries(), isEmpty);
     });
 
-    test('BackupService.exportCsv sanitizes newline formula injection and BackupService.undoLastRestore skips corrupt files', () async {
+    test('BackupService.exportCsv sanitizes newline formula injection and BackupService.undoLastRestore refuses a corrupt newest copy', () async {
       final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
       addTearDown(db.close);
       final repo = HabitRepository(db);
@@ -473,8 +473,8 @@ void main() {
 
       await repo.deleteHabit('h1');
       expect(await repo.habits(), isEmpty);
-      await svc.undoLastRestore();
-      expect(await repo.habits(), hasLength(1));
+      await expectLater(svc.undoLastRestore(), throwsFormatException);
+      expect(await repo.habits(), isEmpty);
     });
 
     test('parseRelease refuses non-HTTPS apkUrl and strips non-HTTPS sha256Url', () {

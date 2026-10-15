@@ -9,11 +9,17 @@ import 'package:http/http.dart' as http;
 const driveScope = 'https://www.googleapis.com/auth/drive.appdata';
 const driveFileName = 'daily-tracker-backup.json';
 
-/// An error with a message fit to show. [needsSignIn] means signing in again would fix it.
+/// An error with a message fit to show. [needsSignIn] means signing in again would fix it,
+/// and [needsWifi] that Wi-Fi would, or allowing mobile data this once.
 class DriveException implements Exception {
-  const DriveException(this.message, {this.needsSignIn = false});
+  const DriveException(
+    this.message, {
+    this.needsSignIn = false,
+    this.needsWifi = false,
+  });
   final String message;
   final bool needsSignIn;
+  final bool needsWifi;
   @override
   String toString() => message;
 }

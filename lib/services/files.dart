@@ -27,7 +27,7 @@ abstract interface class FileService {
 /// What the picker hands back, reduced to what is read from it.
 abstract interface class PickedFile {
   Future<int?> length();
-  Future<Uint8List> readAsBytes();
+  Stream<List<int>> readAsByteStream();
 }
 
 final class _PlatformPicked implements PickedFile {
@@ -38,7 +38,7 @@ final class _PlatformPicked implements PickedFile {
   Future<int?> length() => _file.length();
 
   @override
-  Future<Uint8List> readAsBytes() => _file.readAsBytes();
+  Stream<List<int>> readAsByteStream() => _file.readAsByteStream();
 }
 
 /// The picker and the share sheet leave copies of the user's backup in the app's cache,
@@ -115,11 +115,16 @@ final class SystemFileService implements FileService {
       final length = await f.length();
       if (length != null && length > maxBytes)
         throw const FormatException('That file is too large.');
-      final bytes = await f.readAsBytes();
-      if (bytes.length > maxBytes)
-        throw const FormatException('That file is too large.');
+      // The picker may not know the size, so stop reading once it is too large
+      // instead of holding the whole file first.
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in f.readAsByteStream()) {
+        bytes.add(chunk);
+        if (bytes.length > maxBytes)
+          throw const FormatException('That file is too large.');
+      }
       try {
-        return utf8.decode(bytes);
+        return utf8.decode(bytes.takeBytes());
       } on FormatException {
         throw const FormatException('That file is not a readable text file.');
       }

@@ -65,6 +65,9 @@ class CloudBackup {
   static const _emailKey = 'cloud.email';
   static const _autoKey = 'cloud.auto';
   static const _lastKey = 'cloud.last';
+  static const _fileIdKey = 'cloud.fileId';
+  static const _fileModifiedKey = 'cloud.fileModified';
+  static const _sessionLostKey = 'cloud.sessionLost';
   static const autoEvery = Duration(hours: 20);
 
   @visibleForTesting
@@ -73,6 +76,11 @@ class CloudBackup {
   bool get configured => _auth.configured;
   String? get email => _prefs.getString(_emailKey);
   bool get autoBackup => _prefs.getBool(_autoKey) ?? false;
+
+  /// Whether Google wants the user to sign in again before Drive works. The
+  /// account stays shown meanwhile: a session that did not come back at start
+  /// may only mean there was no network.
+  bool get sessionLost => _prefs.getBool(_sessionLostKey) ?? false;
 
   DateTime? get lastBackupAt {
     final ms = _prefs.getInt(_lastKey);
@@ -103,8 +111,19 @@ class CloudBackup {
   }
 
   Future<String> signIn() async {
-    final e = await _auth.signIn();
+    final String e;
+    try {
+      e = await _auth.signIn();
+    } on DriveException {
+      // A declined Drive permission can leave an account that Google picks up
+      // again at the next start, with no access to Drive.
+      await _prefs.setBool(_sessionLostKey, true);
+      rethrow;
+    }
+    // Another account's last backup says nothing about this one.
+    if (e != email) await _prefs.remove(_lastKey);
     await _prefs.setString(_emailKey, e);
+    await _prefs.remove(_sessionLostKey);
     return e;
   }
 
@@ -112,6 +131,50 @@ class CloudBackup {
     await _auth.signOut();
     await _prefs.remove(_emailKey);
     await _prefs.remove(_autoKey);
+    await _prefs.remove(_lastKey);
+    await _prefs.remove(_sessionLostKey);
+  }
+
+  /// Runs a Drive call, noting when Google wants the user to sign in again.
+  Future<T> _onDrive<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on DriveException catch (e) {
+      if (e.needsSignIn) await _prefs.setBool(_sessionLostKey, true);
+      rethrow;
+    }
+  }
+
+  /// Whether this install wrote [f] and nothing changed it since. Versions
+  /// that did not keep the file id kept the time of the last backup, and a
+  /// file no newer than that is the one this install wrote then.
+  bool _wroteThis(DriveFileInfo f) {
+    final id = _prefs.getString(_fileIdKey);
+    if (id == null) {
+      final last = lastBackupAt;
+      return last != null && !f.modified.isAfter(last);
+    }
+    return id == f.id &&
+        _prefs.getInt(_fileModifiedKey) == f.modified.millisecondsSinceEpoch;
+  }
+
+  /// The backup on Drive when this install did not write it or it changed
+  /// since, such as another phone's: only "Back up now" replaces it. Null when
+  /// there is none, or it is this install's own.
+  Future<DriveFileInfo?> otherBackupOnDrive() async {
+    if (_restoringSession != null) await _restoringSession;
+    final f = await _onDrive(_drive.info);
+    return f == null || _wroteThis(f) ? null : f;
+  }
+
+  Future<void> _uploads = Future.value();
+
+  /// Runs [job] after any backup already under way, so that two never both
+  /// find no file on Drive and each create one.
+  Future<T> _oneAtATime<T>(Future<T> Function() job) {
+    final run = _uploads.then((_) => job());
+    _uploads = run.then<void>((_) {}, onError: (_) {});
+    return run;
   }
 
   Future<BackupStatus?> _blocked({required bool overrideWifiOnly}) async {
@@ -124,7 +187,9 @@ class CloudBackup {
   Future<BackupOutcome> backupNow({
     bool automatic = false,
     bool overrideWifiOnly = false,
-  }) async {
+  }) => _oneAtATime(() => _backupNow(overrideWifiOnly: overrideWifiOnly));
+
+  Future<BackupOutcome> _backupNow({required bool overrideWifiOnly}) async {
     if (_restoringSession != null) await _restoringSession;
     final blocked = await _blocked(overrideWifiOnly: overrideWifiOnly);
     if (blocked != null) {
@@ -136,10 +201,14 @@ class CloudBackup {
       );
     }
     try {
-      await _drive.upload(await _backup.encodeForUpload());
+      final f = await _drive.upload(await _backup.encodeForUpload());
       await _prefs.setInt(_lastKey, _now().millisecondsSinceEpoch);
+      await _prefs.setString(_fileIdKey, f.id);
+      await _prefs.setInt(_fileModifiedKey, f.modified.millisecondsSinceEpoch);
+      await _prefs.remove(_sessionLostKey);
       return const BackupOutcome(BackupStatus.done);
     } on DriveException catch (e) {
+      if (e.needsSignIn) await _prefs.setBool(_sessionLostKey, true);
       return BackupOutcome(
         e.needsSignIn ? BackupStatus.signInNeeded : BackupStatus.failed,
         e.message,
@@ -160,10 +229,11 @@ class CloudBackup {
     if (blocked == BackupStatus.waitingForWifi)
       throw const DriveException(
         'Connect to Wi-Fi, or allow mobile data for this restore.',
+        needsWifi: true,
       );
-    final info = await _drive.info();
+    final info = await _onDrive(_drive.info);
     if (info == null) return null;
-    final text = await _drive.download(file: info);
+    final text = await _onDrive(() => _drive.download(file: info));
     if (text == null) return null;
     return CloudRestore(text, _backup.preview(text), info.modified);
   }
@@ -173,7 +243,8 @@ class CloudBackup {
   Future<void>? _autoRunning;
 
   /// Backs up if automatic backup is on, we are signed in, there is something
-  /// to protect, and the last backup is older than [autoEvery]. Never throws.
+  /// to protect, the last backup is older than [autoEvery], and the backup on
+  /// Drive is the one this install wrote, if there is one. Never throws.
   Future<void> autoBackupIfDue() async {
     if (_autoRunning != null) return _autoRunning;
     final future = _doAutoBackup();
@@ -188,16 +259,21 @@ class CloudBackup {
   Future<void> _doAutoBackup() async {
     try {
       if (_restoringSession != null) await _restoringSession;
-      if (!autoBackup || email == null) return;
-      final last = lastBackupAt;
-      final now = _now();
-      if (last != null &&
-          !now.isBefore(last) &&
-          now.difference(last) < autoEvery) {
-        return;
-      }
-      if ((await _backup.repo.habits()).isEmpty) return;
-      await backupNow(automatic: true);
+      await _oneAtATime(() async {
+        if (!autoBackup || email == null) return;
+        final last = lastBackupAt;
+        final now = _now();
+        if (last != null &&
+            !now.isBefore(last) &&
+            now.difference(last) < autoEvery) {
+          return;
+        }
+        if ((await _backup.repo.habits()).isEmpty) return;
+        if (await _blocked(overrideWifiOnly: false) != null) return;
+        final remote = await _onDrive(_drive.info);
+        if (remote != null && !_wroteThis(remote)) return;
+        await _backupNow(overrideWifiOnly: false);
+      });
     } catch (e) {
       debugPrint('Automatic backup skipped: $e');
     }

@@ -11,10 +11,14 @@ final class FakeAuth implements DriveAuth {
   final bool configured;
   String? email = 'me@example.com';
 
+  /// Thrown by [signIn], as when the user declines Google's Drive permission.
+  DriveException? signInError;
+
   @override
   Future<String?> restoreSession() async => signedIn ? email : null;
   @override
   Future<String> signIn() async {
+    if (signInError case final e?) throw e;
     signedIn = true;
     return email!;
   }
@@ -37,6 +41,9 @@ final class FakeDrive {
   var _n = 0;
   int failWith = 0;
   DateTime now = DateTime.utc(2026, 10, 11, 12);
+
+  /// How long creating a file takes, so that two uploads can overlap.
+  Duration createDelay = Duration.zero;
 
   Future<http.Response> handle(http.Request r) async {
     requests.add(
@@ -80,6 +87,7 @@ final class FakeDrive {
       );
     }
     if (r.method == 'POST' && path == '/drive/v3/files') {
+      await Future<void>.delayed(createDelay);
       final m = jsonDecode(r.body) as Map<String, Object?>;
       expect(m['parents'], ['appDataFolder']);
       final id = 'file${_n++}';
