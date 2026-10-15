@@ -101,6 +101,18 @@ void main() {
     },
   );
 
+  test('with App Lock on, a re-plan cancels the snoozes too: they were posted '
+      'with buttons and show the habit on the lock screen', () async {
+    pending = [
+      shown(3, 'habit:a@2026-10-11'),
+      shown(snoozeIdBase + 3, 'habit:a@2026-10-11'),
+    ];
+    final s = LocalNotificationsScheduler(appLockOn: () async => true);
+    await s.init();
+    await s.replaceAll(const [], keepSnooze: (_) => true);
+    expect(cancelled(), [3, snoozeIdBase + 3]);
+  });
+
   group('In 1 hour', () {
     setUp(() async {
       databaseFactory = databaseFactoryFfi;

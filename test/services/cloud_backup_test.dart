@@ -7,6 +7,7 @@ import 'package:daily_tracker/services/cloud_backup.dart';
 import 'package:daily_tracker/services/drive_backup.dart';
 import 'package:daily_tracker/state/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -34,6 +35,15 @@ void main() {
   var now = DateTime.utc(2026, 10, 11, 12);
   var wifiOnly = true;
   var settings = const Settings();
+  // The phone's way to Drive; a test may cut it.
+  late Future<http.Response> Function(http.Request) send;
+
+  int uploads() => drive.requests.where((r) => r.startsWith('PATCH')).length;
+
+  void nextDay() {
+    now = now.add(const Duration(days: 1));
+    drive.now = drive.now.add(const Duration(days: 1));
+  }
 
   setUp(() async {
     final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
@@ -42,6 +52,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
     drive = FakeDrive();
+    send = drive.handle;
     auth = FakeAuth(signedIn: false);
     net = FakeNetwork();
     now = DateTime.utc(2026, 10, 11, 12);
@@ -59,7 +70,7 @@ void main() {
     );
     cloud = CloudBackup(
       auth: auth,
-      drive: DriveBackup(auth, MockClient(drive.handle)),
+      drive: DriveBackup(auth, MockClient((r) => send(r))),
       backup: backup,
       network: net,
       prefs: prefs,
@@ -197,10 +208,8 @@ void main() {
 
     test('on mobile data with Wi-Fi only on, an automatic backup waits; a manual one goes ahead after saying so', () async {
       net.wifi = false;
-      expect(
-        (await cloud.backupNow(automatic: true)).status,
-        BackupStatus.waitingForWifi,
-      );
+      await cloud.setAutoBackup(true);
+      await cloud.autoBackupIfDue();
       expect(drive.files, isEmpty);
       expect(
         (await cloud.backupNow()).status,
@@ -300,6 +309,24 @@ void main() {
       },
     );
 
+    test('a look for another phone\'s backup, asked while a backup is uploading, answers for the file that backup leaves', () async {
+      drive.files['old'] = (
+        name: driveFileName,
+        content: 'years of history',
+        modified: DateTime.utc(2026, 10, 1),
+      );
+      send = (r) async {
+        if (r.method == 'PATCH') {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+        return drive.handle(r);
+      };
+      final backingUp = cloud.backupNow();
+      final other = cloud.otherBackupOnDrive();
+      expect((await backingUp).status, BackupStatus.done);
+      expect(await other, isNull);
+    });
+
     test('on mobile data with Wi-Fi only on, a restore says Wi-Fi is what it waits for, so the screen can offer mobile data', () async {
       await cloud.backupNow();
       net.wifi = false;
@@ -348,6 +375,31 @@ void main() {
         drive.requests.where((r) => r.startsWith('PATCH')).length,
         uploads + 1,
       );
+    });
+
+    test('a restore confirmed after an automatic backup landed leaves that backup as this phone\'s own', () async {
+      await cloud.setAutoBackup(true);
+      await cloud.backupNow();
+      final f = (await cloud.fetchForRestore())!;
+      // The daily backup runs while the user reads the confirmation.
+      nextDay();
+      await cloud.autoBackupIfDue();
+      await cloud.restore(f.text);
+      await cloud.restoredFrom(f.file);
+      expect(await cloud.otherBackupOnDrive(), isNull);
+
+      nextDay();
+      final before = uploads();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), before + 1);
+    });
+
+    test('a restore asked for while the first backup is being written finds that backup', () async {
+      drive.createDelay = const Duration(milliseconds: 200);
+      final backingUp = cloud.backupNow();
+      final found = await cloud.fetchForRestore();
+      await backingUp;
+      expect(found?.preview.habits, 1);
     });
 
     test(
@@ -526,6 +578,58 @@ void main() {
       expect(drive.files[id]!.content, 'written by another phone');
     });
 
+    test('after an update from a version that did not remember the file, a phone clock a little behind Google\'s still finds its own backup', () async {
+      drive.now = now.add(const Duration(seconds: 3));
+      await cloud.autoBackupIfDue();
+      await prefs.remove('cloud.fileId');
+      await prefs.remove('cloud.fileModified');
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), 2);
+    });
+
+    test('carries on over its own backup when the connection dropped right after the upload landed', () async {
+      await cloud.autoBackupIfDue();
+      var landed = false;
+      send = (r) async {
+        if (landed) throw http.ClientException('connection reset');
+        final res = await drive.handle(r);
+        landed = r.method == 'PATCH';
+        return res;
+      };
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), 2);
+
+      send = drive.handle;
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), 3, reason: 'the file on Drive is this phone\'s own');
+      expect(await cloud.otherBackupOnDrive(), isNull);
+    });
+
+    test('carries on over its first backup while Drive\'s list has not caught up with it', () async {
+      drive.listLag = const Duration(minutes: 5);
+      await cloud.autoBackupIfDue();
+      nextDay();
+      await cloud.autoBackupIfDue();
+      expect(uploads(), 2);
+      expect(drive.files, hasLength(1));
+    });
+
+    test('an empty file, left by a first backup that broke off, is no backup: it is written into', () async {
+      drive.files['empty'] = (
+        name: driveFileName,
+        content: '',
+        modified: DateTime.utc(2026, 10, 1),
+      );
+      expect(await cloud.otherBackupOnDrive(), isNull);
+      expect(await cloud.fetchForRestore(), isNull);
+      await cloud.autoBackupIfDue();
+      expect(drive.files, hasLength(1));
+      expect(drive.files['empty']!.content, contains('"habits"'));
+    });
+
     test('never throws: a failure just waits for the next time', () async {
       drive.failWith = 503;
       await cloud.autoBackupIfDue();
@@ -553,6 +657,18 @@ void main() {
         expect(cloud.lastAutoBackupFailure, 'Sign in to Google first.');
 
         await cloud.signOut();
+        expect(cloud.lastAutoBackupFailure, isNull);
+      },
+    );
+
+    test(
+      'signing in again clears the reason the last one did not work',
+      () async {
+        auth.signedIn = false;
+        await cloud.autoBackupIfDue();
+        expect(cloud.lastAutoBackupFailure, isNotNull);
+
+        await cloud.signIn();
         expect(cloud.lastAutoBackupFailure, isNull);
       },
     );

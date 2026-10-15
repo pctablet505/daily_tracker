@@ -151,15 +151,19 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
     bool Function(String? payload)? keepSnooze,
   }) async {
     await _refreshLocalTimezone();
+    final appLocked = await _appLockOn();
     // Snoozed reminders are not part of the plan and must outlive a re-plan
     // unless their habit was completed, deleted, or reminders were turned off.
+    // With App Lock on they go too: a snooze was posted with buttons and shows
+    // the habit on the lock screen, and Android does not say when it is due,
+    // so it cannot be posted again locked. Privacy wins over the snooze.
     for (final pending in await _plugin.pendingNotificationRequests()) {
       if (!isSnoozeId(pending.id) ||
+          appLocked ||
           (keepSnooze != null && !keepSnooze(pending.payload))) {
         await _plugin.cancel(id: pending.id);
       }
     }
-    final appLocked = await _appLockOn();
     for (final r in plan) {
       await _plugin.zonedSchedule(
         id: r.id,
@@ -209,9 +213,14 @@ Future<bool> markDoneFromNotification(
 }
 
 /// Whether App Lock is on, read from the stored settings: the notification
-/// buttons run in their own isolate, without the app's state.
-Future<bool> _readAppLockOn() async =>
-    Settings.read(await SharedPreferences.getInstance()).lockOn;
+/// buttons run in their own isolate, without the app's state. That isolate
+/// lives on between presses and its copy of the settings is the one it read
+/// first, so the setting is read from the phone again each time.
+Future<bool> _readAppLockOn() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.reload();
+  return Settings.read(prefs).lockOn;
+}
 
 /// A snoozed reminder gets an id in its own range so a re-plan leaves it alone.
 bool isSnoozeId(int id) => id >= snoozeIdBase;

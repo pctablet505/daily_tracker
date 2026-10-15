@@ -70,6 +70,7 @@ class CloudBackup {
   static const _sessionLostKey = 'cloud.sessionLost';
   static const _autoFailureKey = 'cloud.autoFailure';
   static const autoEvery = Duration(hours: 20);
+  static const _clockMargin = Duration(minutes: 10);
 
   @visibleForTesting
   BackupService get backupForTest => _backup;
@@ -129,6 +130,7 @@ class CloudBackup {
     if (e != email) await _prefs.remove(_lastKey);
     await _prefs.setString(_emailKey, e);
     await _prefs.remove(_sessionLostKey);
+    await _prefs.remove(_autoFailureKey);
     return e;
   }
 
@@ -153,12 +155,16 @@ class CloudBackup {
 
   /// Whether this install wrote [f] and nothing changed it since. Versions
   /// that did not keep the file id kept the time of the last backup, and a
-  /// file no newer than that is the one this install wrote then.
+  /// file no newer than that is the one this install wrote then. That time is
+  /// the phone's clock and the file's is Google's, so the file may be up to
+  /// [_clockMargin] newer: a phone clock behind Google's would otherwise stop
+  /// automatic backup for good. The cost is that another phone's backup made
+  /// within that margin of this one's is written over.
   bool _wroteThis(DriveFileInfo f) {
     final id = _prefs.getString(_fileIdKey);
     if (id == null) {
       final last = lastBackupAt;
-      return last != null && !f.modified.isAfter(last);
+      return last != null && !f.modified.isAfter(last.add(_clockMargin));
     }
     return id == f.id &&
         _prefs.getInt(_fileModifiedKey) == f.modified.millisecondsSinceEpoch;
@@ -167,19 +173,24 @@ class CloudBackup {
   /// The backup on Drive when this install did not write it or it changed
   /// since, such as another phone's: only "Back up now" replaces it. Null when
   /// there is none, or it is this install's own.
-  Future<DriveFileInfo?> otherBackupOnDrive() async {
+  Future<DriveFileInfo?> otherBackupOnDrive() => _oneAtATime(() async {
     if (_restoringSession != null) await _restoringSession;
     final f = await _onDrive(_drive.info);
     return f == null || _wroteThis(f) ? null : f;
-  }
+  });
 
-  Future<void> _uploads = Future.value();
+  Future<void>? _driveJobs;
 
-  /// Runs [job] after any backup already under way, so that two never both
-  /// find no file on Drive and each create one.
+  /// Runs [job] after any Drive job already under way: two backups never both
+  /// find no file on Drive and each create one, and a look at the file never
+  /// answers for one that a running backup or restore is about to replace.
   Future<T> _oneAtATime<T>(Future<T> Function() job) {
-    final run = _uploads.then((_) => job());
-    _uploads = run.then<void>((_) {}, onError: (_) {});
+    final run = (_driveJobs ?? Future<void>.value()).then((_) => job());
+    late final Future<void> done;
+    done = run.then<void>((_) {}, onError: (_) {}).whenComplete(() {
+      if (identical(_driveJobs, done)) _driveJobs = null;
+    });
+    _driveJobs = done;
     return run;
   }
 
@@ -190,10 +201,8 @@ class CloudBackup {
     return null;
   }
 
-  Future<BackupOutcome> backupNow({
-    bool automatic = false,
-    bool overrideWifiOnly = false,
-  }) => _oneAtATime(() => _backupNow(overrideWifiOnly: overrideWifiOnly));
+  Future<BackupOutcome> backupNow({bool overrideWifiOnly = false}) =>
+      _oneAtATime(() => _backupNow(overrideWifiOnly: overrideWifiOnly));
 
   Future<BackupOutcome> _backupNow({required bool overrideWifiOnly}) async {
     if (_restoringSession != null) await _restoringSession;
@@ -226,9 +235,15 @@ class CloudBackup {
     }
   }
 
-  /// Downloads the stored backup for a confirmation step. Null when there is none.
-  /// Throws [DriveException] on a Drive problem and [FormatException] when the file is not valid.
-  Future<CloudRestore?> fetchForRestore({bool overrideWifiOnly = false}) async {
+  /// Downloads the stored backup for a confirmation step, after any backup
+  /// under way has landed. Null when there is none. Throws [DriveException] on
+  /// a Drive problem and [FormatException] when the file is not valid.
+  Future<CloudRestore?> fetchForRestore({bool overrideWifiOnly = false}) =>
+      _oneAtATime(() => _fetchForRestore(overrideWifiOnly: overrideWifiOnly));
+
+  Future<CloudRestore?> _fetchForRestore({
+    required bool overrideWifiOnly,
+  }) async {
     if (_restoringSession != null) await _restoringSession;
     final blocked = await _blocked(overrideWifiOnly: overrideWifiOnly);
     if (blocked == BackupStatus.offline)
@@ -249,10 +264,18 @@ class CloudBackup {
 
   /// Takes [file] as this install's own once its backup is restored here: the
   /// phone now holds what it holds, so automatic backup may write over it.
-  Future<void> restoredFrom(DriveFileInfo file) async {
+  /// A backup this install wrote over [file] since it was fetched, while the
+  /// user was confirming, stays the one on record.
+  Future<void> restoredFrom(DriveFileInfo file) => _oneAtATime(() async {
+    final modified = _prefs.getInt(_fileModifiedKey);
+    if (_prefs.getString(_fileIdKey) == file.id &&
+        modified != null &&
+        modified > file.modified.millisecondsSinceEpoch) {
+      return;
+    }
     await _prefs.setString(_fileIdKey, file.id);
     await _prefs.setInt(_fileModifiedKey, file.modified.millisecondsSinceEpoch);
-  }
+  });
 
   Future<void>? _autoRunning;
 

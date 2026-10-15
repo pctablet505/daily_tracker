@@ -30,20 +30,13 @@ Future<void> main() async {
   );
   final prefs = await SharedPreferences.getInstance();
   await markSetUpIfHabitsExist(HabitRepository(db), prefs);
-  unawaited(SystemFileService().clearOldShares());
-  final support = await getApplicationSupportDirectory();
   final scheduler = LocalNotificationsScheduler();
   await scheduler.init();
   final container = ProviderContainer(
     overrides: [
       databaseProvider.overrideWithValue(db),
       sharedPrefsProvider.overrideWithValue(prefs),
-      photoStoreProvider.overrideWithValue(
-        DiskPhotoStore(
-          Directory(p.join(support.path, 'media')),
-          cache: await getTemporaryDirectory(),
-        ),
-      ),
+      photoStoreProvider.overrideWithValue(await openPhotoStore()),
       reminderSchedulerProvider.overrideWithValue(scheduler),
       lockServiceProvider.overrideWithValue(
         LockService(
@@ -54,19 +47,38 @@ Future<void> main() async {
       ),
     ],
   );
-  final actions = container.read(actionsProvider);
-  unawaited(
-    recoverLostPhoto(
-      prefs,
-      lostPhoto: lostImagePickerPhoto,
-      repo: container.read(repositoryProvider),
-      actions: actions,
-    ).whenComplete(actions.sweepOrphanPhotos),
-  );
+  unawaited(startServices(container, prefs));
   runApp(
     UncontrolledProviderScope(
       container: container,
       child: const DailyTrackerApp(),
     ),
   );
+}
+
+/// The photos in the app's own folder. The picker leaves its own copy of each
+/// photo in the cache, and the store removes it once the photo is stored.
+Future<DiskPhotoStore> openPhotoStore() async => DiskPhotoStore(
+  Directory(p.join((await getApplicationSupportDirectory()).path, 'media')),
+  cache: await getTemporaryDirectory(),
+);
+
+/// The tidying a start does while the first screen shows: shared copies of
+/// a backup that are old, the photo a pick that outlived the app was for,
+/// then the stored photos nothing refers to.
+Future<void> startServices(
+  ProviderContainer container,
+  SharedPreferences prefs, {
+  Future<String?> Function() lostPhoto = lostImagePickerPhoto,
+}) async {
+  final actions = container.read(actionsProvider);
+  await Future.wait([
+    SystemFileService().clearOldShares(),
+    recoverLostPhoto(
+      prefs,
+      lostPhoto: lostPhoto,
+      repo: container.read(repositoryProvider),
+      actions: actions,
+    ).whenComplete(actions.sweepOrphanPhotos),
+  ]);
 }
