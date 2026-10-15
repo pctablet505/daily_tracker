@@ -11,12 +11,17 @@ class DayDot {
     required this.day,
     required this.fraction,
     required this.isFuture,
+    this.detail,
   });
   final DayKey day;
 
   /// Share of planned habits done, or null when nothing was planned.
   final double? fraction;
   final bool isFuture;
+
+  /// How a day with nothing planned went ("on track", "1 slip", "not
+  /// checked"), for a screen reader; null reads as nothing planned.
+  final String? detail;
 }
 
 /// Seven days, Monday to Sunday, each with a small ring of how it went, between
@@ -113,7 +118,7 @@ class _Cell extends StatelessWidget {
     final pct = dot.fraction == null ? null : (dot.fraction! * 100).round();
     final label =
         '${isToday ? 'Today, ' : ''}${longDate(dot.day)}'
-        '${dot.isFuture ? '' : (pct == null ? ', nothing planned' : ', $pct percent done')}';
+        '${dot.isFuture ? '' : (pct == null ? ', ${dot.detail ?? 'nothing planned'}' : ', $pct percent done')}';
     return Semantics(
       button: onTap != null,
       selected: selected,

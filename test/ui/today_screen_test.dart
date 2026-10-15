@@ -262,6 +262,37 @@ void main() {
     expect(find.text('I stayed clear'), findsOneWidget);
     expect(find.text('Slipped'), findsOneWidget);
     expect(errors, isEmpty, reason: errors.join('\n'));
+    // Fitting is not enough: the label itself must not be cut short.
+    for (final word in ['I stayed clear', 'Slipped']) {
+      expect(
+        tester.renderObject<RenderParagraph>(find.text(word)).didExceedMaxLines,
+        isFalse,
+        reason: word,
+      );
+    }
+  });
+
+  testWidgets('the week strip reads a stay-clear day as the calendar does', (
+    tester,
+  ) async {
+    final l = Ledger(
+      habits: [stayClear('sugar')],
+      entries: [slip('sugar', tue)],
+      seenDays: [mon, tue, thu, sun],
+    );
+    await pumpScreen(
+      tester,
+      const Scaffold(body: TodayScreen()),
+      overrides: await baseOverrides(ledger: l),
+      size: const Size(400, 1600),
+    );
+    String label(String day) => tester
+        .getSemantics(find.bySemanticsLabel(RegExp('(^|, )$day October, ')))
+        .label;
+    expect(label('5'), endsWith('5 October, on track'));
+    expect(label('6'), endsWith('6 October, 1 slip'));
+    expect(label('7'), endsWith('7 October, not checked'));
+    expect(label('8'), endsWith('8 October, on track'));
   });
 
   testWidgets('the photo picker is told which habit and day it is for', (

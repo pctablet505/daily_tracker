@@ -160,15 +160,19 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     if (day == null || cell.level == HeatLevel.future) return;
     final s = cell.summary!;
     final c = context.colors;
-    final summaryText = s.planned == 0
+    final said = s.planned == 0
         ? (s.slips > 0
-              ? '${plural(s.slips, 'slip')} logged.'
+              ? '${plural(s.slips, 'slip')} logged'
               : s.status == DayStatus.good
-              ? 'On track, no slips.'
+              ? 'On track, no slips'
               : s.notChecked > 0
-              ? 'Not checked.'
-              : 'Nothing was planned.')
-        : '${s.done} of ${s.planned} done${s.slips > 0 ? ', ${plural(s.slips, 'slip')}' : ', no slips'}.';
+              ? 'Not checked'
+              : 'Nothing was planned')
+        : '${s.done} of ${s.planned} done${s.slips > 0 ? ', ${plural(s.slips, 'slip')}' : ', no slips'}';
+    // A day that says more than "Not checked" still names what is unanswered.
+    final summaryText = s.notChecked > 0 && said != 'Not checked'
+        ? '$said, ${s.notChecked} not checked.'
+        : '$said.';
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -355,17 +359,7 @@ class _Cell extends StatelessWidget {
     final style = heatStyle(c, cell.level);
     final s = cell.summary!;
     // Says what the day sheet says; a blank cell may be today, still open.
-    final detail = cell.level == HeatLevel.future
-        ? 'not yet'
-        : s.planned > 0
-        ? '${s.done} of ${s.planned} done'
-        : s.slips > 0
-        ? plural(s.slips, 'slip')
-        : s.status == DayStatus.good
-        ? 'on track'
-        : s.notChecked > 0
-        ? 'not checked'
-        : 'nothing planned';
+    final detail = cell.level == HeatLevel.future ? 'not yet' : dayDetail(s);
     return Semantics(
       button: cell.level != HeatLevel.future,
       label: '${isToday ? 'Today, ' : ''}${longDate(cell.day!)}, $detail',
@@ -617,8 +611,7 @@ class _WeekBars extends StatelessWidget {
             for (final d in days)
               Expanded(
                 child: Semantics(
-                  label:
-                      '${longDate(d.day)}, ${d.planned == 0 ? 'nothing planned' : '${d.done} of ${d.planned} done'}',
+                  label: '${longDate(d.day)}, ${dayDetail(d)}',
                   excludeSemantics: true,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,

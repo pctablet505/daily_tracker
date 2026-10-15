@@ -130,6 +130,84 @@ void main() {
     }
   });
 
+  group('a day with several stay-clear habits, one not answered', () {
+    const d2 = DayKey(2026, 10, 2);
+    const d3 = DayKey(2026, 10, 3);
+    Habit stay(String id, String name) =>
+        Habit(id: id, name: name, kind: HabitKind.avoid, createdDay: d2);
+    Entry done(String id) => Entry(
+      habitId: id,
+      day: d3,
+      state: EntryState.done,
+      loggedAt: DateTime.utc(2026, 10, 3),
+    );
+
+    // The morning of the 5th. The app was not opened on the 3rd: only
+    // "No sugar" was answered there, and Stretch (a tick habit) was done.
+    Future<void> open(
+      WidgetTester tester,
+      List<Entry> entries, {
+      DayKey stretchFrom = d2,
+    }) async {
+      await pumpScreen(
+        tester,
+        const Scaffold(body: ProgressScreen()),
+        overrides: await baseOverrides(
+          ledger: Ledger(
+            habits: [
+              stay('s', 'No sugar'),
+              stay('t', 'No snacks'),
+              Habit(id: 'a', name: 'Stretch', createdDay: stretchFrom),
+            ],
+            entries: entries,
+            seenDays: const [d2, DayKey(2026, 10, 5)],
+          ),
+          now: DateTime(2026, 10, 5, 8),
+        ),
+        size: const Size(400, 4000),
+      );
+    }
+
+    testWidgets('the cell, the sheet and the bar name what is unanswered', (
+      tester,
+    ) async {
+      await open(tester, [done('s'), done('a')]);
+      final labels = [
+        for (final e in find.byType(Semantics).evaluate())
+          if (RegExp('(^|, )3 October, ')
+              .hasMatch((e.widget as Semantics).properties.label ?? ''))
+            (e.widget as Semantics).properties.label!,
+      ];
+      expect(labels, hasLength(2));
+      expect(
+        labels,
+        everyElement(endsWith('3 October, 1 of 1 done, 1 not checked')),
+      );
+      await tester.tap(find.bySemanticsLabel(RegExp('^3 October, ')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('1 of 1 done, no slips, 1 not checked.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'a day with nothing planned says on track and what is unanswered',
+      (tester) async {
+        // Stretch only starts on the 5th: nothing is planned on the 3rd.
+        await open(tester, [done('s')], stretchFrom: const DayKey(2026, 10, 5));
+        final cell = find.bySemanticsLabel(RegExp('^3 October, '));
+        expect(
+          tester.getSemantics(cell).label,
+          endsWith('3 October, on track, 1 not checked'),
+        );
+        await tester.tap(cell);
+        await tester.pumpAndSettle();
+        expect(find.text('On track, no slips, 1 not checked.'), findsOneWidget);
+      },
+    );
+  });
+
   testWidgets('today, still open, does not pull an area bar down', (
     tester,
   ) async {

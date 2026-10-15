@@ -289,12 +289,14 @@ class StayClearTile extends StatelessWidget {
                           PillButton(
                             label: 'I stayed clear',
                             outlined: true,
+                            maxWidth: double.infinity,
                             onPressed: onStayedClear,
                             semanticLabel: 'I stayed clear: $name',
                           ),
                           PillButton(
                             label: 'Slipped',
                             outlined: true,
+                            maxWidth: double.infinity,
                             onPressed: onSlip,
                             semanticLabel: 'Log a slip: $name',
                           ),

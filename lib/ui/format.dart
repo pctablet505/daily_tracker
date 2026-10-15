@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 
 import '../core/day_key.dart';
 import '../data/models.dart';
+import '../data/stats.dart';
 
 final _long = DateFormat('d MMMM');
 final _short = DateFormat('EEE d MMM');
@@ -75,6 +76,24 @@ String scheduleSummary(int mask) {
 
 String plural(int n, String one, [String? many]) =>
     n == 1 ? '$n $one' : '$n ${many ?? '${one}s'}';
+
+/// How a day reads in short, for the calendar cell, the bars and the week
+/// strip: what was planned and done, or else slips, on track, not checked.
+/// Stay-clear habits not yet answered are named whenever the day says more.
+String dayDetail(DaySummary s) {
+  final base = s.planned > 0
+      ? '${s.done} of ${s.planned} done'
+      : s.slips > 0
+      ? plural(s.slips, 'slip')
+      : s.status == DayStatus.good
+      ? 'on track'
+      : s.notChecked > 0
+      ? 'not checked'
+      : 'nothing planned';
+  return s.notChecked > 0 && base != 'not checked'
+      ? '$base, ${s.notChecked} not checked'
+      : base;
+}
 
 /// The grey line under a to-do title.
 String habitMeta(

@@ -328,13 +328,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   List<DayDot> _weekDots(Ledger l, DayKey monday, DayKey today, int threshold) {
     return [
       for (final d in monday.through(monday.addDays(6)))
-        DayDot(
-          day: d,
-          fraction: summarizeDay(l, d, threshold: threshold).fraction,
-          isFuture: d > today,
-        ),
+        _dot(summarizeDay(l, d, threshold: threshold), d > today),
     ];
   }
+
+  DayDot _dot(DaySummary s, bool isFuture) => DayDot(
+    day: s.day,
+    fraction: s.fraction,
+    isFuture: isFuture,
+    detail: s.planned == 0 ? dayDetail(s) : null,
+  );
 
   List<Widget> _body(
     BuildContext context,
