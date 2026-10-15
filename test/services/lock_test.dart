@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:daily_tracker/services/lock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -126,14 +128,28 @@ void main() {
     late FakeBiometrics bio;
     late LockService lock;
     var now = DateTime(2026, 10, 11, 12);
+    Duration? boot = const Duration(hours: 5);
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       prefs = await SharedPreferences.getInstance();
       bio = FakeBiometrics();
       now = DateTime(2026, 10, 11, 12);
-      lock = LockService(prefs: prefs, biometrics: bio, now: () => now);
+      boot = const Duration(hours: 5);
+      lock = LockService(
+        prefs: prefs,
+        biometrics: bio,
+        now: () => now,
+        elapsed: () async => boot,
+      );
     });
+
+    Future<void> fiveWrong() async {
+      await lock.setPin('1234');
+      for (var i = 0; i < 5; i++) {
+        await lock.checkPin('0000');
+      }
+    }
 
     test('has no PIN at first', () {
       expect(lock.hasPin, isFalse);
@@ -182,6 +198,7 @@ void main() {
         expect(during.ok, isFalse);
         expect(during.waitFor, const Duration(seconds: 30));
         now = now.add(const Duration(seconds: 31));
+        boot = boot! + const Duration(seconds: 31);
         expect(lock.remainingWait, Duration.zero);
         expect((await lock.checkPin('1234')).ok, isTrue);
       },
@@ -245,13 +262,98 @@ void main() {
       },
     );
 
-    test('a backward clock jump cannot stretch the backoff beyond its cap', () async {
-      await lock.setPin('1234');
-      for (var i = 0; i < 5; i++) {
-        await lock.checkPin('0000');
-      }
-      now = now.subtract(const Duration(days: 365));
-      expect(lock.remainingWait, const Duration(seconds: 30));
+    test(
+      'a backward clock jump cannot stretch the backoff beyond its cap',
+      () async {
+        await lock.setPin('1234');
+        for (var i = 0; i < 5; i++) {
+          await lock.checkPin('0000');
+        }
+        now = now.subtract(const Duration(days: 365));
+        expect(lock.remainingWait, const Duration(seconds: 30));
+      },
+    );
+
+    test('moving the clock forward does not end the wrong-PIN wait', () async {
+      await fiveWrong();
+      now = now.add(const Duration(days: 1));
+      final r = await lock.checkPin('1234');
+      expect(r.ok, isFalse);
+      expect(r.waitFor, const Duration(seconds: 30));
     });
+
+    test('the wait ends once its time has really passed', () async {
+      await fiveWrong();
+      now = now.add(const Duration(seconds: 31));
+      boot = boot! + const Duration(seconds: 31);
+      expect((await lock.checkPin('1234')).ok, isTrue);
+    });
+
+    test(
+      'after the phone restarts the wait is at most its full length again',
+      () async {
+        await fiveWrong();
+        boot = const Duration(seconds: 40);
+        now = now.add(const Duration(seconds: 40));
+        expect(await lock.waitLeft(), const Duration(seconds: 30));
+        boot = boot! + const Duration(seconds: 31);
+        now = now.add(const Duration(seconds: 31));
+        expect(await lock.waitLeft(), Duration.zero);
+      },
+    );
+
+    test(
+      'without the boot clock the wall clock alone times the wait',
+      () async {
+        boot = null;
+        await fiveWrong();
+        expect(await lock.waitLeft(), const Duration(seconds: 30));
+        now = now.add(const Duration(seconds: 31));
+        expect((await lock.checkPin('1234')).ok, isTrue);
+      },
+    );
+
+    test('salt and hash are stored as one value, so a kill mid-way cannot split them', () async {
+      await lock.setPin('1234');
+      expect(prefs.getKeys(), containsAll(['lock.pin']));
+      expect(prefs.getKeys(), isNot(contains('lock.salt')));
+      expect(prefs.getKeys(), isNot(contains('lock.hash')));
+    });
+
+    test(
+      'a PIN stored by an older version (salt and hash apart) still works',
+      () async {
+        await prefs.setString('lock.salt', 'old-salt');
+        await prefs.setString('lock.hash', hashPin('2468', 'old-salt'));
+        expect(lock.hasPin, isTrue);
+        expect((await lock.checkPin('1357')).ok, isFalse);
+        expect((await lock.checkPin('2468')).ok, isTrue);
+      },
+    );
+
+    test('a change of PIN cut short after the new value is written uses the new PIN', () async {
+      await prefs.setString('lock.salt', 'old-salt');
+      await prefs.setString('lock.hash', hashPin('2468', 'old-salt'));
+      await prefs.setString(
+        'lock.pin',
+        'new-salt:${hashPin('1357', 'new-salt')}',
+      );
+      expect((await lock.checkPin('2468')).ok, isFalse);
+      expect((await lock.checkPin('1357')).ok, isTrue);
+    });
+
+    test(
+      'setting and checking a PIN leave the UI isolate free while hashing',
+      () async {
+        var timerRan = false;
+        Timer.run(() => timerRan = true);
+        await lock.setPin('1234');
+        expect(timerRan, isTrue, reason: 'setPin hashed without yielding');
+        timerRan = false;
+        Timer.run(() => timerRan = true);
+        await lock.checkPin('1234');
+        expect(timerRan, isTrue, reason: 'checkPin hashed without yielding');
+      },
+    );
   });
 }

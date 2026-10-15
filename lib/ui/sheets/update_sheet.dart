@@ -109,7 +109,10 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
     if (f == null) return;
     final problem = await ref
         .read(lockedProvider.notifier)
-        .runExternal(() => ref.read(updateServiceProvider).install(f));
+        .runExternal(
+          () => ref.read(updateServiceProvider).install(f),
+          opensActivity: true,
+        );
     if (problem != null && mounted) {
       setState(() {
         _phase = _Phase.error;

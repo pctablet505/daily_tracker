@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../data/fixtures.dart';
@@ -27,6 +28,8 @@ void main() {
   late String zone;
 
   setUp(() {
+    // The notification handlers read the App Lock setting; with none stored it is off.
+    SharedPreferences.setMockInitialValues({});
     AndroidFlutterLocalNotificationsPlugin.registerWith();
     calls = [];
     pending = [];
@@ -62,7 +65,7 @@ void main() {
   };
 
   test('each re-plan schedules in the time zone the phone is in now', () async {
-    final s = LocalNotificationsScheduler();
+    final s = LocalNotificationsScheduler(appLockOn: () async => false);
     await s.init();
     zone = 'Asia/Kolkata';
     final when = DateTime.now().add(const Duration(days: 1));
@@ -88,7 +91,7 @@ void main() {
         shown(snoozeIdBase + 3, 'habit:a@2026-10-11'),
         shown(snoozeIdBase + 4, 'habit:b@2026-10-11'),
       ];
-      final s = LocalNotificationsScheduler();
+      final s = LocalNotificationsScheduler(appLockOn: () async => false);
       await s.init();
       await s.replaceAll(
         const [],

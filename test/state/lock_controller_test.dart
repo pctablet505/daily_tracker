@@ -14,6 +14,8 @@ void main() {
   late LockService lock;
   late ProviderContainer c;
   var now = DateTime(2026, 10, 11, 12);
+  // Time since the phone started; null as on a platform without the channel.
+  Duration? boot = const Duration(hours: 5);
 
   Future<void> setup({
     bool lockOn = true,
@@ -23,20 +25,35 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
     bio = FakeBiometrics();
-    lock = LockService(prefs: prefs, biometrics: bio, now: () => now);
+    lock = LockService(
+      prefs: prefs,
+      biometrics: bio,
+      now: () => now,
+      elapsed: () async => boot,
+    );
     if (withPin) await lock.setPin('1234');
     await Settings(lockOn: lockOn, lockAfterSeconds: after).write(prefs);
     c = ProviderContainer(
       overrides: [
         sharedPrefsProvider.overrideWithValue(prefs),
         clockProvider.overrideWithValue(() => now),
+        elapsedRealtimeProvider.overrideWithValue(() async => boot),
         lockServiceProvider.overrideWithValue(lock),
       ],
     );
     addTearDown(c.dispose);
   }
 
-  setUp(() => now = DateTime(2026, 10, 11, 12));
+  setUp(() {
+    now = DateTime(2026, 10, 11, 12);
+    boot = const Duration(hours: 5);
+  });
+
+  /// Real time passes: both clocks move.
+  void wait(Duration d) {
+    now = now.add(d);
+    boot = boot! + d;
+  }
 
   test(
     'a fresh start is locked when the lock is on and a PIN is set',
@@ -190,20 +207,17 @@ void main() {
       },
     );
 
-    test(
-      'a second pause transition while already in the background keeps the original pause time',
-      () async {
-        await setup(after: 60);
-        final n = c.read(lockedProvider.notifier);
-        await n.unlockWithPin('1234');
-        n.paused(); // inactive at t=0
-        now = now.add(const Duration(seconds: 40));
-        n.paused(); // hidden/paused at t=40s
-        now = now.add(const Duration(seconds: 25)); // total 65s > 60s
-        n.resumed();
-        expect(c.read(lockedProvider), isTrue);
-      },
-    );
+    test('a second pause transition while already in the background keeps the original pause time', () async {
+      await setup(after: 60);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      n.paused(); // inactive at t=0
+      now = now.add(const Duration(seconds: 40));
+      n.paused(); // hidden/paused at t=40s
+      now = now.add(const Duration(seconds: 25)); // total 65s > 60s
+      n.resumed();
+      expect(c.read(lockedProvider), isTrue);
+    });
 
     test('nested runExternal calls keep the external grace window until both finish', () async {
       await setup(after: 0);
@@ -215,6 +229,82 @@ void main() {
         now = now.add(const Duration(seconds: 30));
         n.resumed();
       });
+      expect(c.read(lockedProvider), isFalse);
+    });
+
+    test(
+      'setting the clock back while away does not hide the time away',
+      () async {
+        await setup(after: 60);
+        final n = c.read(lockedProvider.notifier);
+        await n.unlockWithPin('1234');
+        n.paused();
+        wait(const Duration(minutes: 10));
+        now = now.subtract(const Duration(minutes: 9, seconds: 30));
+        n.resumed();
+        await n.settled;
+        expect(c.read(lockedProvider), isTrue);
+      },
+    );
+
+    test('a short trip by both clocks stays open', () async {
+      await setup(after: 60);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      n.paused();
+      wait(const Duration(seconds: 30));
+      n.resumed();
+      await n.settled;
+      expect(c.read(lockedProvider), isFalse);
+    });
+
+    test('without the boot clock the wall clock alone decides', () async {
+      boot = null;
+      await setup(after: 60);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      n.paused();
+      now = now.add(const Duration(seconds: 30));
+      n.resumed();
+      await n.settled;
+      expect(c.read(lockedProvider), isFalse);
+      n.paused();
+      now = now.add(const Duration(seconds: 90));
+      n.resumed();
+      await n.settled;
+      expect(c.read(lockedProvider), isTrue);
+    });
+
+    test(
+      'a job that never leaves the app gives no grace to a later Home press',
+      () async {
+        await setup(after: 0);
+        final n = c.read(lockedProvider.notifier);
+        await n.unlockWithPin('1234');
+        // A permission that is already granted: no pause, no resume.
+        await n.runExternal(() async => true);
+        wait(const Duration(seconds: 3));
+        n.paused();
+        wait(const Duration(minutes: 4));
+        n.resumed();
+        expect(
+          c.read(lockedProvider),
+          isTrue,
+          reason: '"Right away" must lock',
+        );
+      },
+    );
+
+    test('a page opened outside the app returns before the pause and still gets the grace', () async {
+      await setup(after: 0);
+      final n = c.read(lockedProvider.notifier);
+      await n.unlockWithPin('1234');
+      await n.runExternal(() async => true, opensActivity: true);
+      wait(const Duration(milliseconds: 100));
+      n.paused();
+      wait(const Duration(seconds: 30));
+      n.resumed();
+      await n.settled;
       expect(c.read(lockedProvider), isFalse);
     });
   });

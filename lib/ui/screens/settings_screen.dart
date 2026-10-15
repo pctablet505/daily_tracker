@@ -73,7 +73,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     if (!mounted) return;
     ref.invalidate(notificationsAllowedProvider);
     if (!ok) {
-      await ref.read(lockedProvider.notifier).runExternal(openAppSettings);
+      await ref
+          .read(lockedProvider.notifier)
+          .runExternal(openAppSettings, opensActivity: true);
       if (!mounted) return;
       ref.invalidate(notificationsAllowedProvider);
     }
@@ -416,6 +418,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       Uri.parse(sourceUrl),
                       mode: LaunchMode.externalApplication,
                     ),
+                    opensActivity: true,
                   ),
             ),
             _Row(

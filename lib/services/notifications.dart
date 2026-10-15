@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -14,6 +15,7 @@ import '../data/database.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
 import '../logic/logging.dart';
+import '../state/settings.dart';
 import 'reminder_plan.dart';
 
 /// What the app needs from the phone's notification system. The real one is
@@ -56,6 +58,7 @@ const _snoozeAction = AndroidNotificationAction(
 AndroidNotificationDetails _androidDetails(
   ReminderKind kind, {
   bool withActions = false,
+  bool appLocked = false,
 }) {
   final habit = kind == ReminderKind.habit;
   return AndroidNotificationDetails(
@@ -66,9 +69,15 @@ AndroidNotificationDetails _androidDetails(
         : 'A daily prompt to log slips on the habits you stay clear of',
     importance: habit ? Importance.high : Importance.defaultImportance,
     priority: habit ? Priority.high : Priority.defaultPriority,
-    visibility: NotificationVisibility.private,
+    // With App Lock on, nothing of a reminder shows on the phone's lock screen,
+    // and no button can change a habit without the PIN.
+    visibility: appLocked
+        ? NotificationVisibility.secret
+        : NotificationVisibility.private,
     icon: 'ic_notification',
-    actions: withActions ? const [_doneAction, _snoozeAction] : null,
+    actions: withActions && !appLocked
+        ? const [_doneAction, _snoozeAction]
+        : null,
   );
 }
 
@@ -87,10 +96,13 @@ Future<void> _refreshLocalTimezone() async {
 }
 
 final class LocalNotificationsScheduler implements ReminderScheduler {
-  LocalNotificationsScheduler([FlutterLocalNotificationsPlugin? plugin])
-    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  LocalNotificationsScheduler({
+    FlutterLocalNotificationsPlugin? plugin,
+    this._appLockOn = _readAppLockOn,
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
+  final Future<bool> Function() _appLockOn;
   final _taps = StreamController<String>.broadcast();
 
   @override
@@ -147,6 +159,7 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
         await _plugin.cancel(id: pending.id);
       }
     }
+    final appLocked = await _appLockOn();
     for (final r in plan) {
       await _plugin.zonedSchedule(
         id: r.id,
@@ -154,7 +167,11 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
         body: r.body,
         scheduledDate: tz.TZDateTime.from(r.when, tz.local),
         notificationDetails: NotificationDetails(
-          android: _androidDetails(r.kind, withActions: r.markable),
+          android: _androidDetails(
+            r.kind,
+            withActions: r.markable,
+            appLocked: appLocked,
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         payload: r.payload,
@@ -191,6 +208,11 @@ Future<bool> markDoneFromNotification(
   return true;
 }
 
+/// Whether App Lock is on, read from the stored settings: the notification
+/// buttons run in their own isolate, without the app's state.
+Future<bool> _readAppLockOn() async =>
+    Settings.read(await SharedPreferences.getInstance()).lockOn;
+
 /// A snoozed reminder gets an id in its own range so a re-plan leaves it alone.
 bool isSnoozeId(int id) => id >= snoozeIdBase;
 int snoozeIdFor(int id) => isSnoozeId(id) ? id : snoozeIdBase + id;
@@ -210,6 +232,8 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
   if (target == null) return;
   final habitId = target.habitId;
   try {
+    // Buttons on a notification posted before App Lock was turned on.
+    if (await _readAppLockOn()) return;
     if (r.actionId == 'done') {
       final dir = await getDatabasesPath();
       // Its own connection: closing the app's shared one would break the open app.

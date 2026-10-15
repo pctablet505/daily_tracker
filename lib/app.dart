@@ -123,6 +123,7 @@ class DailyTrackerApp extends ConsumerStatefulWidget {
 class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     with WidgetsBindingObserver {
   final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final GoRouter _router = buildRouter(
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
     navigatorKey: _rootKey,
@@ -132,6 +133,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
   bool _offeringUpdate = false;
   bool _inForeground = true;
   String? _pendingPayload;
+
+  /// Set from "resumed" until the lock has decided whether to lock (it asks the
+  /// phone for the time since boot): the app stays covered and taps wait.
+  Future<void>? _lockCheck;
   late final UpdatePrompter _prompter = UpdatePrompter(
     prefs: ref.read(sharedPrefsProvider),
     now: ref.read(clockProvider),
@@ -183,6 +188,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       if (now) {
         _updateTimer?.cancel();
         FocusManager.instance.primaryFocus?.unfocus();
+        // A snackbar can name a habit, and its Undo must not work while locked.
+        _messengerKey.currentState?.clearSnackBars();
       } else if (was == true) {
         if (ref.read(settingsProvider).onboardingDone) {
           if (_inForeground) {
@@ -192,22 +199,18 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
           }
           unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
         }
-        final pending = _pendingPayload;
-        _pendingPayload = null;
-        if (pending != null) _openPayload(pending);
+        _openPendingPayload();
         if (_inForeground) _scheduleUpdateOffer(const Duration(seconds: 2));
       }
     });
-    ref.listenManual(
-      settingsProvider.select((s) => s.onboardingDone),
-      (was, now) {
-        if (was == false && now && _inForeground && !ref.read(lockedProvider)) {
-          unawaited(
-            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
-          );
-        }
-      },
-    );
+    ref.listenManual(settingsProvider.select((s) => s.onboardingDone), (
+      was,
+      now,
+    ) {
+      if (was == false && now && _inForeground && !ref.read(lockedProvider)) {
+        unawaited(ref.read(actionsProvider).markSeen(ref.read(todayProvider)));
+      }
+    });
     ref.listenManual(todayProvider, (was, now) {
       if (was != null && was != now) {
         if (_inForeground &&
@@ -235,22 +238,62 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
 
   void _openPayload(String payload) {
     if (!ref.read(settingsProvider).onboardingDone) return;
-    if (ref.read(lockedProvider)) {
+    // A tap brings the app back before "resumed" has run the lock check.
+    if (!_inForeground || _lockCheck != null || ref.read(lockedProvider)) {
       _pendingPayload = payload;
       return;
     }
+    // The midnight timer runs late after deep sleep.
+    ref.read(todayProvider.notifier).refresh();
     final habit = parseHabitPayload(payload);
+    final keepPages = _busyOnTop();
     if (habit != null) {
       final today = ref.read(todayProvider);
       ref
           .read(selectedDayProvider.notifier)
           .select(habit.day == null || habit.day == today ? null : habit.day);
-      _router.go('/');
+      if (!keepPages) _router.go('/');
       unawaited(_router.push('/habit/${Uri.encodeComponent(habit.habitId)}'));
     } else {
       ref.read(selectedDayProvider.notifier).select(null);
-      _router.go('/');
+      if (!keepPages) _router.go('/');
     }
+  }
+
+  void _openPendingPayload() {
+    final pending = _pendingPayload;
+    _pendingPayload = null;
+    if (pending != null) _openPayload(pending);
+  }
+
+  /// Whether replacing the pages would lose what the user is in the middle of: a
+  /// form that asks before closing (unsaved changes), or a dialog or sheet.
+  bool _busyOnTop() {
+    Route<dynamic>? top;
+    // Navigator has no public "top route"; a test that holds at once pops nothing.
+    _rootKey.currentState?.popUntil((route) {
+      top = route;
+      return true;
+    });
+    return top is PopupRoute ||
+        top?.popDisposition == RoutePopDisposition.doNotPop;
+  }
+
+  void _waitForLockCheck() {
+    final check = ref.read(lockedProvider.notifier).settled;
+    setState(() {
+      _lockCheck = check;
+    });
+    unawaited(
+      check.whenComplete(() {
+        if (!mounted || !identical(_lockCheck, check)) return;
+        setState(() => _lockCheck = null);
+        // Locked: unlocking opens the tap and offers the update instead.
+        if (!_inForeground || ref.read(lockedProvider)) return;
+        _openPendingPayload();
+        _scheduleUpdateOffer(const Duration(seconds: 2));
+      }),
+    );
   }
 
   void _onForeground() {
@@ -318,6 +361,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       case AppLifecycleState.resumed:
         _inForeground = true;
         lock.resumed();
+        _waitForLockCheck();
         _onForeground();
       case AppLifecycleState.hidden || AppLifecycleState.detached:
         _inForeground = false;
@@ -345,8 +389,10 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
         ThemeChoice.dark => ThemeMode.dark,
       },
       routerConfig: _router,
+      scaffoldMessengerKey: _messengerKey,
       builder: (context, child) => PrivacyCover(
         enabled: lockOn,
+        stayCovered: _lockCheck != null,
         child: Stack(
           children: [
             // While locked the app underneath is kept out of the accessibility tree and out of reach.

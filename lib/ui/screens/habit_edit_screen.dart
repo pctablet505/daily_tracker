@@ -549,7 +549,10 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                                   TextButton(
                                     onPressed: () => ref
                                         .read(lockedProvider.notifier)
-                                        .runExternal(openAppSettings),
+                                        .runExternal(
+                                          openAppSettings,
+                                          opensActivity: true,
+                                        ),
                                     child: const Text('Open settings'),
                                   ),
                                 ],

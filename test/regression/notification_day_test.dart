@@ -12,6 +12,7 @@ import 'package:daily_tracker/state/settings.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../data/fixtures.dart';
@@ -21,6 +22,8 @@ void main() {
 
   test('Done on a reminder that quiet hours pushed past midnight marks the day it was for', () async {
     databaseFactory = databaseFactoryFfi;
+    // App Lock off: with it on, the button would refuse.
+    SharedPreferences.setMockInitialValues({});
     final path = p.join(await getDatabasesPath(), databaseFileName);
     if (File(path).existsSync()) File(path).deleteSync();
     addTearDown(() {

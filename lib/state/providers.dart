@@ -9,6 +9,7 @@ import '../core/day_key.dart';
 import '../data/repository.dart';
 import '../data/stats.dart';
 import '../logic/today_view.dart';
+import '../services/lock.dart';
 import '../services/notifications.dart';
 import '../services/photo_store.dart';
 import 'actions.dart';
@@ -28,6 +29,11 @@ final photoStoreProvider = Provider<PhotoStore>(
 
 /// The current time. Tests replace it.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// Time since the phone started, which the user cannot set; null when unknown.
+final elapsedRealtimeProvider = Provider<Future<Duration?> Function()>(
+  (ref) => elapsedRealtime,
+);
 
 /// Counts writes. Anything that reads stored data watches it, so no screen goes stale.
 class RevisionNotifier extends Notifier<int> {

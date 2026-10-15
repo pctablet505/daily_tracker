@@ -138,6 +138,9 @@ class _LockScreenState extends ConsumerState<LockScreen>
   Duration _wait = Duration.zero;
   bool _bioAvailable = false;
 
+  /// A fingerprint or phone lock prompt is up; a second one would fail as busy.
+  bool _checking = false;
+
   @override
   void initState() {
     super.initState();
@@ -147,11 +150,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
 
   Future<void> _init() async {
     final lock = ref.read(lockServiceProvider);
-    final wait = lock.remainingWait;
-    if (wait > Duration.zero) {
-      _error = 'Too many tries. Wait ${_format(wait)}.';
-      _countdown(wait);
-    }
+    await _showWait();
     final available = await lock.biometricsAvailable;
     if (!mounted) return;
     setState(() => _bioAvailable = available);
@@ -169,50 +168,43 @@ class _LockScreenState extends ConsumerState<LockScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
-      final wait = ref.read(lockServiceProvider).remainingWait;
-      if (wait > Duration.zero) {
-        setState(() => _error = 'Too many tries. Wait ${_format(wait)}.');
-        _countdown(wait);
-      } else if (_wait > Duration.zero) {
-        _tick?.cancel();
+    if (state == AppLifecycleState.resumed && mounted) unawaited(_showWait());
+  }
+
+  Future<void> _biometric() async {
+    if (_checking) return;
+    _checking = true;
+    try {
+      await ref.read(lockedProvider.notifier).unlockWithBiometrics();
+    } finally {
+      _checking = false;
+    }
+  }
+
+  /// Shows the wrong-PIN wait as the lock service has it now (the screen may
+  /// have been off meanwhile) and keeps it ticking until it is over.
+  Future<void> _showWait() async {
+    final wait = await ref.read(lockServiceProvider).waitLeft();
+    if (!mounted) return;
+    if (wait > Duration.zero) {
+      setState(() {
+        _wait = wait;
+        _error = 'Too many tries. Wait ${_format(wait)}.';
+      });
+      _tick ??= Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => unawaited(_showWait()),
+      );
+    } else {
+      _tick?.cancel();
+      _tick = null;
+      if (_wait > Duration.zero) {
         setState(() {
           _wait = Duration.zero;
           _error = null;
         });
       }
     }
-  }
-
-  Future<void> _biometric() async {
-    await ref.read(lockedProvider.notifier).unlockWithBiometrics();
-  }
-
-  void _countdown(Duration wait) {
-    _tick?.cancel();
-    setState(() => _wait = wait);
-    _tick = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      final current = ref.read(lockServiceProvider).remainingWait;
-      final left = current > Duration.zero
-          ? current
-          : _wait - const Duration(seconds: 1);
-      if (left <= Duration.zero) {
-        t.cancel();
-        setState(() {
-          _wait = Duration.zero;
-          _error = null;
-        });
-      } else {
-        setState(() {
-          _wait = left;
-          _error = 'Too many tries. Wait ${_format(left)}.';
-        });
-      }
-    });
   }
 
   String _format(Duration d) {
@@ -227,8 +219,7 @@ class _LockScreenState extends ConsumerState<LockScreen>
     final r = await ref.read(lockedProvider.notifier).unlockWithPin(pin);
     if (r.ok || !mounted) return;
     if (r.waitFor > Duration.zero) {
-      setState(() => _error = 'Too many tries. Wait ${_format(r.waitFor)}.');
-      _countdown(r.waitFor);
+      await _showWait();
     } else {
       setState(() => _error = 'That PIN is not right.');
     }
@@ -238,12 +229,20 @@ class _LockScreenState extends ConsumerState<LockScreen>
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final showBio =
-        _bioAvailable &&
-        ref.watch(settingsProvider.select((s) => s.lockBiometric));
-    return Scaffold(
-      backgroundColor: c.bg,
-      body: SafeArea(
+    final fingerprintOn = ref.watch(
+      settingsProvider.select((s) => s.lockBiometric),
+    );
+    final showBio = _bioAvailable && fingerprintOn;
+    // Where the phone's prompt also takes a fingerprint, it would get round
+    // fingerprint unlock being switched off.
+    final showPhoneLock =
+        fingerprintOn ||
+        (ref.watch(phoneLockCredentialOnlyProvider).value ?? false);
+    // Not a Scaffold: the app's ScaffoldMessenger would show its snackbars
+    // (habit names, an Undo) on this one too.
+    return Material(
+      color: c.bg,
+      child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -296,10 +295,11 @@ class _LockScreenState extends ConsumerState<LockScreen>
                           icon: const Icon(Icons.fingerprint_rounded),
                           label: const Text('Use fingerprint'),
                         ),
-                      TextButton(
-                        onPressed: () => unawaited(_deviceCredential()),
-                        child: const Text('Forgot PIN? Use phone lock'),
-                      ),
+                      if (showPhoneLock)
+                        TextButton(
+                          onPressed: () => unawaited(_deviceCredential()),
+                          child: const Text('Forgot PIN? Use phone lock'),
+                        ),
                     ],
                   ),
                 ],
@@ -312,11 +312,17 @@ class _LockScreenState extends ConsumerState<LockScreen>
   }
 
   Future<void> _deviceCredential() async {
-    final ok = await ref
-        .read(lockedProvider.notifier)
-        .unlockWithDeviceCredential();
-    if (!ok && mounted) {
-      setState(() => _error = 'Could not unlock with your phone lock.');
+    if (_checking) return;
+    _checking = true;
+    try {
+      final ok = await ref
+          .read(lockedProvider.notifier)
+          .unlockWithDeviceCredential();
+      if (!ok && mounted) {
+        setState(() => _error = 'Could not unlock with your phone lock.');
+      }
+    } finally {
+      _checking = false;
     }
   }
 }

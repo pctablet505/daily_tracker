@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -41,8 +42,40 @@ String pbkdf2Sha256(String password, String salt, int iterations, int length) {
       .join();
 }
 
+/// Time since the phone started, counting deep sleep (Android's
+/// `SystemClock.elapsedRealtime`). Setting the clock does not move it. Null where
+/// the platform channel is missing.
+Future<Duration?> elapsedRealtime() async {
+  try {
+    final ms = await _platformChannel.invokeMethod<int>('elapsedRealtime');
+    return ms == null ? null : Duration(milliseconds: ms);
+  } catch (_) {
+    // Ignored in tests or on platforms without the channel.
+    return null;
+  }
+}
+
+/// Whether the phone's "confirm your screen lock" prompt takes only the PIN,
+/// pattern or password (Android 11 and newer). Older phones also take a
+/// fingerprint there. False where the platform channel is missing.
+Future<bool> phoneLockIsCredentialOnly() async {
+  try {
+    return await _platformChannel.invokeMethod<bool>(
+          'phoneLockIsCredentialOnly',
+        ) ??
+        false;
+  } catch (_) {
+    // Ignored in tests or on platforms without the channel.
+    return false;
+  }
+}
+
 String hashPin(String pin, String salt) =>
     pbkdf2Sha256(pin, salt, _iterations, 32);
+
+/// [hashPin] on another isolate: 20,000 rounds would freeze the screen meanwhile.
+Future<String> _hashPinInBackground(String pin, String salt) =>
+    Isolate.run(() => hashPin(pin, salt));
 
 bool _constantTimeEquals(String a, String b) {
   if (a.length != b.length) return false;
@@ -143,19 +176,40 @@ class LockService {
     required this._prefs,
     required Biometrics biometrics,
     required this._now,
+    this._elapsed = elapsedRealtime,
   }) : _bio = biometrics;
 
   final SharedPreferences _prefs;
   final Biometrics _bio;
   final DateTime Function() _now;
+  final Future<Duration?> Function() _elapsed;
 
-  static const _saltKey = 'lock.salt';
-  static const _hashKey = 'lock.hash';
+  static const _pinKey = 'lock.pin';
+  // Versions before 2.0.3 kept the salt and the hash under two keys.
+  static const _oldSaltKey = 'lock.salt';
+  static const _oldHashKey = 'lock.hash';
   static const _failKey = 'lock.failures';
   static const _untilKey = 'lock.until';
+  static const _untilBootKey = 'lock.untilBoot';
 
-  bool get hasPin => _prefs.getString(_hashKey) != null;
+  bool get hasPin =>
+      _prefs.getString(_pinKey) != null ||
+      _prefs.getString(_oldHashKey) != null;
 
+  /// The stored salt and hash, or null when there is no usable PIN.
+  (String, String)? get _storedPin {
+    final both = _prefs.getString(_pinKey);
+    if (both != null) {
+      final i = both.indexOf(':');
+      return i < 0 ? null : (both.substring(0, i), both.substring(i + 1));
+    }
+    final salt = _prefs.getString(_oldSaltKey);
+    final hash = _prefs.getString(_oldHashKey);
+    return salt == null || hash == null ? null : (salt, hash);
+  }
+
+  /// The wrong-PIN wait by the wall clock alone; [waitLeft] also holds it
+  /// against a clock moved forward.
   Duration get remainingWait {
     final until = _prefs.getInt(_untilKey);
     final now = _now().millisecondsSinceEpoch;
@@ -171,28 +225,51 @@ class LockService {
     return Duration.zero;
   }
 
+  /// How long the wrong-PIN wait still runs: the longer of what the wall clock
+  /// and the time since boot say, so setting the clock either way cannot end it.
+  /// A restart of the phone starts the boot count again, so the wait is then cut
+  /// to at most its full length.
+  Future<Duration> waitLeft() async {
+    final wall = remainingWait;
+    final until = _prefs.getInt(_untilBootKey);
+    final boot = (await _elapsed())?.inMilliseconds;
+    if (until == null || boot == null || boot >= until) return wall;
+    var left = Duration(milliseconds: until - boot);
+    final maxWait = backoffFor(_prefs.getInt(_failKey) ?? 0);
+    if (left > maxWait) {
+      left = maxWait;
+      await _prefs.setInt(_untilBootKey, boot + maxWait.inMilliseconds);
+    }
+    return left > wall ? left : wall;
+  }
+
   Future<void> setPin(String pin) async {
     if (!RegExp(r'^\d{4,6}$').hasMatch(pin))
       throw ArgumentError.value(pin, 'pin', 'A PIN is 4 to 6 digits');
     final salt = newSalt();
-    await _prefs.setString(_saltKey, salt);
-    await _prefs.setString(_hashKey, hashPin(pin, salt));
+    final hash = await _hashPinInBackground(pin, salt);
+    // One write: a kill can never leave a new salt beside an old hash.
+    await _prefs.setString(_pinKey, '$salt:$hash');
+    await _prefs.remove(_oldSaltKey);
+    await _prefs.remove(_oldHashKey);
     await _resetFailures();
   }
 
   Future<void> clearPin() async {
-    await _prefs.remove(_saltKey);
-    await _prefs.remove(_hashKey);
+    await _prefs.remove(_pinKey);
+    await _prefs.remove(_oldSaltKey);
+    await _prefs.remove(_oldHashKey);
     await _resetFailures();
   }
 
   Future<void> _resetFailures() async {
     await _prefs.remove(_failKey);
     await _prefs.remove(_untilKey);
+    await _prefs.remove(_untilBootKey);
   }
 
   Future<PinCheck> checkPin(String pin) async {
-    final wait = remainingWait;
+    final wait = await waitLeft();
     if (wait > Duration.zero) {
       return PinCheck(
         ok: false,
@@ -200,11 +277,12 @@ class LockService {
         waitFor: wait,
       );
     }
-    final salt = _prefs.getString(_saltKey);
-    final hash = _prefs.getString(_hashKey);
-    if (salt != null &&
-        hash != null &&
-        _constantTimeEquals(hashPin(pin, salt), hash)) {
+    final stored = _storedPin;
+    if (stored != null &&
+        _constantTimeEquals(
+          await _hashPinInBackground(pin, stored.$1),
+          stored.$2,
+        )) {
       await _resetFailures();
       return const PinCheck(ok: true);
     }
@@ -214,6 +292,15 @@ class LockService {
     if (nextWait > Duration.zero) {
       final now = _now().millisecondsSinceEpoch;
       await _prefs.setInt(_untilKey, now + nextWait.inMilliseconds);
+      final boot = await _elapsed();
+      if (boot == null) {
+        await _prefs.remove(_untilBootKey);
+      } else {
+        await _prefs.setInt(
+          _untilBootKey,
+          boot.inMilliseconds + nextWait.inMilliseconds,
+        );
+      }
     }
     return PinCheck(ok: false, failures: failures, waitFor: nextWait);
   }

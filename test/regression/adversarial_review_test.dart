@@ -123,7 +123,7 @@ void main() {
       await n.unlockWithPin('1234');
 
       // Fire-and-forget intent returns before Android pauses the activity.
-      await n.runExternal(() async => true);
+      await n.runExternal(() async => true, opensActivity: true);
       now = now.add(const Duration(milliseconds: 100));
       n.paused();
       now = now.add(const Duration(seconds: 30));

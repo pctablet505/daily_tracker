@@ -16,11 +16,16 @@ jobs:
   build:
     name: Test and build APK
     runs-on: ubuntu-latest
+    # Read only: this job runs pull requests and third-party build code. Publishing
+    # is the release job's, which gets the write token.
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # No token left in .git for later steps (pub get, gradle, tests) to read.
+          persist-credentials: false
 
       - name: Check the tag matches the app version
         if: github.ref_type == 'tag'
@@ -121,11 +126,24 @@ jobs:
             build/app/outputs/flutter-apk/daily-tracker-*.apk
             build/app/outputs/flutter-apk/daily-tracker-*.apk.sha256
 
+  release:
+    name: Publish the release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the APK the build job made
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+          path: release
+
       - name: Create Release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/app/outputs/flutter-apk/daily-tracker-*.apk
-            build/app/outputs/flutter-apk/daily-tracker-*.apk.sha256
+            release/daily-tracker-*.apk
+            release/daily-tracker-*.apk.sha256
           generate_release_notes: true

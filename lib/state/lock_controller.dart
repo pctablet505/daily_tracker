@@ -8,6 +8,11 @@ final lockServiceProvider = Provider<LockService>(
   (ref) => throw UnimplementedError('lockServiceProvider is not set'),
 );
 
+/// See [phoneLockIsCredentialOnly]. Tests replace it.
+final phoneLockCredentialOnlyProvider = FutureProvider<bool>(
+  (ref) => phoneLockIsCredentialOnly(),
+);
+
 /// Whether the lock screen is showing.
 class LockController extends Notifier<bool> {
   /// A camera, picker or share sheet takes the user out of the app on purpose, so
@@ -15,6 +20,8 @@ class LockController extends Notifier<bool> {
   static const externalGraceSeconds = 300;
 
   DateTime? _pausedAt;
+  Future<Duration?>? _pausedBoot;
+  Future<void>? _bootCheck;
   int _externalDepth = 0;
   bool _resumedInExternal = false;
   DateTime? _externalEndedAt;
@@ -35,7 +42,10 @@ class LockController extends Notifier<bool> {
   /// The app went to the background.
   void paused() {
     final now = ref.read(clockProvider)();
-    _pausedAt ??= now;
+    if (_pausedAt == null) {
+      _pausedAt = now;
+      _pausedBoot = ref.read(elapsedRealtimeProvider)();
+    }
     final ended = _externalEndedAt;
     _externalEndedAt = null;
     if (ended != null &&
@@ -45,10 +55,14 @@ class LockController extends Notifier<bool> {
     }
   }
 
-  /// The app came back; locks again if it was away long enough.
+  /// The app came back; locks again if it was away long enough by the wall
+  /// clock, or by the time since boot, which setting the clock back cannot
+  /// shrink. That second answer comes a moment later: see [settled].
   void resumed() {
     final since = _pausedAt;
+    final sinceBoot = _pausedBoot;
     _pausedAt = null;
+    _pausedBoot = null;
     _externalEndedAt = null;
     if (_externalDepth > 0) _resumedInExternal = true;
     final onTrip = _externalDepth > 0 || _graceOnNextResume;
@@ -60,14 +74,31 @@ class LockController extends Notifier<bool> {
     if (since == null) return;
     final away = ref.read(clockProvider)().difference(since);
     final lockAfter = ref.read(settingsProvider).lockAfterSeconds;
-    if (shouldLock(
-      awayFor: away,
-      lockAfterSeconds: onTrip && lockAfter < externalGraceSeconds
-          ? externalGraceSeconds
-          : lockAfter,
-    ))
+    final limit = onTrip && lockAfter < externalGraceSeconds
+        ? externalGraceSeconds
+        : lockAfter;
+    if (shouldLock(awayFor: away, lockAfterSeconds: limit)) {
       state = true;
+    } else if (sinceBoot != null) {
+      _bootCheck = _lockIfLongSinceBoot(sinceBoot, limit);
+    }
   }
+
+  Future<void> _lockIfLongSinceBoot(
+    Future<Duration?> sinceBoot,
+    int limit,
+  ) async {
+    final before = await sinceBoot;
+    final after = await ref.read(elapsedRealtimeProvider)();
+    if (before == null || after == null || !ref.mounted) return;
+    if (_lockApplies &&
+        shouldLock(awayFor: after - before, lockAfterSeconds: limit)) {
+      state = true;
+    }
+  }
+
+  /// Completes once the last [resumed] has its answer from the time since boot.
+  Future<void> get settled => _bootCheck ?? Future.value();
 
   void lockNow() {
     if (_lockApplies) state = true;
@@ -75,6 +106,7 @@ class LockController extends Notifier<bool> {
 
   void _markUnlocked() {
     _pausedAt = null;
+    _pausedBoot = null;
     _graceOnNextResume = false;
     _externalEndedAt = null;
     state = false;
@@ -82,7 +114,12 @@ class LockController extends Notifier<bool> {
 
   /// Runs something that takes the user out of the app on purpose (camera, file
   /// picker, share sheet). A short trip does not lock the app; a long one still does.
-  Future<T> runExternal<T>(Future<T> Function() job) async {
+  /// [opensActivity] is for a job that only starts another screen and returns
+  /// before Android pauses this one (a link, the settings page, the installer).
+  Future<T> runExternal<T>(
+    Future<T> Function() job, {
+    bool opensActivity = false,
+  }) async {
     if (_externalDepth == 0) _resumedInExternal = false;
     _externalDepth++;
     try {
@@ -93,7 +130,7 @@ class LockController extends Notifier<bool> {
       // activity pauses when launching an external intent.
       if (_pausedAt != null) {
         _graceOnNextResume = true;
-      } else if (_externalDepth == 0 && !_resumedInExternal) {
+      } else if (opensActivity && _externalDepth == 0 && !_resumedInExternal) {
         _externalEndedAt = ref.read(clockProvider)();
       }
     }

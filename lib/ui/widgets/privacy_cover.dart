@@ -6,8 +6,16 @@ import '../theme/tokens.dart';
 /// foreground, so Android's recent-apps preview shows nothing of the habits.
 /// Only active when [enabled] (the app lock is on).
 class PrivacyCover extends StatefulWidget {
-  const PrivacyCover({super.key, required this.enabled, required this.child});
+  const PrivacyCover({
+    super.key,
+    required this.enabled,
+    this.stayCovered = false,
+    required this.child,
+  });
   final bool enabled;
+
+  /// Keeps the cover up in the foreground too: the app lock has not decided yet.
+  final bool stayCovered;
   final Widget child;
 
   @override
@@ -48,7 +56,7 @@ class _PrivacyCoverState extends State<PrivacyCover>
       fit: StackFit.expand,
       children: [
         widget.child,
-        if (widget.enabled && _away)
+        if (widget.enabled && (_away || widget.stayCovered))
           Positioned.fill(
             child: ColoredBox(
               key: const ValueKey('privacy-cover'),
