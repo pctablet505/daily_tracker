@@ -20,6 +20,7 @@ final class DayKey implements Comparable<DayKey> {
     final y = int.parse(m[1]!);
     final mo = int.parse(m[2]!);
     final d = int.parse(m[3]!);
+    if (y < 1) return null;
     final check = DateTime.utc(y, mo, d);
     if (check.year != y || check.month != mo || check.day != d) return null;
     return DayKey(y, mo, d);

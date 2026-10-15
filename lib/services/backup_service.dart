@@ -28,7 +28,7 @@ final class ExportedFile {
 
 /// A cell a spreadsheet might run as a formula gets a leading apostrophe.
 String _safeCell(String s) =>
-    s.isNotEmpty && '=+-@\t\r'.contains(s[0]) ? "'$s" : s;
+    s.isNotEmpty && '=+-@\t\r\n'.contains(s[0]) ? "'$s" : s;
 
 String csvRow(List<String> cells) => cells
     .map((c) {
@@ -86,7 +86,8 @@ class BackupService {
       csvRow(['habit', 'kind', 'day', 'state', 'value', 'note']),
     ];
     for (final e in snap.entries) {
-      final h = byId[e.habitId]!;
+      final h = byId[e.habitId];
+      if (h == null) continue;
       rows.add(
         csvRow([
           h.name,
@@ -133,7 +134,11 @@ class BackupService {
     final copies = dir
         .listSync()
         .whereType<File>()
-        .where((f) => p.basename(f.path).startsWith('before-restore-'))
+        .where(
+          (f) =>
+              p.basename(f.path).startsWith('before-restore-') &&
+              f.path.endsWith('.json'),
+        )
         .toList();
     DateTime when(File f) => f.statSync().modified;
     copies.sort((a, b) {
@@ -154,7 +159,17 @@ class BackupService {
     final copies = await _safetyCopies();
     if (copies.isEmpty)
       throw const FormatException('There is nothing to undo.');
-    await restore(await copies.first.readAsString());
+    for (final copy in copies) {
+      final text = await copy.readAsString();
+      try {
+        decodeBackup(text);
+      } on FormatException {
+        continue;
+      }
+      await restore(text);
+      return;
+    }
+    throw const FormatException('The safety copy is damaged.');
   }
 
   Future<void> _saveSafetyCopy() async {
@@ -165,7 +180,9 @@ class BackupService {
       '-',
     );
     final written = File(p.join(dir.path, 'before-restore-$stamp.json'));
-    await written.writeAsString(await _encode());
+    final tmp = File('${written.path}.tmp');
+    await tmp.writeAsString(await _encode(), flush: true);
+    await tmp.rename(written.path);
     // Keep the copy just made, plus the newest of the others.
     final others = (await _safetyCopies()).where((f) => f.path != written.path);
     for (final old in others.skip(_keepSafetyCopies - 1)) {

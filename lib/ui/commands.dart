@@ -41,6 +41,8 @@ Future<bool> confirmAndDeleteHabit(
   if (sure != true) return false;
   final DeletedHabit gone = await actions.deleteHabit(habit.id);
   messenger.hideCurrentSnackBar();
+  var undone = false;
+  Future<void>? undoFuture;
   unawaited(
     messenger
         .showSnackBar(
@@ -49,13 +51,19 @@ Future<bool> confirmAndDeleteHabit(
             duration: const Duration(seconds: 6),
             action: SnackBarAction(
               label: 'Undo',
-              onPressed: () => actions.undoDelete(gone),
+              onPressed: () {
+                undone = true;
+                undoFuture = actions.undoDelete(gone);
+              },
             ),
           ),
         )
         .closed
-        .then((reason) {
-          if (reason != SnackBarClosedReason.action) actions.finishDelete(gone);
+        .then((reason) async {
+          if (undoFuture != null) await undoFuture;
+          if (!undone && reason != SnackBarClosedReason.action) {
+            await actions.finishDelete(gone);
+          }
         }),
   );
   return true;

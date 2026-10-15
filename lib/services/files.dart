@@ -34,7 +34,11 @@ final class SystemFileService implements FileService {
     final bytes = await f.readAsBytes();
     if (bytes.length > maxBytes)
       throw const FormatException('That file is too large.');
-    return utf8.decode(bytes);
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      throw const FormatException('That file is not a readable text file.');
+    }
   }
 
   @override

@@ -95,6 +95,7 @@ List<PlannedReminder> planReminders(
   required Settings settings,
   required DateTime now,
   required int horizonDays,
+  bool includeCarryOver = false,
 }) {
   if (!settings.remindersOn || horizonDays <= 0) return const [];
   final today = DayKey.fromDate(now);
@@ -108,9 +109,11 @@ List<PlannedReminder> planReminders(
     String body,
     String? habitId, {
     bool markable = false,
+    bool carryOverOnly = false,
   }) {
     if (minutes < 0 || minutes >= 24 * 60) return;
     final shifted = _shiftOutOfQuiet(minutes, settings);
+    if (carryOverOnly && !shifted.nextDay) return;
     final target = shifted.nextDay ? day.addDays(1) : day;
     final when = DateTime(
       target.year,
@@ -134,8 +137,10 @@ List<PlannedReminder> planReminders(
     );
   }
 
-  for (var i = 0; i < horizonDays; i++) {
+  final startOffset = includeCarryOver ? -1 : 0;
+  for (var i = startOffset; i < horizonDays; i++) {
     final day = today.addDays(i);
+    final carryOverOnly = i < 0;
     for (final h in ledger.habits) {
       final at = h.reminderMinutes;
       if (at == null || h.tracksSlips || !h.isScheduledOn(day)) continue;
@@ -151,9 +156,11 @@ List<PlannedReminder> planReminders(
             : 'Time for this one.',
         h.id,
         markable: h.logType == LogType.tick,
+        carryOverOnly: carryOverOnly,
       );
     }
     if (settings.eveningCheckInOn &&
+        (!carryOverOnly || !ledger.wasSeen(day)) &&
         ledger.habits.any((h) => h.tracksSlips && h.isActiveOn(day))) {
       add(
         day,
@@ -162,6 +169,7 @@ List<PlannedReminder> planReminders(
         'How did today go?',
         'Tap to log a slip, or just open the app to keep your day on track.',
         null,
+        carryOverOnly: carryOverOnly,
       );
     }
   }

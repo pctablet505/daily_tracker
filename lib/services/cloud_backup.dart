@@ -86,15 +86,20 @@ class CloudBackup {
   Future<void>? _restoringSession;
 
   /// Picks up a previous sign-in without asking; call once at start.
-  Future<void> restoreSession() => _restoringSession ??= _doRestoreSession();
-
-  Future<void> _doRestoreSession() async {
+  Future<void> restoreSession() async {
+    if (_restoringSession != null) return _restoringSession;
+    final future = _doRestoreSession();
+    _restoringSession = future;
     try {
-      final e = await _auth.restoreSession();
-      if (e != null) await _prefs.setString(_emailKey, e);
+      await future;
     } finally {
       _restoringSession = null;
     }
+  }
+
+  Future<void> _doRestoreSession() async {
+    final e = await _auth.restoreSession();
+    if (e != null) await _prefs.setString(_emailKey, e);
   }
 
   Future<String> signIn() async {
@@ -157,21 +162,40 @@ class CloudBackup {
         'Connect to Wi-Fi, or allow mobile data for this restore.',
       );
     final info = await _drive.info();
-    final text = await _drive.download();
+    if (info == null) return null;
+    final text = await _drive.download(file: info);
     if (text == null) return null;
-    return CloudRestore(text, _backup.preview(text), info?.modified);
+    return CloudRestore(text, _backup.preview(text), info.modified);
   }
 
   Future<void> restore(String text) => _backup.restore(text);
 
+  Future<void>? _autoRunning;
+
   /// Backs up if automatic backup is on, we are signed in, there is something
   /// to protect, and the last backup is older than [autoEvery]. Never throws.
   Future<void> autoBackupIfDue() async {
+    if (_autoRunning != null) return _autoRunning;
+    final future = _doAutoBackup();
+    _autoRunning = future;
+    try {
+      await future;
+    } finally {
+      _autoRunning = null;
+    }
+  }
+
+  Future<void> _doAutoBackup() async {
     try {
       if (_restoringSession != null) await _restoringSession;
       if (!autoBackup || email == null) return;
       final last = lastBackupAt;
-      if (last != null && _now().difference(last) < autoEvery) return;
+      final now = _now();
+      if (last != null &&
+          !now.isBefore(last) &&
+          now.difference(last) < autoEvery) {
+        return;
+      }
       if ((await _backup.repo.habits()).isEmpty) return;
       await backupNow(automatic: true);
     } catch (e) {

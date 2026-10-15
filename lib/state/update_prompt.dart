@@ -39,11 +39,21 @@ class UpdatePrompter {
 
   Future<void> skip(String version) => _prefs.setString(_skippedKey, version);
 
+  Future<void> markOffered(String version) async {
+    final now = _now();
+    await _prefs.setString(_offeredVersionKey, version);
+    await _prefs.setInt(_offeredAtKey, now.millisecondsSinceEpoch);
+  }
+
   /// A release to show the user now, or null.
-  Future<ReleaseInfo?> releaseToOffer() async {
+  Future<ReleaseInfo?> releaseToOffer({bool recordOffer = true}) async {
     final now = _now();
     final last = _time(_lastCheckKey);
-    if (last != null && now.difference(last) < _checkEvery) return null;
+    if (last != null &&
+        !now.isBefore(last) &&
+        now.difference(last) < _checkEvery) {
+      return null;
+    }
     if (!await _isOnline()) return null;
     if (_wifiOnly() && !await _isOnWifi()) return null;
 
@@ -60,11 +70,11 @@ class UpdatePrompter {
     final offeredAt = _time(_offeredAtKey);
     if (_prefs.getString(_offeredVersionKey) == release.version &&
         offeredAt != null &&
+        !now.isBefore(offeredAt) &&
         now.difference(offeredAt) < _offerAgainAfter) {
       return null;
     }
-    await _prefs.setString(_offeredVersionKey, release.version);
-    await _prefs.setInt(_offeredAtKey, now.millisecondsSinceEpoch);
+    if (recordOffer) await markOffered(release.version);
     return release;
   }
 }

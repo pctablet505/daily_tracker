@@ -203,7 +203,12 @@ StarterPack decodePack(String text) {
   const damaged = FormatException('The pack file is damaged.');
   int? finiteInt(Object? v) {
     if (v == null) return null;
-    if (v is! num || !v.isFinite) throw damaged;
+    if (v is! num ||
+        !v.isFinite ||
+        v != v.truncateToDouble() ||
+        v.abs() > 0x1fffffffffffff) {
+      throw damaged;
+    }
     return v.toInt();
   }
 

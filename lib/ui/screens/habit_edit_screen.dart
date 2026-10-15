@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,7 +26,8 @@ class HabitEditScreen extends ConsumerStatefulWidget {
   ConsumerState<HabitEditScreen> createState() => _HabitEditScreenState();
 }
 
-class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
+class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
+    with WidgetsBindingObserver {
   final _name = TextEditingController();
   final _description = TextEditingController();
   final _unit = TextEditingController();
@@ -40,11 +43,35 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
   bool _notificationsBlocked = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshNotificationPermission());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final c in [_name, _description, _unit, _goal, _area]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshNotificationPermission());
+    }
+  }
+
+  Future<void> _refreshNotificationPermission() async {
+    try {
+      final allowed = await ref.read(reminderSchedulerProvider).hasPermission();
+      if (mounted && _notificationsBlocked == allowed) {
+        setState(() => _notificationsBlocked = !allowed);
+      }
+    } catch (_) {}
   }
 
   void _load(HabitForm f, Habit? original) {
@@ -87,6 +114,24 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
     );
   }
 
+  void _popOrHome({String? deletedId}) {
+    if (!mounted) return;
+    if (Navigator.canPop(context)) {
+      context.pop();
+      if (deletedId != null && mounted && Navigator.canPop(context)) {
+        try {
+          final uri = GoRouter.of(context).state.uri.path;
+          if (uri == '/habit/${Uri.encodeComponent(deletedId)}' ||
+              uri == '/habit/$deletedId') {
+            context.pop();
+          }
+        } catch (_) {}
+      }
+    } else {
+      context.go('/');
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _showErrors = true);
     if (!_form.isValid || _saving) return;
@@ -104,7 +149,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
         await actions.updateHabit(_form.toHabit(_original!));
       }
       _dirty = false;
-      if (mounted) context.pop();
+      _popOrHome();
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -113,6 +158,46 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
         );
       }
       debugPrint('Saving a habit failed: $e');
+    }
+  }
+
+  Future<void> _archiveHabit() async {
+    if (_saving || _original == null) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(actionsProvider).archive(
+            _original!,
+            ref.read(todayProvider),
+          );
+      _dirty = false;
+      _popOrHome();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteHabit() async {
+    if (_saving || _original == null) return;
+    setState(() => _saving = true);
+    try {
+      if (await confirmAndDeleteHabit(context, ref, _original!)) {
+        _dirty = false;
+        _popOrHome(deletedId: _original!.id);
+      } else if (mounted) {
+        setState(() => _saving = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
     }
   }
 
@@ -142,15 +227,31 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
   @override
   Widget build(BuildContext context) {
     final ledger = ref.watch(ledgerProvider);
-    if (!_loaded) {
-      if (widget.habitId != null) {
-        final habits = ledger.value?.habits;
-        if (habits == null)
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+    if (widget.habitId != null) {
+      final habits = ledger.value?.habits;
+      if (habits == null) {
+        if (!_loaded) {
+          if (ledger.hasError) {
+            return Scaffold(
+              appBar: AppBar(),
+              body: EmptyState(
+                icon: Icons.error_outline_rounded,
+                title: 'Could not load this habit',
+                action: FilledButton(
+                  onPressed: () => ref.invalidate(ledgerProvider),
+                  child: const Text('Try again'),
+                ),
+              ),
+            );
+          }
+          return Scaffold(
+            appBar: AppBar(),
+            body: const Center(child: CircularProgressIndicator()),
           );
+        }
+      } else {
         final h = habits.where((x) => x.id == widget.habitId).firstOrNull;
-        if (h == null) {
+        if (h == null && !_saving) {
           return Scaffold(
             appBar: AppBar(),
             body: const EmptyState(
@@ -159,10 +260,16 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
             ),
           );
         }
-        _load(HabitForm.fromHabit(h), h);
-      } else {
-        _load(widget.preset ?? const HabitForm(), null);
+        if (h != null) {
+          if (!_loaded || (!_dirty && h != _original)) {
+            _load(HabitForm.fromHabit(h), h);
+          } else {
+            _original = h;
+          }
+        }
       }
+    } else if (!_loaded) {
+      _load(widget.preset ?? const HabitForm(), null);
     }
     final c = context.colors;
     final f = _form;
@@ -180,7 +287,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
         if (didPop) return;
         if (await _confirmDiscard() && context.mounted) {
           setState(() => _dirty = false);
-          context.pop();
+          _popOrHome();
         }
       },
       child: Scaffold(
@@ -189,12 +296,24 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
           leading: IconButton(
             icon: const Icon(Icons.close_rounded),
             tooltip: 'Close',
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () async {
+              if (!_dirty || await _confirmDiscard()) {
+                _dirty = false;
+                _popOrHome();
+              }
+            },
           ),
           actions: [
             if (!editing)
               TextButton(
-                onPressed: () => context.pushReplacement('/habits/packs'),
+                onPressed: () async {
+                  if (!_dirty || await _confirmDiscard()) {
+                    _dirty = false;
+                    if (context.mounted) {
+                      context.pushReplacement('/habits/packs');
+                    }
+                  }
+                },
                 child: const Text('Starter packs'),
               ),
           ],
@@ -480,14 +599,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                     const SizedBox(height: 28),
                     if (!_original!.isArchived) ...[
                       OutlinedButton.icon(
-                        onPressed: () async {
-                          final nav = GoRouter.of(context);
-                          await ref
-                              .read(actionsProvider)
-                              .archive(_original!, ref.read(todayProvider));
-                          _dirty = false;
-                          if (mounted) nav.pop();
-                        },
+                        onPressed: _saving ? null : _archiveHabit,
                         icon: const Icon(Icons.inventory_2_outlined),
                         label: const Text('Archive, keep history'),
                       ),
@@ -495,17 +607,7 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen> {
                     ],
                     TextButton.icon(
                       style: TextButton.styleFrom(foregroundColor: c.danger),
-                      onPressed: () async {
-                        final nav = GoRouter.of(context);
-                        if (await confirmAndDeleteHabit(
-                          context,
-                          ref,
-                          _original!,
-                        )) {
-                          _dirty = false;
-                          if (mounted) nav.pop();
-                        }
-                      },
+                      onPressed: _saving ? null : _deleteHabit,
                       icon: const Icon(Icons.delete_outline_rounded),
                       label: const Text('Delete habit and history'),
                     ),

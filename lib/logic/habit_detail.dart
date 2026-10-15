@@ -23,6 +23,7 @@ final class HabitDetail {
     required this.streak,
     required this.rate30,
     required this.totalDone,
+    this.totalSlips = 0,
     required this.recent,
     required this.series,
     required this.latest,
@@ -34,6 +35,7 @@ final class HabitDetail {
   final HabitStreak streak;
   final Ratio rate30;
   final int totalDone;
+  final int totalSlips;
 
   /// Newest first.
   final List<Entry> recent;
@@ -58,7 +60,11 @@ HabitDetail buildHabitDetail(
   DayKey today, {
   int recentLimit = 20,
 }) {
-  final all = l.entriesOf(h.id);
+  final anchor = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+  final all = [
+    for (final e in l.entriesOf(h.id))
+      if (e.day <= anchor) e,
+  ];
   final newestFirst = all.reversed.toList();
   final series = h.logType == LogType.number
       ? [
@@ -67,42 +73,50 @@ HabitDetail buildHabitDetail(
               ValuePoint(e.day, e.value!),
         ]
       : <ValuePoint>[];
-  final windowStart = today.addDays(-29);
+  final windowStart = anchor.addDays(-29);
   final inWindow = series
-      .where((p) => p.day >= windowStart && p.day <= today)
+      .where((p) => p.day >= windowStart && p.day <= anchor)
       .toList();
   final change = inWindow.length >= 2
       ? inWindow.last.value - inWindow.first.value
       : null;
 
   final dots = <HabitDayDot>[];
-  for (final d in today.addDays(-83).through(today)) {
+  for (final d in anchor.addDays(-83).through(anchor)) {
     final e = l.entryOf(h.id, d);
     final DotState s;
-    if (e?.state == EntryState.skipped) {
+    if (!h.isActiveOn(d)) {
+      s = DotState.none;
+    } else if (e?.state == EntryState.skipped) {
       s = DotState.skipped;
     } else if (h.tracksSlips) {
       if (e?.state == EntryState.slipped) {
         s = DotState.missed;
-      } else if (h.isActiveOn(d) && l.wasSeen(d)) {
+      } else if (l.wasSeen(d)) {
         s = DotState.done;
       } else {
         s = DotState.none;
       }
     } else if (e?.state == EntryState.done) {
       s = DotState.done;
-    } else if (h.isScheduledOn(d)) {
-      s = d == today ? DotState.pending : DotState.missed;
+    } else if (h.isScheduledOn(d) || e?.state == EntryState.partial) {
+      s = d == today && !h.isArchived ? DotState.pending : DotState.missed;
     } else {
       s = DotState.none;
     }
     dots.add(HabitDayDot(d, s));
   }
 
+  final totalDone = h.tracksSlips
+      ? habitRate(l, h, h.createdDay, anchor).done
+      : all.where((e) => e.state == EntryState.done).length;
+  final totalSlips = all.where((e) => e.state == EntryState.slipped).length;
+
   return HabitDetail(
     streak: habitStreak(l, h, today),
-    rate30: habitRate(l, h, windowStart, today),
-    totalDone: all.where((e) => e.state == EntryState.done).length,
+    rate30: habitRate(l, h, windowStart, anchor),
+    totalDone: totalDone,
+    totalSlips: totalSlips,
     recent: newestFirst.take(recentLimit).toList(),
     series: series,
     latest: series.isEmpty ? null : series.last.value,

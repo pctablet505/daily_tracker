@@ -78,12 +78,14 @@ final class Ledger {
       (_byHabit[e.habitId] ??= {})[e.day] = e;
       _entryDays.add(e.day);
     }
+    _activeDays = {..._seen, ..._entryDays}.toList()..sort();
   }
 
   final List<Habit> habits;
   final Set<DayKey> _seen;
   final Map<String, Map<DayKey, Entry>> _byHabit = {};
   final Set<DayKey> _entryDays = {};
+  late final List<DayKey> _activeDays;
 
   Entry? entryOf(String habitId, DayKey day) => _byHabit[habitId]?[day];
 
@@ -114,16 +116,7 @@ final class Ledger {
   }
 
   /// The earliest day that was seen or has an entry, or null if none.
-  DayKey? get _firstActiveDay {
-    DayKey? first;
-    void take(DayKey d) {
-      if (first == null || d < first!) first = d;
-    }
-
-    _seen.forEach(take);
-    _entryDays.forEach(take);
-    return first;
-  }
+  DayKey? get _firstActiveDay => _activeDays.firstOrNull;
 }
 
 DaySummary summarizeDay(
@@ -131,15 +124,16 @@ DaySummary summarizeDay(
   DayKey day, {
   int threshold = defaultStreakThreshold,
 }) {
+  final clampedThreshold = threshold.clamp(1, 100);
   var planned = 0;
   var done = 0;
   var slips = 0;
   var tracking = 0;
   for (final h in l.habits) {
+    if (!h.isActiveOn(day)) continue;
     final e = l.entryOf(h.id, day);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      if (!h.isActiveOn(day)) continue;
       tracking++;
       if (e?.state == EntryState.slipped) slips++;
       continue;
@@ -147,13 +141,13 @@ DaySummary summarizeDay(
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(day)) {
+    } else if (h.isScheduledOn(day) || e?.state == EntryState.partial) {
       planned++;
     }
   }
   final DayStatus status;
   if (planned > 0) {
-    status = done * 100 >= planned * threshold
+    status = done * 100 >= planned * clampedThreshold
         ? DayStatus.good
         : DayStatus.missed;
   } else if (slips > 0) {
@@ -179,7 +173,7 @@ int currentStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = threshold > 0 ? l._firstActiveDay : l.firstDay;
+  final first = l._firstActiveDay;
   if (first == null) return 0;
   var n = 0;
   for (var d = today; d >= first; d = d.addDays(-1)) {
@@ -203,11 +197,19 @@ int bestStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = threshold > 0 ? l._firstActiveDay : l.firstDay;
+  final first = l._firstActiveDay;
   if (first == null || first > today) return 0;
   var run = 0;
   var best = 0;
-  for (final d in first.through(today)) {
+  var i = 0;
+  for (var d = first; d <= today;) {
+    while (i < l._activeDays.length && l._activeDays[i] < d) {
+      i++;
+    }
+    if (run == 0) {
+      if (i >= l._activeDays.length || l._activeDays[i] > today) break;
+      if (l._activeDays[i] > d) d = l._activeDays[i];
+    }
     switch (summarizeDay(l, d, threshold: threshold).status) {
       case DayStatus.good:
         run++;
@@ -217,6 +219,7 @@ int bestStreak(
       case DayStatus.missed:
         run = 0;
     }
+    d = d.addDays(1);
   }
   return best;
 }
@@ -235,6 +238,14 @@ Ratio rateOver(
     final s = summarizeDay(l, d, threshold: threshold);
     done += s.done;
     planned += s.planned;
+  }
+  if (planned == 0) {
+    for (final h in l.habits) {
+      if (!h.tracksSlips) continue;
+      final r = habitRate(l, h, from, to);
+      done += r.done;
+      planned += r.planned;
+    }
   }
   return Ratio(done, planned);
 }
@@ -267,32 +278,49 @@ final class HabitStreak {
 /// Stay-clear habit: days since the last slip, counting only days the app saw.
 HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
   final last = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+  final entries = l.entriesOf(h.id);
   final DayKey? earliest = h.tracksSlips
       ? l._firstActiveDay
-      : l.entriesOf(h.id).firstOrNull?.day;
+      : entries.firstOrNull?.day;
   if (earliest == null) return const HabitStreak(current: 0, best: 0);
   final start = earliest > h.createdDay ? earliest : h.createdDay;
   if (start > last) return const HabitStreak(current: 0, best: 0);
   var run = 0;
   var best = 0;
-  for (final d in start.through(last)) {
-    final e = l.entryOf(h.id, d);
-    if (e?.state == EntryState.skipped) continue;
-    if (h.tracksSlips) {
+  if (h.tracksSlips) {
+    for (final d in l._activeDays) {
+      if (d < start) continue;
+      if (d > last) break;
+      final e = l.entryOf(h.id, d);
+      if (e?.state == EntryState.skipped) continue;
       if (e?.state == EntryState.slipped) {
         run = 0;
       } else if (l.wasSeen(d)) {
         run++;
         if (run > best) best = run;
       }
-      continue;
     }
-    if (e?.state == EntryState.done) {
-      run++;
-      if (run > best) best = run;
-    } else if (h.isScheduledOn(d) && d != today) {
-      run = 0;
+    return HabitStreak(current: run, best: best);
+  }
+  var i = 0;
+  for (var d = start; d <= last;) {
+    while (i < entries.length && entries[i].day < d) {
+      i++;
     }
+    if (run == 0) {
+      if (i >= entries.length || entries[i].day > last) break;
+      if (entries[i].day > d) d = entries[i].day;
+    }
+    final e = l.entryOf(h.id, d);
+    if (e?.state != EntryState.skipped) {
+      if (e?.state == EntryState.done) {
+        run++;
+        if (run > best) best = run;
+      } else if (h.isScheduledOn(d) && (d != today || h.isArchived)) {
+        run = 0;
+      }
+    }
+    d = d.addDays(1);
   }
   return HabitStreak(current: run, best: best);
 }
@@ -303,10 +331,11 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
   var done = 0;
   var planned = 0;
   for (final d in from.through(to)) {
+    if (!h.isActiveOn(d)) continue;
     final e = l.entryOf(h.id, d);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      if (!h.isActiveOn(d) || !l.wasSeen(d)) continue;
+      if (!l.wasSeen(d)) continue;
       planned++;
       if (e?.state != EntryState.slipped) done++;
       continue;
@@ -314,7 +343,7 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(d)) {
+    } else if (h.isScheduledOn(d) || e?.state == EntryState.partial) {
       planned++;
     }
   }

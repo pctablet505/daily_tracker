@@ -28,7 +28,10 @@ abstract interface class ReminderScheduler {
   Future<bool> requestPermission();
 
   /// Cancels every pending reminder and schedules [plan].
-  Future<void> replaceAll(List<PlannedReminder> plan);
+  Future<void> replaceAll(
+    List<PlannedReminder> plan, {
+    bool Function(String? payload)? keepSnooze,
+  });
 
   /// The payload of each notification the user taps while the app is running.
   Stream<String> get taps;
@@ -63,6 +66,7 @@ AndroidNotificationDetails _androidDetails(
         : 'A daily prompt to log slips on the habits you stay clear of',
     importance: habit ? Importance.high : Importance.defaultImportance,
     priority: habit ? Priority.high : Priority.defaultPriority,
+    visibility: NotificationVisibility.private,
     icon: 'ic_notification',
     actions: withActions ? const [_doneAction, _snoozeAction] : null,
   );
@@ -71,6 +75,16 @@ AndroidNotificationDetails _androidDetails(
 const _initSettings = InitializationSettings(
   android: AndroidInitializationSettings('ic_notification'),
 );
+
+Future<void> _refreshLocalTimezone() async {
+  try {
+    final zone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(zone.identifier));
+  } catch (e) {
+    // Without the real zone, UTC would shift every reminder by the offset; log it loudly.
+    debugPrint('Could not read the time zone, reminders may be off: $e');
+  }
+}
 
 final class LocalNotificationsScheduler implements ReminderScheduler {
   LocalNotificationsScheduler([FlutterLocalNotificationsPlugin? plugin])
@@ -90,13 +104,7 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
   @override
   Future<void> init() async {
     tzdata.initializeTimeZones();
-    try {
-      final zone = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(zone.identifier));
-    } catch (e) {
-      // Without the real zone, UTC would shift every reminder by the offset; log it loudly.
-      debugPrint('Could not read the time zone, reminders may be off: $e');
-    }
+    await _refreshLocalTimezone();
     await _plugin.initialize(
       settings: _initSettings,
       onDidReceiveNotificationResponse: (r) {
@@ -126,10 +134,18 @@ final class LocalNotificationsScheduler implements ReminderScheduler {
   }
 
   @override
-  Future<void> replaceAll(List<PlannedReminder> plan) async {
-    // Snoozed reminders are not part of the plan and must outlive a re-plan.
+  Future<void> replaceAll(
+    List<PlannedReminder> plan, {
+    bool Function(String? payload)? keepSnooze,
+  }) async {
+    await _refreshLocalTimezone();
+    // Snoozed reminders are not part of the plan and must outlive a re-plan
+    // unless their habit was completed, deleted, or reminders were turned off.
     for (final pending in await _plugin.pendingNotificationRequests()) {
-      if (!isSnoozeId(pending.id)) await _plugin.cancel(id: pending.id);
+      if (!isSnoozeId(pending.id) ||
+          (keepSnooze != null && !keepSnooze(pending.payload))) {
+        await _plugin.cancel(id: pending.id);
+      }
     }
     for (final r in plan) {
       await _plugin.zonedSchedule(
@@ -157,7 +173,12 @@ Future<bool> markDoneFromNotification(
 ) async {
   final repo = HabitRepository(db);
   final habit = (await repo.habits()).where((h) => h.id == habitId).firstOrNull;
-  if (habit == null || habit.logType != LogType.tick) return false;
+  if (habit == null ||
+      habit.logType != LogType.tick ||
+      habit.tracksSlips ||
+      !habit.isActiveOn(day)) {
+    return false;
+  }
   final existing = (await repo.entries(
     habitId: habitId,
     from: day,
@@ -231,8 +252,15 @@ Future<void> notificationBackgroundHandler(NotificationResponse r) async {
       } finally {
         await db.close();
       }
+      final pending = await plugin.pendingNotificationRequests();
+      var snoozeId = snoozeIdFor(
+        r.id ?? DateTime.now().millisecondsSinceEpoch & 0xffff,
+      );
+      while (pending.any((p) => p.id == snoozeId && p.payload != r.payload)) {
+        snoozeId++;
+      }
       await plugin.zonedSchedule(
-        id: snoozeIdFor(r.id ?? DateTime.now().millisecondsSinceEpoch & 0xffff),
+        id: snoozeId,
         title: name ?? 'Reminder',
         body: 'You snoozed this one.',
         scheduledDate: tz.TZDateTime.now(tz.UTC).add(const Duration(hours: 1)),

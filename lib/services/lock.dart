@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _iterations = 20000;
+const _platformChannel = MethodChannel('daily_tracker/platform');
 
 /// PBKDF2 with HMAC-SHA-256; returns [length] bytes as hex.
 String pbkdf2Sha256(String password, String salt, int iterations, int length) {
@@ -40,6 +43,15 @@ String pbkdf2Sha256(String password, String salt, int iterations, int length) {
 
 String hashPin(String pin, String salt) =>
     pbkdf2Sha256(pin, salt, _iterations, 32);
+
+bool _constantTimeEquals(String a, String b) {
+  if (a.length != b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) {
+    diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+  }
+  return diff == 0;
+}
 
 String newSalt() {
   final r = Random.secure();
@@ -85,6 +97,20 @@ final class LocalAuthBiometrics implements Biometrics {
     String reason, {
     required bool biometricOnly,
   }) async {
+    if (!biometricOnly) {
+      try {
+        final ok = await _platformChannel.invokeMethod<bool>(
+          'confirmDeviceCredential',
+          {'reason': reason},
+        );
+        if (ok != null) return ok;
+      } on MissingPluginException {
+        // Fall back to local_auth when the platform channel is not registered.
+      } catch (e) {
+        debugPrint('Device credential authentication failed: $e');
+        return false;
+      }
+    }
     try {
       return await _auth.authenticate(
         localizedReason: reason,
@@ -136,7 +162,10 @@ class LockService {
     if (until != null && now < until) {
       final left = Duration(milliseconds: until - now);
       final maxWait = backoffFor(_prefs.getInt(_failKey) ?? 0);
-      if (maxWait > Duration.zero && left > maxWait) return maxWait;
+      if (maxWait > Duration.zero && left > maxWait) {
+        unawaited(_prefs.setInt(_untilKey, now + maxWait.inMilliseconds));
+        return maxWait;
+      }
       return left;
     }
     return Duration.zero;
@@ -173,7 +202,9 @@ class LockService {
     }
     final salt = _prefs.getString(_saltKey);
     final hash = _prefs.getString(_hashKey);
-    if (salt != null && hash != null && hashPin(pin, salt) == hash) {
+    if (salt != null &&
+        hash != null &&
+        _constantTimeEquals(hashPin(pin, salt), hash)) {
       await _resetFailures();
       return const PinCheck(ok: true);
     }

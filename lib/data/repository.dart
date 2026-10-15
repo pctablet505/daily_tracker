@@ -70,13 +70,12 @@ final class HabitRepository {
   /// Stores [habit] at the end of the list and returns it as stored.
   Future<Habit> addHabit(Habit habit) async {
     final stored = await _db.transaction((txn) async {
-      final next =
-          Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM habits',
-            ),
-          ) ??
-          0;
+      final maxOrder = Sqflite.firstIntValue(
+        await txn.rawQuery('SELECT MAX(sortOrder) FROM habits'),
+      );
+      final next = maxOrder == null || maxOrder < -1
+          ? 0
+          : (maxOrder >= 0x7fffffff ? maxOrder : maxOrder + 1);
       final h = habit.copyWith(sortOrder: next);
       await txn.insert('habits', h.toMap());
       return h;
@@ -104,7 +103,9 @@ final class HabitRepository {
         if (e.state != EntryState.done && e.state != EntryState.partial)
           continue;
         final EntryState nextState;
-        if (habit.logType == LogType.number && e.value != null) {
+        if (!habit.tracksSlips &&
+            habit.logType == LogType.number &&
+            e.value != null) {
           nextState = habit.goal != null && e.value! < habit.goal!
               ? EntryState.partial
               : EntryState.done;

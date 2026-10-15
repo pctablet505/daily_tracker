@@ -81,7 +81,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           wasSlipped
               ? 'Slip removed'
               : 'Logged a slip on ${h.name}. Tomorrow is a fresh start.',
-          onUndo: () => _guard(() => ref.read(actionsProvider).slip(h, day)),
+          onUndo: () {
+            if (!mounted) return;
+            _guard(() => ref.read(actionsProvider).slip(h, day));
+          },
         );
       }
     });
@@ -104,7 +107,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           current: row.entry?.value,
           lastValue: row.lastValue,
         );
-        if (v != null) await _guard(() => actions.logNumber(h, day, v));
+        if (v != null && mounted) {
+          await _guard(() => actions.logNumber(h, day, v));
+        }
       case LogType.note:
         final t = await showNoteSheet(
           context,
@@ -113,14 +118,16 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           today: today,
           current: row.entry?.note,
         );
-        if (t != null) await _guard(() => actions.logNote(h, day, t));
+        if (t != null && mounted) {
+          await _guard(() => actions.logNote(h, day, t));
+        }
       case LogType.photo:
         final choice = await showPhotoSheet(
           context,
           habit: h,
           hasPhoto: row.entry?.photoPath != null,
         );
-        if (choice == null) return;
+        if (choice == null || !mounted) return;
         if (choice == PhotoChoice.remove)
           return _guard(() => actions.clear(h, day));
         try {
@@ -133,7 +140,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                       : PhotoSource.gallery,
                 ),
               );
-          if (path != null) await _guard(() => actions.logPhoto(h, day, path));
+          if (path != null && mounted) {
+            await _guard(() => actions.logPhoto(h, day, path));
+          }
         } catch (e) {
           if (mounted)
             _toast(
@@ -153,18 +162,19 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       context,
       habit: h,
       skipped: row.kind == RowKind.skipped,
-      canSkip: !h.tracksSlips,
+      canSkip: !h.tracksSlips || row.kind == RowKind.skipped,
     );
     if (action == null || !mounted) return;
     final actions = ref.read(actionsProvider);
+    final encodedId = Uri.encodeComponent(h.id);
     switch (action) {
       case HabitMenuAction.skip:
       case HabitMenuAction.unskip:
         await _guard(() => actions.skip(h, day));
       case HabitMenuAction.edit:
-        await context.push('/habit/${h.id}/edit');
+        await context.push('/habit/$encodedId/edit');
       case HabitMenuAction.details:
-        await context.push('/habit/${h.id}');
+        await context.push('/habit/$encodedId');
       case HabitMenuAction.archive:
         await _guard(() => actions.archive(h, today));
         if (mounted)
@@ -179,7 +189,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final b = before?.value;
     final a = after.value;
     if (a == null || b == null || a.day != _today || b.day != a.day) return;
-    if (a.summary.perfect && !b.summary.perfect && _celebrated.add(a.day)) {
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    if (a.summary.perfect &&
+        !b.summary.perfect &&
+        a.summary.done > b.summary.done &&
+        _celebrated.add(a.day)) {
       if (MediaQuery.disableAnimationsOf(context)) return;
       _confetti.play();
       HapticFeedback.heavyImpact();

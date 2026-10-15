@@ -36,17 +36,33 @@ double? _finite(Object? v) {
   return v.toDouble();
 }
 
-int? _wholeNumber(Object? v) => _finite(v)?.toInt();
+int? _wholeNumber(Object? v) {
+  final d = _finite(v);
+  if (d == null) return null;
+  if (d != d.truncateToDouble() || d.abs() > 0x1fffffffffffff) {
+    throw FormatException('Bad whole number', '$v');
+  }
+  return d.toInt();
+}
+
+String? _optString(Object? v) {
+  if (v == null) return null;
+  if (v is! String) throw FormatException('Bad text field', '$v');
+  return v;
+}
 
 /// A photo's name inside the photo folder. Anything that could point elsewhere
 /// is damage: a backup must never reach outside that folder.
 String? _photoName(Object? v) {
   if (v == null) return null;
   if (v is! String ||
-      v.isEmpty ||
+      v.trim().isEmpty ||
+      v != v.trim() ||
       v.startsWith('.') ||
       v.contains('/') ||
-      v.contains('\\')) {
+      v.contains('\\') ||
+      v.contains(':') ||
+      v.contains('\x00')) {
     throw FormatException('Bad photo name', '$v');
   }
   return v;
@@ -178,22 +194,43 @@ final class Habit {
     if (created is! String)
       throw FormatException('Habit without createdDay', id);
     final end = m['endDay'];
+    if (end != null && end is! String) {
+      throw FormatException('Habit with bad endDay', id);
+    }
+    final createdDay = DayKey.parse(created);
+    final endDay = end is String ? DayKey.parse(end) : null;
+    if (endDay != null && endDay < createdDay.addDays(-1)) {
+      throw FormatException('Habit endDay before createdDay', id);
+    }
+    final daysMask = _wholeNumber(m['daysMask']) ?? everyDay;
+    if (daysMask < 1 || daysMask > everyDay) {
+      throw FormatException('Habit with bad daysMask', id);
+    }
+    final goal = _finite(m['goal']);
+    if (goal != null && goal <= 0) {
+      throw FormatException('Habit with non-positive goal', id);
+    }
+    final rawReminder = _wholeNumber(m['reminderMinutes']);
+    final reminderMinutes =
+        rawReminder != null && rawReminder >= 0 && rawReminder < 24 * 60
+        ? rawReminder
+        : null;
     return Habit(
       id: id,
       name: name,
-      description: m['description'] as String?,
+      description: _optString(m['description']),
       kind: _byName(HabitKind.values, m['kind'], HabitKind.build),
       logType: _byName(LogType.values, m['logType'], LogType.tick),
-      unit: m['unit'] as String?,
-      goal: _finite(m['goal']),
-      daysMask: _wholeNumber(m['daysMask']) ?? everyDay,
+      unit: _optString(m['unit']),
+      goal: goal,
+      daysMask: daysMask,
       dayPart: _byName(DayPart.values, m['dayPart'], DayPart.anytime),
-      reminderMinutes: _wholeNumber(m['reminderMinutes']),
-      area: m['area'] as String?,
+      reminderMinutes: reminderMinutes,
+      area: _optString(m['area']),
       avoidMode: _byName(AvoidMode.values, m['avoidMode'], AvoidMode.track),
       sortOrder: _wholeNumber(m['sortOrder']) ?? 0,
-      createdDay: DayKey.parse(created),
-      endDay: end is String ? DayKey.parse(end) : null,
+      createdDay: createdDay,
+      endDay: endDay,
     );
   }
 
@@ -278,16 +315,26 @@ final class Entry {
       throw const FormatException('Entry without habitId');
     if (day is! String) throw FormatException('Entry without day', habitId);
     final logged = m['loggedAt'];
+    if (logged != null && logged is! String) {
+      throw FormatException('Entry with bad loggedAt', habitId);
+    }
+    final parsedLogged = logged is String ? DateTime.tryParse(logged) : null;
+    if (logged is String && parsedLogged == null) {
+      throw FormatException('Entry with unparseable loggedAt', habitId);
+    }
+    final value = _finite(m['value']);
+    if (value != null && value < 0) {
+      throw FormatException('Entry with negative value', habitId);
+    }
     return Entry(
       habitId: habitId,
       day: DayKey.parse(day),
       state: _byName(EntryState.values, m['state'], EntryState.done),
-      value: _finite(m['value']),
-      note: m['note'] as String?,
+      value: value,
+      note: _optString(m['note']),
       photoPath: _photoName(m['photoPath']),
       loggedAt:
-          (logged is String ? DateTime.tryParse(logged) : null) ??
-          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+          parsedLogged ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
 

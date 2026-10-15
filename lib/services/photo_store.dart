@@ -31,7 +31,7 @@ final class DiskPhotoStore implements PhotoStore {
   Future<String> importFile(String sourcePath) async {
     await directory.create(recursive: true);
     var ext = p.extension(sourcePath).toLowerCase();
-    if (ext.isEmpty || ext.length > 6) ext = '.jpg';
+    if (!RegExp(r'^\.[a-z0-9]{1,5}$').hasMatch(ext)) ext = '.jpg';
     final name = '${_newId()}$ext';
     await File(sourcePath).copy(p.join(directory.path, name));
     return name;
@@ -39,7 +39,13 @@ final class DiskPhotoStore implements PhotoStore {
 
   @override
   File fileFor(String name) {
-    if (name != p.basename(name) || name.isEmpty || name.startsWith('.')) {
+    if (name != p.basename(name) ||
+        name.trim().isEmpty ||
+        name != name.trim() ||
+        name.startsWith('.') ||
+        name.contains('/') ||
+        name.contains('\\') ||
+        name.contains(':')) {
       throw ArgumentError.value(
         name,
         'name',

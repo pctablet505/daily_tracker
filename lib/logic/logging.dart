@@ -117,7 +117,9 @@ Entry? slipEntry(
     day,
     EntryState.slipped,
     now,
+    value: existing?.value,
     note: _clean(note) ?? existing?.note,
+    photoPath: existing?.photoPath,
   );
 }
 
@@ -139,8 +141,34 @@ Entry? skipEntry(Habit h, DayKey day, Entry? existing, DateTime now) {
   final value = existing!.value;
   final photo = existing.photoPath;
   final note = existing.note;
-  if (value != null) return numberEntry(h, day, value, now, existing: existing);
+  if (h.tracksSlips) {
+    return note != null || value != null || photo != null
+        ? _make(
+            h,
+            day,
+            EntryState.slipped,
+            now,
+            value: value,
+            note: note,
+            photoPath: photo,
+          )
+        : null;
+  }
+  if (value != null && h.logType == LogType.number) {
+    return numberEntry(h, day, value, now, existing: existing);
+  }
   if (photo != null) return photoEntry(h, day, photo, now, existing: existing);
   if (note != null) return noteEntry(h, day, note, now, existing: existing);
+  if (value != null) {
+    return _make(
+      h,
+      day,
+      EntryState.done,
+      now,
+      value: value,
+      note: note,
+      photoPath: photo,
+    );
+  }
   return null;
 }

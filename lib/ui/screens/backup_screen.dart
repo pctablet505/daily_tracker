@@ -101,6 +101,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
 
   Future<void> _saveFile() => _run(() async {
     final f = await ref.read(backupServiceProvider).export();
+    if (!mounted) return;
     await ref
         .read(lockedProvider.notifier)
         .runExternal(
@@ -114,7 +115,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     final text = await ref
         .read(lockedProvider.notifier)
         .runExternal(() => ref.read(fileServiceProvider).pickAndReadText());
-    if (text == null) return;
+    if (text == null || !mounted) return;
     final service = ref.read(backupServiceProvider);
     final preview = service.preview(text);
     if (!mounted || !await _confirmReplace(preview, 'the file')) return;
@@ -143,9 +144,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         ],
       ),
     );
-    if (go != true) return;
+    if (go != true || !mounted) return;
     await ref.read(backupServiceProvider).undoLastRestore();
     _say('Put back what was here before the last restore.');
+    await _refreshUndo();
   });
 
   Future<void> _signIn() => _run(() async {
@@ -191,7 +193,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               ],
             ),
           );
-          if (go == true) {
+          if (go == true && mounted) {
             setState(() => _busy = false);
             return await _backupNow(overrideWifi: true);
           }
@@ -202,6 +204,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
         case BackupStatus.failed:
           _say(r.message.isEmpty ? 'The backup failed.' : r.message);
       }
+    } catch (e) {
+      debugPrint('Backup failed: $e');
+      _say('The backup failed.');
     } finally {
       if (mounted) {
         setState(() {

@@ -59,15 +59,25 @@ class _NumberSheetState extends State<_NumberSheet> {
   late NumberInput input = NumberInput(
     widget.current == null ? '' : plainAmount(widget.current!),
   );
-  late final double step = stepFor(
+  late bool _pristine = widget.current != null;
+
+  double get step => stepFor(
     goal: widget.habit.goal,
     lastValue: widget.lastValue,
-    current: widget.current,
+    current: input.value ?? widget.current,
   );
 
   void _press(String key) {
     HapticFeedback.selectionClick();
-    setState(() => input = input.press(key));
+    setState(() {
+      if (_pristine && key != 'back') {
+        _pristine = false;
+        input = const NumberInput().press(key);
+      } else {
+        _pristine = false;
+        input = input.press(key);
+      }
+    });
   }
 
   @override
@@ -164,18 +174,25 @@ class _NumberSheetState extends State<_NumberSheet> {
               alignment: WrapAlignment.center,
               children: [
                 OutlinedButton(
-                  onPressed: () => setState(() => input = input.adjust(-step)),
+                  onPressed: () => setState(() {
+                    _pristine = false;
+                    input = input.adjust(-step);
+                  }),
                   child: Text('−${formatAmount(step)}'),
                 ),
                 OutlinedButton(
-                  onPressed: () => setState(() => input = input.adjust(step)),
+                  onPressed: () => setState(() {
+                    _pristine = false;
+                    input = input.adjust(step);
+                  }),
                   child: Text('+${formatAmount(step)}'),
                 ),
                 if (widget.lastValue != null)
                   OutlinedButton(
-                    onPressed: () => setState(
-                      () => input = NumberInput(plainAmount(widget.lastValue!)),
-                    ),
+                    onPressed: () => setState(() {
+                      _pristine = true;
+                      input = NumberInput(plainAmount(widget.lastValue!));
+                    }),
                     child: const Text('Same as last time'),
                   ),
               ],

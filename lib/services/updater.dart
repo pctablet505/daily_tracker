@@ -60,6 +60,12 @@ final class ReleaseInfo {
   final String? sha256Url;
 }
 
+bool _isHttpsUrl(Object? u) {
+  if (u is! String) return false;
+  final uri = Uri.tryParse(u);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+}
+
 /// Reads a GitHub release. Null when it is a draft or prerelease, has no apk, or its tag is not a version.
 ReleaseInfo? parseRelease(Map<String, Object?> json) {
   if (json['draft'] == true || json['prerelease'] == true) return null;
@@ -82,15 +88,16 @@ ReleaseInfo? parseRelease(Map<String, Object?> json) {
       )
       .firstOrNull;
   final apk = find((n) => n.endsWith('.apk'));
-  if (apk == null || apk['browser_download_url'] is! String) return null;
+  if (apk == null || !_isHttpsUrl(apk['browser_download_url'])) return null;
   final sha = find((n) => n.endsWith('.apk.sha256') || n.endsWith('.sha256'));
+  final rawShaUrl = sha?['browser_download_url'];
   final body = (json['body'] as String?)?.replaceAll(r'\n', '\n').trim() ?? '';
   return ReleaseInfo(
     version: tag.replaceFirst(RegExp('^[vV]'), ''),
     notes: body.isEmpty ? 'No release notes.' : body,
     apkUrl: apk['browser_download_url']! as String,
     apkSize: (apk['size'] as num?)?.toInt(),
-    sha256Url: sha?['browser_download_url'] as String?,
+    sha256Url: _isHttpsUrl(rawShaUrl) ? rawShaUrl as String : null,
   );
 }
 
@@ -184,6 +191,9 @@ class UpdateService {
   }
 
   Future<String?> _publishedSha(String url) async {
+    if (!_isHttpsUrl(url)) {
+      throw const UpdateException('Could not read the published checksum.');
+    }
     final res = await _client.get(Uri.parse(url)).timeout(_timeout);
     if (res.statusCode != 200)
       throw const UpdateException('Could not read the published checksum.');
@@ -202,6 +212,9 @@ class UpdateService {
     required void Function(int received, int total) onProgress,
     CancelToken? cancel,
   }) async {
+    if (!_isHttpsUrl(r.apkUrl)) {
+      throw const UpdateException('The download URL is not secure.');
+    }
     final dir = await _cacheDir();
     final target = File(p.join(dir.path, 'daily-tracker-${r.version}.apk'));
     final part = File('${target.path}.part');
@@ -212,6 +225,7 @@ class UpdateService {
       if (cancel?.isCancelled ?? false) throw const UpdateCancelled();
       final req = http.Request('GET', Uri.parse(r.apkUrl));
       final res = await _client.send(req).timeout(_timeout);
+      if (cancel?.isCancelled ?? false) throw const UpdateCancelled();
       if (res.statusCode != 200)
         throw UpdateException('The download failed (${res.statusCode}).');
       final total = res.contentLength ?? r.apkSize ?? -1;
@@ -257,6 +271,16 @@ class UpdateService {
       }
       if (await target.exists()) await target.delete();
       await part.rename(target.path);
+      try {
+        for (final f in dir.listSync().whereType<File>()) {
+          final base = p.basename(f.path);
+          if (f.path != target.path &&
+              base.startsWith('daily-tracker-') &&
+              (base.endsWith('.apk') || base.endsWith('.apk.part'))) {
+            await f.delete();
+          }
+        }
+      } catch (_) {}
       return target;
     } on UpdateCancelled {
       rethrow;

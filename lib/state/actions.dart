@@ -22,6 +22,11 @@ final class HabitActions {
   Future<Entry?> _existing(Habit h, DayKey day) async =>
       (await repo.entries(habitId: h.id, from: day, to: day)).firstOrNull;
 
+  Future<void> _deleteIfUnreferenced(String name) async {
+    final inUse = (await repo.entries()).any((e) => e.photoPath == name);
+    if (!inUse) await photos.delete(name);
+  }
+
   /// Stores [next] (or clears the day when null) and removes a photo file the
   /// day no longer points at.
   Future<void> _apply(Habit h, DayKey day, Entry? next, Entry? before) async {
@@ -29,7 +34,9 @@ final class HabitActions {
         ? await repo.clearEntry(h.id, day)
         : await repo.setEntry(next);
     final old = replaced?.photoPath ?? before?.photoPath;
-    if (old != null && old != next?.photoPath) await photos.delete(old);
+    if (old != null && old != next?.photoPath) {
+      await _deleteIfUnreferenced(old);
+    }
   }
 
   Future<void> tick(Habit h, DayKey day) async {
@@ -73,7 +80,7 @@ final class HabitActions {
       rethrow;
     }
     final old = replaced?.photoPath ?? before?.photoPath;
-    if (old != null && old != name) await photos.delete(old);
+    if (old != null && old != name) await _deleteIfUnreferenced(old);
   }
 
   Future<void> slip(Habit h, DayKey day, {String? note}) async {

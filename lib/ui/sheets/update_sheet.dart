@@ -51,12 +51,15 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
   Future<void> _download() async {
     final wifiOnly = ref.read(settingsProvider).wifiOnlyUpdate;
     if (wifiOnly && !await ref.read(networkProvider).isOnWifi()) {
+      if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
-        _error = 'Connect to Wi-Fi to download, or turn off "Update over Wi-Fi only" in Settings.';
+        _error =
+            'Connect to Wi-Fi to download, or turn off "Update over Wi-Fi only" in Settings.';
       });
       return;
     }
+    if (!mounted) return;
     final token = _cancel = CancelToken();
     setState(() {
       _phase = _Phase.downloading;
@@ -70,7 +73,9 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
             widget.release,
             cancel: token,
             onProgress: (got, total) {
-              if (mounted && total > 0) setState(() => _progress = got / total);
+              if (mounted && total > 0) {
+                setState(() => _progress = (got / total).clamp(0.0, 1.0));
+              }
             },
           );
       if (!mounted) return;
@@ -86,6 +91,14 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
         setState(() {
           _phase = _Phase.error;
           _error = e.message;
+        });
+      }
+    } catch (e) {
+      debugPrint('Update download failed: $e');
+      if (mounted) {
+        setState(() {
+          _phase = _Phase.error;
+          _error = 'The download failed.';
         });
       }
     }
@@ -192,7 +205,11 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
                   ),
                 ),
               FilledButton(
-                onPressed: _phase == _Phase.ready ? _install : _download,
+                onPressed:
+                    _phase == _Phase.ready ||
+                        (_phase == _Phase.error && _file != null)
+                    ? _install
+                    : _download,
                 child: Text(switch (_phase) {
                   _Phase.ready => 'Install',
                   _Phase.error =>
@@ -205,7 +222,8 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
                 onPressed: () => Navigator.pop(context),
                 child: Text(_phase == _Phase.idle ? 'Not now' : 'Close'),
               ),
-              if (_phase == _Phase.idle && widget.onSkip != null)
+              if ((_phase == _Phase.idle || _phase == _Phase.error) &&
+                  widget.onSkip != null)
                 TextButton(
                   onPressed: () async {
                     await widget.onSkip!();
