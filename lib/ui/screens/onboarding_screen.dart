@@ -94,87 +94,99 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: Row(
-                children: [
-                  if (_step == 1)
-                    TextButton(
-                      onPressed: _busy ? null : () => setState(() => _step = 0),
-                      child: const Text('Back'),
-                    ),
-                  const Spacer(),
-                  // On the notifications step the habits are already picked:
-                  // Skip keeps them and only passes on notifications.
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : _step == 0
-                        ? _skip
-                        : () => _finish(allowNotifications: false),
-                    child: const Text('Skip'),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                child: _step == 0 ? _picker(context) : _notifications(context),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-              child: Column(
-                children: [
-                  if (_step == 0) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
+    // System Back on the notifications step goes back to the picks, like the
+    // Back button; it must not close the app and lose them.
+    return PopScope(
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy) setState(() => _step = 0);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                child: Row(
+                  children: [
+                    if (_step == 1)
+                      TextButton(
                         onPressed: _busy
                             ? null
-                            : () => setState(() => _step = 1),
-                        child: Text(
-                          _picked.isEmpty
-                              ? 'Start empty'
-                              : 'Start with ${plural(_picked.length, 'habit')}',
-                        ),
+                            : () => setState(() => _step = 0),
+                        child: const Text('Back'),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Next: decide about notifications. They are optional.',
-                      style: AppType.small.copyWith(color: c.muted),
-                      textAlign: TextAlign.center,
-                    ),
-                  ] else ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _finish(allowNotifications: true),
-                        child: const Text('Allow notifications'),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
+                    const Spacer(),
+                    // On the notifications step the habits are already picked:
+                    // Skip keeps them and only passes on notifications.
                     TextButton(
                       onPressed: _busy
                           ? null
+                          : _step == 0
+                          ? _skip
                           : () => _finish(allowNotifications: false),
-                      child: const Text('Not now'),
+                      child: const Text('Skip'),
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  child: _step == 0
+                      ? _picker(context)
+                      : _notifications(context),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                child: Column(
+                  children: [
+                    if (_step == 0) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _step = 1),
+                          child: Text(
+                            _picked.isEmpty
+                                ? 'Start empty'
+                                : 'Start with ${plural(_picked.length, 'habit')}',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Next: decide about notifications. They are optional.',
+                        style: AppType.small.copyWith(color: c.muted),
+                        textAlign: TextAlign.center,
+                      ),
+                    ] else ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _busy
+                              ? null
+                              : () => _finish(allowNotifications: true),
+                          child: const Text('Allow notifications'),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _finish(allowNotifications: false),
+                        child: const Text('Not now'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

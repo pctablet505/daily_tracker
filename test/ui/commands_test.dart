@@ -33,9 +33,11 @@ final class _SpyPhotos implements PhotoStore {
 void main() {
   sqfliteFfiInit();
 
-  testWidgets('the delete Undo closes after its 6 s and the photos then go', (
-    tester,
-  ) async {
+  final h = habit('photo', logType: LogType.photo);
+
+  /// [h] with one photo in a real database, a screen to delete it from, and
+  /// the deletion done: its Undo snackbar is showing.
+  Future<(Database, _SpyPhotos)> deletePhotoHabit(WidgetTester tester) async {
     // Deleting a photo first asks where the safety copies are: a documents folder with none.
     final support = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('dt_cmd_'),
@@ -50,7 +52,6 @@ void main() {
       () => openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath),
     ))!;
     addTearDown(() => tester.runAsync(db.close));
-    final h = habit('photo', logType: LogType.photo);
     await tester.runAsync(() async {
       final repo = HabitRepository(db);
       await repo.addHabit(h);
@@ -94,22 +95,85 @@ void main() {
     await tester.runAsync(() => deleting);
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Deleted ${h.name}'), findsOneWidget);
+    return (db, photos);
+  }
 
-    // One frame a second: the 6 s start only once the snackbar is fully shown.
-    for (var i = 0; i < 8; i++) {
-      await tester.pump(const Duration(seconds: 1));
-    }
-    await tester.pumpAndSettle();
-    // Let the clean-up's file and database work finish.
-    // The clean-up hops between real file and database work and the test's fake clock, so
-    // alternate letting the real work run and pumping what it left behind.
+  /// Lets the clean-up's file and database work finish. It hops between real
+  /// file and database work and the test's fake clock, so alternate letting
+  /// the real work run and pumping what it left behind.
+  Future<void> untilPhotosGo(WidgetTester tester, _SpyPhotos photos) async {
     for (var i = 0; i < 50 && photos.deleted.isEmpty; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump();
     }
+  }
+
+  testWidgets('the delete Undo closes after its 6 s and the photos then go', (
+    tester,
+  ) async {
+    final (_, photos) = await deletePhotoHabit(tester);
+
+    // One frame a second: the 6 s start only once the snackbar is fully shown.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pumpAndSettle();
+    await untilPhotosGo(tester, photos);
     expect(find.text('Deleted ${h.name}'), findsNothing);
     expect(photos.deleted, ['p1.jpg']);
   });
+
+  testWidgets('an Undo that fails says so, and the photos then go', (
+    tester,
+  ) async {
+    final (db, photos) = await deletePhotoHabit(tester);
+    // The database refuses to take the habit back.
+    await tester.runAsync(
+      () => db.execute(
+        "CREATE TRIGGER no_restore BEFORE INSERT ON habits "
+        "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Undo'));
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    await untilPhotosGo(tester, photos);
+
+    expect(find.text('Could not bring it back.'), findsOneWidget);
+    expect(
+      (await tester.runAsync(() => HabitRepository(db).habits()))!,
+      isEmpty,
+    );
+    expect(photos.deleted, ['p1.jpg'], reason: 'the habit stays deleted');
+  });
+
+  testWidgets(
+    'a photo clean-up that fails after a delete is no uncaught error',
+    (tester) async {
+      final (db, _) = await deletePhotoHabit(tester);
+      // The clean-up cannot read which photos are still in use.
+      await tester.runAsync(() => db.execute('DROP TABLE entries'));
+
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(seconds: 1));
+      }
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 20; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      expect(find.text('Deleted ${h.name}'), findsNothing);
+    },
+  );
 }

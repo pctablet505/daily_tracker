@@ -120,12 +120,18 @@ final class AreaRate {
 }
 
 /// Done-out-of-planned per area over [from]..[to], best first. Habits with no area are "Other".
-List<AreaRate> areaRates(Ledger l, DayKey from, DayKey to) {
+/// [today], while not done, is still open and is not counted, as in [needsAttention].
+List<AreaRate> areaRates(Ledger l, DayKey from, DayKey to, {DayKey? today}) {
   final done = <String, int>{};
   final planned = <String, int>{};
+  final open = today != null && today >= from && today <= to;
   for (final h in l.habits) {
     if (h.tracksSlips) continue;
-    final r = habitRate(l, h, from, to);
+    var r = habitRate(l, h, from, to);
+    if (open) {
+      final t = habitRate(l, h, today, today);
+      if (t.done < t.planned) r = Ratio(r.done, r.planned - t.planned);
+    }
     final key = h.area ?? 'Other';
     done[key] = (done[key] ?? 0) + r.done;
     planned[key] = (planned[key] ?? 0) + r.planned;

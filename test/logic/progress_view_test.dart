@@ -332,6 +332,26 @@ void main() {
       ]);
       expect(areaRates(l, mon, sat), isEmpty);
     });
+
+    test('today, still open and not done, is not held against an area', () {
+      final l = ledger(
+        [habit('a', area: 'Health'), habit('b', area: 'Health')],
+        [entry('a', mon), entry('a', tue), entry('b', mon), entry('b', wed)],
+      );
+      // Wednesday morning: b is done, a is not yet.
+      expect(
+        areaRates(l, mon, wed, today: wed).single.ratio,
+        const Ratio(4, 5),
+      );
+      // The first morning, nothing done yet: no bar rather than 0%.
+      final first = ledger([habit('a', area: 'Health')]);
+      expect(areaRates(first, mon, mon, today: mon), isEmpty);
+      expect(
+        areaRates(l, mon, wed).single.ratio,
+        const Ratio(4, 6),
+        reason: 'without a today every day counts, as before',
+      );
+    });
   });
 
   test('lastDays gives n days ending today, oldest first', () {

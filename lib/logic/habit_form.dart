@@ -14,6 +14,7 @@ final class HabitForm {
     this.reminderMinutes,
     this.area = '',
     this.avoidMode = AvoidMode.track,
+    this.original,
   });
 
   static const maxNameLength = 60;
@@ -37,6 +38,7 @@ final class HabitForm {
       reminderMinutes: rem != null && rem >= 0 && rem < 24 * 60 ? rem : null,
       area: h.area ?? '',
       avoidMode: h.avoidMode,
+      original: h,
     );
   }
 
@@ -57,6 +59,10 @@ final class HabitForm {
   final String area;
   final AvoidMode avoidMode;
 
+  /// The habit being edited. 2.0.2 had no limits on area, unit and note, so
+  /// its own text stays valid: the limits apply only to new typing.
+  final Habit? original;
+
   /// An avoid habit that is ticked like a Do habit, or a Do habit.
   bool get logsSlips => kind == HabitKind.avoid && avoidMode == AvoidMode.track;
   bool get isNumber => !logsSlips && logType == LogType.number;
@@ -69,15 +75,19 @@ final class HabitForm {
     return null;
   }
 
-  static String? _tooLong(String text, int max) =>
-      text.trim().length > max ? 'Keep it under $max characters' : null;
+  static String? _tooLong(String text, int max, String? kept) =>
+      text.trim().length > max && text.trim() != kept?.trim()
+      ? 'Keep it under $max characters'
+      : null;
 
-  String? get areaError => _tooLong(area, maxAreaLength);
+  String? get areaError => _tooLong(area, maxAreaLength, original?.area);
 
   /// Only a number habit keeps its unit.
-  String? get unitError => isNumber ? _tooLong(unit, maxUnitLength) : null;
+  String? get unitError =>
+      isNumber ? _tooLong(unit, maxUnitLength, original?.unit) : null;
 
-  String? get descriptionError => _tooLong(description, maxDescriptionLength);
+  String? get descriptionError =>
+      _tooLong(description, maxDescriptionLength, original?.description);
 
   String? get daysError => logsSlips
       ? null
@@ -164,5 +174,6 @@ final class HabitForm {
         : this.reminderMinutes,
     area: area ?? this.area,
     avoidMode: avoidMode ?? this.avoidMode,
+    original: original,
   );
 }

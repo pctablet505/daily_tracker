@@ -75,4 +75,45 @@ void main() {
       expect(find.text('NEEDS ATTENTION THIS MONTH'), findsOneWidget);
     });
   });
+
+  testWidgets('today, still open, does not pull an area bar down', (
+    tester,
+  ) async {
+    const d1 = DayKey(2026, 10, 1);
+    final ledger = Ledger(
+      habits: [
+        Habit(id: 'a', name: 'Stretch', createdDay: d1, area: 'Health'),
+        Habit(id: 'b', name: 'Read', createdDay: d1, area: 'Mind'),
+      ],
+      entries: [
+        for (final id in ['a', 'b'])
+          for (final d in [1, 2])
+            Entry(
+              habitId: id,
+              day: DayKey(2026, 10, d),
+              state: EntryState.done,
+              loggedAt: DateTime.utc(2026, 10, d),
+            ),
+      ],
+      seenDays: [for (var d = 1; d <= 3; d++) DayKey(2026, 10, d)],
+    );
+    // The morning of the 3rd: both done every day so far.
+    await pumpScreen(
+      tester,
+      const Scaffold(body: ProgressScreen()),
+      overrides: await baseOverrides(
+        ledger: ledger,
+        now: DateTime(2026, 10, 3, 8),
+      ),
+      size: const Size(360, 2000),
+    );
+    final bars = find.byWidgetPredicate(
+      (w) => w.runtimeType.toString() == '_AreaBar',
+    );
+    expect(bars, findsNWidgets(2));
+    expect(
+      find.descendant(of: bars, matching: find.text('100%')),
+      findsNWidgets(2),
+    );
+  });
 }

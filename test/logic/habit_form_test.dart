@@ -48,6 +48,29 @@ void main() {
       expect(form().copyWith(unit: 'x' * 13).isValid, isTrue);
     });
 
+    test(
+      'a habit keeps its own area, unit and note that are over the limits',
+      () {
+        // 2.0.2 had no limits on these; the limits apply only to new typing.
+        final old = habit('h1', logType: LogType.number).copyWith(
+          area: () => 'a' * 41,
+          unit: () => 'u' * 13,
+          description: () => 'd' * 319,
+        );
+        final f = HabitForm.fromHabit(old).copyWith(dayPart: DayPart.evening);
+        expect(
+          (f.areaError, f.unitError, f.descriptionError),
+          (null, null, null),
+        );
+        expect(f.isValid, isTrue);
+        expect(f.toHabit(old).description, 'd' * 319);
+        // Any other text over the limit is new typing.
+        expect(f.copyWith(area: 'b' * 41).areaError, isNotNull);
+        expect(f.copyWith(unit: 'v' * 13).unitError, isNotNull);
+        expect(f.copyWith(description: 'd' * 320).descriptionError, isNotNull);
+      },
+    );
+
     test('at least one day must be chosen', () {
       expect(form().copyWith(daysMask: 0).daysError, isNotNull);
       expect(form().copyWith(daysMask: daysOf([3])).daysError, isNull);

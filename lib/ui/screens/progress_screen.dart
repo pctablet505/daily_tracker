@@ -73,7 +73,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
               : needsAttention(l, shown, to, today: today);
           final areas = to < shown
               ? const <AreaRate>[]
-              : areaRates(l, shown, to);
+              : areaRates(l, shown, to, today: today);
           final canGoBack = shown > firstMonth;
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),

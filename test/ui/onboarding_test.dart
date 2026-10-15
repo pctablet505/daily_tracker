@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:daily_tracker/data/database.dart';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/services/notifications.dart';
@@ -7,6 +9,7 @@ import 'package:daily_tracker/state/providers.dart';
 import 'package:daily_tracker/ui/screens/onboarding_screen.dart';
 import 'package:daily_tracker/ui/theme/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +19,9 @@ import 'harness.dart';
 
 final class _CountingNotifications implements ReminderScheduler {
   int asked = 0;
+
+  /// When set, the permission dialog stays open until it completes.
+  Completer<bool>? answer;
   @override
   Future<void> init() async {}
   @override
@@ -23,7 +29,7 @@ final class _CountingNotifications implements ReminderScheduler {
   @override
   Future<bool> requestPermission() async {
     asked++;
-    return true;
+    return answer?.future ?? true;
   }
 
   @override
@@ -153,4 +159,55 @@ void main() {
       expect(find.text('Start with 2 habits'), findsOneWidget);
     },
   );
+
+  /// Records the platform calls, so a test can see the app being closed.
+  List<String> watchPlatform(WidgetTester tester) {
+    final calls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    return calls;
+  }
+
+  testWidgets(
+    'system Back on the notifications step returns to the picker with the picks kept',
+    (tester) async {
+      await pickTwoAndGoOn(tester);
+      final calls = watchPlatform(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(calls, isNot(contains('SystemNavigator.pop')));
+      expect(find.text('What will you do every day?'), findsOneWidget);
+      expect(find.text('Start with 2 habits'), findsOneWidget);
+    },
+  );
+
+  testWidgets('system Back while the habits are being added does nothing', (
+    tester,
+  ) async {
+    await pickTwoAndGoOn(tester);
+    notifications.answer = Completer();
+    await tester.tap(find.text('Allow notifications'));
+    await tester.pump();
+    final calls = watchPlatform(tester);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(calls, isNot(contains('SystemNavigator.pop')));
+    expect(find.text('Want a nudge?'), findsOneWidget);
+    notifications.answer!.complete(true);
+    await untilHome(tester);
+    expect(find.text('HOME'), findsOneWidget);
+  });
 }

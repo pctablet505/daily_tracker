@@ -41,8 +41,21 @@ Future<bool> confirmAndDeleteHabit(
   if (sure != true) return false;
   final DeletedHabit gone = await actions.deleteHabit(habit.id);
   messenger.hideCurrentSnackBar();
-  var undone = false;
-  Future<void>? undoFuture;
+  // False when the habit could not be brought back: it stays deleted.
+  Future<bool> undo() async {
+    try {
+      await actions.undoDelete(gone);
+      return true;
+    } catch (e) {
+      debugPrint('Bringing back a deleted habit failed: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not bring it back.')),
+      );
+      return false;
+    }
+  }
+
+  Future<bool>? undone;
   unawaited(
     messenger
         .showSnackBar(
@@ -54,20 +67,20 @@ Future<bool> confirmAndDeleteHabit(
             persist: false,
             action: SnackBarAction(
               label: 'Undo',
-              onPressed: () {
-                undone = true;
-                undoFuture = actions.undoDelete(gone);
-              },
+              onPressed: () => undone = undo(),
             ),
           ),
         )
         .closed
-        .then((reason) async {
-          if (undoFuture != null) await undoFuture;
-          if (!undone && reason != SnackBarClosedReason.action) {
+        .then((_) async {
+          if (undone == null || !await undone!) {
             await actions.finishDelete(gone);
           }
-        }),
+        })
+        // The photos left behind go with the sweep at the next start.
+        .catchError(
+          (Object e) => debugPrint('Removing deleted photos failed: $e'),
+        ),
   );
   return true;
 }
