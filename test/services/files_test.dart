@@ -50,7 +50,11 @@ void main() {
   Directory sharedDir() =>
       Directory(p.join(tmp.path, SystemFileService.sharedFolder));
 
-  File aged(String name, Duration age) => File(p.join(sharedDir().path, name))
+  File aged(
+    String name,
+    Duration age, {
+    String folder = SystemFileService.sharedFolder,
+  }) => File(p.join(tmp.path, folder, name))
     ..createSync(recursive: true)
     ..writeAsStringSync(name)
     ..setLastModifiedSync(DateTime.now().subtract(age));
@@ -93,6 +97,32 @@ void main() {
         expect(recent.existsSync(), isTrue);
       },
     );
+
+    test(
+      "old copies in the share plugin's own folder go too, fresh ones stay",
+      () async {
+        const plugin = SystemFileService.pluginShareFolder;
+        final old = aged('old.json', const Duration(hours: 2), folder: plugin);
+        final recent = aged(
+          'recent.json',
+          const Duration(minutes: 5),
+          folder: plugin,
+        );
+        await service().clearOldShares();
+        expect(old.existsSync(), isFalse);
+        expect(recent.existsSync(), isTrue);
+      },
+    );
+
+    test("a share also clears the plugin's old copy", () async {
+      final old = aged(
+        'old.json',
+        const Duration(hours: 2),
+        folder: SystemFileService.pluginShareFolder,
+      );
+      await service().shareText('new.json', 'z');
+      expect(old.existsSync(), isFalse);
+    });
 
     test('clearOldShares is fine when nothing was ever shared', () async {
       expect(sharedDir().existsSync(), isFalse);

@@ -41,10 +41,11 @@ final class _PlatformPicked implements PickedFile {
   Future<Uint8List> readAsBytes() => _file.readAsBytes();
 }
 
-/// The picker and the share sheet both leave a copy of the user's backup in the app's
-/// cache, and a backup holds their habits and notes. Picked copies are cleared once the
-/// file is read; shared copies sit in their own folder and are removed once they are
-/// old, because the receiving app may still be reading a fresh one.
+/// The picker and the share sheet leave copies of the user's backup in the app's cache,
+/// and a backup holds their habits and notes. Picked copies are cleared once the file is
+/// read. Shared copies sit in their own folder, and the share plugin makes one more in its
+/// own `share_plus` folder that it only clears at the next share; both are removed once
+/// they are old, because the receiving app may still be reading a fresh one.
 final class SystemFileService implements FileService {
   SystemFileService({
     Future<Directory> Function()? tempDir,
@@ -57,6 +58,10 @@ final class SystemFileService implements FileService {
        _clearPicked = clearPicked ?? FilePicker.clearTemporaryFiles;
 
   static const sharedFolder = 'shared';
+
+  /// Where the share plugin keeps its own copy of whatever is shared.
+  static const pluginShareFolder = 'share_plus';
+
   static const shareKeepFor = Duration(hours: 1);
 
   final Future<Directory> Function() _tempDir;
@@ -71,12 +76,13 @@ final class SystemFileService implements FileService {
 
   /// Removes shared copies that are older than [shareKeepFor]. Safe to call any time.
   Future<void> clearOldShares() async {
-    try {
-      await _removeOldShares(
-        Directory(p.join((await _tempDir()).path, sharedFolder)),
-      );
-    } on FileSystemException {
-      // Nothing to clean, or it is busy: the next share tries again.
+    final temp = (await _tempDir()).path;
+    for (final folder in [sharedFolder, pluginShareFolder]) {
+      try {
+        await _removeOldShares(Directory(p.join(temp, folder)));
+      } on FileSystemException {
+        // Nothing to clean, or it is busy: the next share tries again.
+      }
     }
   }
 
@@ -131,11 +137,7 @@ final class SystemFileService implements FileService {
   }) async {
     final dir = Directory(p.join((await _tempDir()).path, sharedFolder));
     await dir.create(recursive: true);
-    try {
-      await _removeOldShares(dir);
-    } on FileSystemException {
-      // Tidying must not stop the share.
-    }
+    await clearOldShares();
     final file = File(p.join(dir.path, p.basename(fileName)));
     await file.writeAsString(content);
     await _share(
