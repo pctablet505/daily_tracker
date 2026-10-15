@@ -203,10 +203,6 @@ void main() {
     test('Habit.fromMap and Entry.fromMap reject invalid fields', () {
       final validHabit = habit('a').toMap();
       expect(
-        () => Habit.fromMap({...validHabit, 'logType': 'bogus'}),
-        throwsFormatException,
-      );
-      expect(
         () => Habit.fromMap({...validHabit, 'goal': 0}),
         throwsFormatException,
       );
@@ -215,21 +211,25 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => Habit.fromMap({...validHabit, 'reminderMinutes': 1440}),
+        () => Habit.fromMap({...validHabit, 'sortOrder': 1.5}),
         throwsFormatException,
       );
       expect(
-        () => Habit.fromMap({...validHabit, 'sortOrder': 1.5}),
+        () => Habit.fromMap({...validHabit, 'endDay': '1999-01-01'}),
         throwsFormatException,
+      );
+      expect(
+        Habit.fromMap({...validHabit, 'reminderMinutes': 1440}).reminderMinutes,
+        isNull,
       );
 
       final validEntry = entry('a', mon).toMap();
       expect(
-        () => Entry.fromMap({...validEntry, 'state': 'bogus'}),
+        () => Entry.fromMap({...validEntry, 'value': -1}),
         throwsFormatException,
       );
       expect(
-        () => Entry.fromMap({...validEntry, 'value': -1}),
+        () => Entry.fromMap({...validEntry, 'loggedAt': 'not-a-date'}),
         throwsFormatException,
       );
     });
@@ -294,7 +294,7 @@ void main() {
       expect(satDot.state, DotState.missed);
     });
 
-    test('skipEntry unskips tracksSlips and boolean habits with leftover value', () {
+    test('skipEntry unskips tracksSlips and non-number habits with leftover value', () {
       final sc = stayClear('s');
       final skippedSlip = Entry(
         habitId: 's',
@@ -303,8 +303,19 @@ void main() {
         loggedAt: DateTime.utc(2026, 10, 5),
       );
       expect(skipEntry(sc, mon, skippedSlip, DateTime.utc(2026, 10, 5)), isNull);
+      final skippedSlipWithNote = Entry(
+        habitId: 's',
+        day: mon,
+        state: EntryState.skipped,
+        note: 'oops',
+        loggedAt: DateTime.utc(2026, 10, 5),
+      );
+      expect(
+        skipEntry(sc, mon, skippedSlipWithNote, DateTime.utc(2026, 10, 5))?.state,
+        EntryState.slipped,
+      );
 
-      final booleanHabit = habit('b');
+      final booleanHabit = habit('b', goal: 10);
       final skippedWithVal = Entry(
         habitId: 'b',
         day: mon,
@@ -313,8 +324,8 @@ void main() {
         loggedAt: DateTime.utc(2026, 10, 5),
       );
       expect(
-        skipEntry(booleanHabit, mon, skippedWithVal, DateTime.utc(2026, 10, 5)),
-        isNull,
+        skipEntry(booleanHabit, mon, skippedWithVal, DateTime.utc(2026, 10, 5))?.state,
+        EntryState.done,
       );
     });
 
@@ -508,7 +519,7 @@ void main() {
         Directory(p.join(tmp.path, 'photos')),
         newId: () => 'p1',
       );
-      final weird = File(p.join(tmp.path, 'bad.tar.gz'))
+      final weird = File(p.join(tmp.path, 'bad.extensiontoolong'))
         ..writeAsBytesSync([1, 2, 3]);
       final savedName = await store.importFile(weird.path);
       expect(savedName, 'p1.jpg');

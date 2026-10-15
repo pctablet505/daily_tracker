@@ -159,6 +159,16 @@ Entry? skipEntry(Habit h, DayKey day, Entry? existing, DateTime now) {
   }
   if (photo != null) return photoEntry(h, day, photo, now, existing: existing);
   if (note != null) return noteEntry(h, day, note, now, existing: existing);
-  if (value != null) return numberEntry(h, day, value, now, existing: existing);
+  if (value != null) {
+    return _make(
+      h,
+      day,
+      EntryState.done,
+      now,
+      value: value,
+      note: note,
+      photoPath: photo,
+    );
+  }
   return null;
 }
