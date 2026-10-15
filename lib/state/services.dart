@@ -28,6 +28,7 @@ final backupServiceProvider = Provider<BackupService>((ref) {
     ),
     now: ref.watch(clockProvider),
     appVersion: () => ref.read(appVersionProvider.future),
+    sweepPhotos: () => ref.read(actionsProvider).sweepOrphanPhotos(),
   );
 });
 

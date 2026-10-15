@@ -55,6 +55,7 @@ class BackupService {
     required this._safetyDir,
     required this._now,
     required this._appVersion,
+    this._sweepPhotos,
   });
 
   final HabitRepository repo;
@@ -63,6 +64,9 @@ class BackupService {
   final Future<Directory> Function() _safetyDir;
   final DateTime Function() _now;
   final Future<String> Function() _appVersion;
+
+  /// Removes the photos nothing refers to once a restore is done.
+  final Future<void> Function()? _sweepPhotos;
 
   static const _keepSafetyCopies = 3;
 
@@ -120,11 +124,13 @@ class BackupService {
 
   /// Replaces everything with the backup in [text]. The current data is saved
   /// to a safety file first, and nothing is touched if the file is not valid.
+  /// Then photos that neither the data nor a safety copy refers to are removed.
   Future<void> restore(String text) async {
     final backup = decodeBackup(text);
     await _saveSafetyCopy();
     await repo.replaceAll(backup.snapshot);
     await _applySettings(backup.settings);
+    await _sweepPhotos?.call();
   }
 
   static final _numbered = RegExp(r'-n(\d+)\.json$');
@@ -160,6 +166,23 @@ class BackupService {
           : p.basename(b.path).compareTo(p.basename(a.path));
     });
     return copies;
+  }
+
+  /// The photo names the copies made before restores refer to, so their
+  /// photos stay for "Undo the last restore". Null when a copy cannot be read,
+  /// since then which photos it needs is unknown.
+  Future<Set<String>?> photosInSafetyCopies() async {
+    try {
+      return {
+        for (final copy in await _safetyCopies())
+          for (final e in decodeBackup(
+            await copy.readAsString(),
+          ).snapshot.entries)
+            if (e.photoPath != null) e.photoPath!,
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Whether there is a copy of what was here before a restore.

@@ -13,6 +13,7 @@ import '../services/lock.dart';
 import '../services/notifications.dart';
 import '../services/photo_store.dart';
 import 'actions.dart';
+import 'services.dart';
 import 'settings.dart';
 
 /// Set in `main` (and in tests) before anything reads them.
@@ -174,12 +175,15 @@ final todayViewProvider = Provider<AsyncValue<TodayView>>((ref) {
       );
 });
 
-final actionsProvider = Provider<HabitActions>((ref) {
+// Typed by hand: it and backupServiceProvider refer to each other.
+final Provider<HabitActions> actionsProvider = Provider((ref) {
   return HabitActions(
     repo: ref.watch(repositoryProvider),
     photos: ref.watch(photoStoreProvider),
     now: ref.watch(clockProvider),
     newId: () => const Uuid().v4(),
+    keptBySafetyCopies: () =>
+        ref.read(backupServiceProvider).photosInSafetyCopies(),
   );
 });
 

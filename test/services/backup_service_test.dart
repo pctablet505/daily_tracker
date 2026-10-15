@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/database.dart';
+import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/services/backup_service.dart';
+import 'package:daily_tracker/services/photo_store.dart';
+import 'package:daily_tracker/state/actions.dart';
 import 'package:daily_tracker/state/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -327,4 +330,117 @@ void main() {
       }
     },
   );
+
+  group('photos', () {
+    late Directory media;
+    late HabitActions actions;
+    late BackupService sweeping;
+
+    setUp(() async {
+      media = await Directory.systemTemp.createTemp('dt_media_');
+      addTearDown(() => media.delete(recursive: true));
+      late final BackupService s;
+      actions = HabitActions(
+        repo: repo,
+        photos: DiskPhotoStore(media),
+        now: () => now,
+        newId: () => 'x',
+        keptBySafetyCopies: () => s.photosInSafetyCopies(),
+      );
+      s = BackupService(
+        repo: repo,
+        readSettings: () => settings,
+        applySettings: (_) async {},
+        safetyDir: () async => safety,
+        now: () => now,
+        appVersion: () async => '2.0.0',
+        sweepPhotos: actions.sweepOrphanPhotos,
+      );
+      sweeping = s;
+    });
+
+    File photo(String name, {Duration age = const Duration(days: 1)}) =>
+        File(p.join(media.path, name))
+          ..writeAsBytesSync([1])
+          ..setLastModifiedSync(now.subtract(age));
+
+    Future<void> withPhoto(String name) async {
+      await repo.addHabit(habit('p', logType: LogType.photo));
+      await repo.setEntry(entry('p', mon).copyWith(photoPath: () => name));
+    }
+
+    String backupOf(List<Entry> entries) => encodeBackup(
+      Snapshot(
+        habits: [habit('p', logType: LogType.photo)],
+        entries: entries,
+        seenDays: const {},
+      ),
+      now: now,
+      appVersion: '2.0.0',
+    );
+
+    test('the safety copies name the photos they refer to; a damaged copy makes that unknown', () async {
+      await withPhoto('mine.jpg');
+      await service.restore(backupOf(const []));
+      expect(await service.photosInSafetyCopies(), {'mine.jpg'});
+      File(p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'))
+          .writeAsStringSync('{"format": "daily-tracker-backup"');
+      expect(await service.photosInSafetyCopies(), isNull);
+    });
+
+    test('a restore removes stored photos that neither the restored data nor a safety copy refers to', () async {
+      await withPhoto('mine.jpg');
+      final mine = photo('mine.jpg');
+      final stray = photo('stray.jpg');
+      final fresh = photo('fresh.jpg', age: const Duration(minutes: 5));
+      final restored = photo('restored.jpg');
+      final text = backupOf([
+        entry('p', tue).copyWith(photoPath: () => 'restored.jpg'),
+      ]);
+
+      await sweeping.restore(text);
+      expect(stray.existsSync(), isFalse);
+      expect(
+        (mine.existsSync(), fresh.existsSync(), restored.existsSync()),
+        (true, true, true),
+        reason: 'Undo needs mine; fresh may be for an entry being saved',
+      );
+
+      // Three more restores push out the copy that still refers to mine.
+      for (var i = 0; i < 3; i++) {
+        await sweeping.restore(text);
+      }
+      expect(mine.existsSync(), isFalse);
+      expect(restored.existsSync(), isTrue);
+    });
+
+    test('a restore removes no photo while a safety copy is damaged', () async {
+      final stray = photo('stray.jpg');
+      File(p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'))
+          .writeAsStringSync('not json');
+      await sweeping.restore(backupOf(const []));
+      expect(stray.existsSync(), isTrue);
+    });
+
+    test('a photo replaced after a restore is still there when the restore is undone', () async {
+      await withPhoto('mine.jpg');
+      final mine = photo('mine.jpg');
+      // An older backup from this phone, with the same photo.
+      await sweeping.restore(
+        backupOf([entry('p', mon).copyWith(photoPath: () => 'mine.jpg')]),
+      );
+      final camera = await Directory.systemTemp.createTemp('dt_camera_');
+      addTearDown(() => camera.delete(recursive: true));
+      final taken = File(p.join(camera.path, 'taken.jpg'))
+        ..writeAsBytesSync([2]);
+      await actions.logPhoto((await repo.habits()).single, mon, taken.path);
+      expect(mine.existsSync(), isTrue, reason: 'replaced');
+      await actions.finishDelete(await actions.deleteHabit('p'));
+      expect(mine.existsSync(), isTrue, reason: 'deleted with its habit');
+
+      await sweeping.undoLastRestore();
+      expect((await repo.entries()).single.photoPath, 'mine.jpg');
+      expect(mine.existsSync(), isTrue);
+    });
+  });
 }

@@ -39,7 +39,10 @@ Future<void> main() async {
       databaseProvider.overrideWithValue(db),
       sharedPrefsProvider.overrideWithValue(prefs),
       photoStoreProvider.overrideWithValue(
-        DiskPhotoStore(Directory(p.join(support.path, 'media'))),
+        DiskPhotoStore(
+          Directory(p.join(support.path, 'media')),
+          cache: await getTemporaryDirectory(),
+        ),
       ),
       reminderSchedulerProvider.overrideWithValue(scheduler),
       lockServiceProvider.overrideWithValue(
@@ -51,13 +54,14 @@ Future<void> main() async {
       ),
     ],
   );
+  final actions = container.read(actionsProvider);
   unawaited(
     recoverLostPhoto(
       prefs,
       lostPhoto: lostImagePickerPhoto,
       repo: container.read(repositoryProvider),
-      actions: container.read(actionsProvider),
-    ),
+      actions: actions,
+    ).whenComplete(actions.sweepOrphanPhotos),
   );
   runApp(
     UncontrolledProviderScope(

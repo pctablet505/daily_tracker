@@ -34,6 +34,15 @@ final class FakePhotos implements PhotoStore {
     stored.remove(name);
     deleted.add(name);
   }
+
+  /// When each stored photo was written; a photo not named here is a day old.
+  final modified = <String, DateTime>{};
+
+  @override
+  Future<Map<String, DateTime>> listStored() async => {
+    for (final name in stored)
+      name: modified[name] ?? DateTime.utc(2026, 10, 10, 9),
+  };
 }
 
 void main() {
@@ -255,6 +264,104 @@ void main() {
       final h = await repo.addHabit(habit('a', created: mon, end: tue));
       final fresh = await act.startAgain(h, sun);
       expect((fresh.id, fresh.createdDay, fresh.endDay), ('id0', sun, null));
+    });
+  });
+
+  group('photos nothing refers to', () {
+    HabitActions keeping(Set<String>? bySafetyCopies) => HabitActions(
+      repo: repo,
+      photos: photos,
+      now: () => t0,
+      newId: () => 'x',
+      keptBySafetyCopies: () async => bySafetyCopies,
+    );
+
+    test(
+      'the photos of a delete the app did not outlive go at the next sweep',
+      () async {
+        final h = await repo.addHabit(habit('p', logType: LogType.photo));
+        await act.logPhoto(h, mon, '/c/1.jpg');
+        await act.deleteHabit('p');
+        // The app is stopped in the undo window, so finishDelete never runs.
+        await keeping(const {}).sweepOrphanPhotos();
+        expect(photos.stored, isEmpty);
+      },
+    );
+
+    test('the sweep keeps photos an entry refers to and photos stored in the last hour', () async {
+      final h = await repo.addHabit(habit('p', logType: LogType.photo));
+      await act.logPhoto(h, mon, '/c/1.jpg');
+      photos.stored.addAll({'stray.jpg', 'fresh.jpg'});
+      photos.modified['stray.jpg'] = t0.subtract(const Duration(minutes: 61));
+      photos.modified['fresh.jpg'] = t0.subtract(const Duration(minutes: 59));
+      await act.sweepOrphanPhotos();
+      expect(photos.stored, {'ph0.jpg', 'fresh.jpg'});
+    });
+
+    test('the sweep after one delete keeps the photos of another delete that can still be undone', () async {
+      final a = await repo.addHabit(habit('a', logType: LogType.photo));
+      final b = await repo.addHabit(habit('b', logType: LogType.photo));
+      await act.logPhoto(a, mon, '/c/1.jpg');
+      await act.logPhoto(b, mon, '/c/2.jpg');
+      photos.stored.add('stray.jpg');
+      final goneA = await act.deleteHabit('a');
+      final goneB = await act.deleteHabit('b');
+      // Deleting b closes a's undo window.
+      await act.finishDelete(goneA);
+      expect(photos.stored, {'ph1.jpg'});
+      await act.undoDelete(goneB);
+      await act.sweepOrphanPhotos();
+      expect(photos.stored, {'ph1.jpg'});
+    });
+
+    test('replacing or clearing a photo keeps the old file while a safety copy refers to it', () async {
+      final kept = keeping({'ph0.jpg'});
+      final h = await repo.addHabit(habit('p', logType: LogType.photo));
+      await kept.logPhoto(h, mon, '/c/1.jpg');
+      await kept.logPhoto(h, mon, '/c/2.jpg');
+      expect(photos.stored, {'ph0.jpg', 'ph1.jpg'});
+      await kept.clear(h, mon);
+      expect(photos.stored, {'ph0.jpg'});
+    });
+
+    test(
+      'finishing a delete keeps the photos a safety copy refers to',
+      () async {
+        final kept = keeping({'ph0.jpg'});
+        final h = await repo.addHabit(habit('p', logType: LogType.photo));
+        await kept.logPhoto(h, mon, '/c/1.jpg');
+        await kept.logPhoto(h, tue, '/c/2.jpg');
+        await kept.finishDelete(await kept.deleteHabit('p'));
+        expect(photos.stored, {'ph0.jpg'});
+      },
+    );
+
+    test('when a safety copy cannot be read, no photo is removed', () async {
+      final unsure = keeping(null);
+      final h = await repo.addHabit(habit('p', logType: LogType.photo));
+      await unsure.logPhoto(h, mon, '/c/1.jpg');
+      await unsure.logPhoto(h, mon, '/c/2.jpg');
+      photos.stored.add('stray.jpg');
+      await unsure.finishDelete(await unsure.deleteHabit('p'));
+      await unsure.sweepOrphanPhotos();
+      expect(photos.stored, {'ph0.jpg', 'ph1.jpg', 'stray.jpg'});
+    });
+
+    test('the sweep removes nothing, and does not throw, when the entries cannot be read', () async {
+      final db = await openAppDatabase(
+        databaseFactoryFfi,
+        inMemoryDatabasePath,
+      );
+      final a = HabitActions(
+        repo: HabitRepository(db),
+        photos: photos,
+        now: () => t0,
+        newId: () => 'x',
+      );
+      photos.stored.add('stray.jpg');
+      await db.close();
+      await a.sweepOrphanPhotos();
+      expect(photos.stored, {'stray.jpg'});
     });
   });
 

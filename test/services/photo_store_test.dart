@@ -104,6 +104,37 @@ void main() {
     }
   });
 
+  test('the picker\'s copy in the app cache is removed once stored; a file elsewhere stays', () async {
+    final tidy = DiskPhotoStore(
+      media,
+      newId: () => 'id${n++}',
+      cache: Directory(p.join(root.path, 'cache')),
+    );
+    final name = await tidy.importFile(source.path);
+    expect(tidy.fileFor(name).readAsBytesSync(), [1, 2, 3, 4]);
+    expect(source.existsSync(), isFalse);
+
+    // Next to the cache, not in it: a name that only starts the same.
+    final mine = File(p.join(root.path, 'cache-other', 'mine.jpg'))
+      ..createSync(recursive: true)
+      ..writeAsBytesSync([5]);
+    await tidy.importFile(mine.path);
+    expect(mine.existsSync(), isTrue);
+  });
+
+  test(
+    'lists each stored photo with when it was written, and nothing else',
+    () async {
+      expect(await store.listStored(), isEmpty, reason: 'no folder yet');
+      final name = await store.importFile(source.path);
+      final when = DateTime(2026, 10, 1, 8);
+      store.fileFor(name).setLastModifiedSync(when);
+      File(p.join(media.path, '.nomedia')).createSync();
+      Directory(p.join(media.path, 'sub')).createSync();
+      expect(await store.listStored(), {name: when});
+    },
+  );
+
   test(
     'importing a file that does not exist fails and leaves nothing behind',
     () async {

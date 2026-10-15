@@ -56,6 +56,9 @@ final class NoPhotos implements PhotoStore {
 
   @override
   Future<void> delete(String name) async {}
+
+  @override
+  Future<Map<String, DateTime>> listStored() async => {};
 }
 
 /// The screens under test never reach the database: ledgers are overridden.
