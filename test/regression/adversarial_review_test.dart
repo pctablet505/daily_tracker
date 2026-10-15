@@ -262,7 +262,7 @@ void main() {
       );
       expect(summarizeDay(l, mon).done, 0);
       expect(summarizeDay(l, sun).done, 0);
-      expect(habitRate(l, h, mon, sun).rate, closeTo(1 / 3, 1e-6));
+      expect(habitRate(l, h, mon, sun).fraction, closeTo(1 / 3, 1e-6));
     });
 
     test('unscheduled partial entry increments planned and is not marked DotState.none', () {
@@ -347,7 +347,7 @@ void main() {
     test('rateOver and heatLevel account for stay-clear habits and slips', () {
       final sc = stayClear('s', created: mon);
       final cleanLedger = Ledger(habits: [sc], entries: const [], seenDays: [mon]);
-      expect(rateOver(cleanLedger, mon, mon).rate, 1.0);
+      expect(rateOver(cleanLedger, mon, mon).fraction, 1.0);
 
       final slipLedger = Ledger(
         habits: [habit('a', created: mon), sc],
@@ -449,7 +449,7 @@ void main() {
         appVersion: () async => '2.0.0',
       );
       final csv = await svc.exportCsv();
-      expect(csv.content, contains("'\n=CMD()"));
+      expect(csv.text, contains("'\n=CMD()"));
 
       // Write a valid older safety copy and a newer corrupt one.
       final validJson = await svc.encodeForUpload();

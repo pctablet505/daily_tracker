@@ -609,7 +609,10 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final v = entry.state == EntryState.skipped ? null : entry.value;
+    final v =
+        habit.logType == LogType.number && entry.state != EntryState.skipped
+        ? entry.value
+        : null;
     final delta = v != null && previous?.value != null
         ? v - previous!.value!
         : null;
