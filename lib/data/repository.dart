@@ -84,15 +84,30 @@ final class HabitRepository {
     return stored;
   }
 
+  /// Stores [habit]. Its entries are graded again only when what grades them
+  /// (kind, avoid mode, log type or goal) changed, so a rename leaves an
+  /// un-ticked day partial.
   Future<void> updateHabit(Habit habit) async {
     await _db.transaction((txn) async {
-      final n = await txn.update(
+      final stored = await txn.query(
+        'habits',
+        where: 'id = ?',
+        whereArgs: [habit.id],
+      );
+      if (stored.isEmpty) throw StateError('No habit with id ${habit.id}');
+      final was = Habit.fromRow(stored.single);
+      await txn.update(
         'habits',
         habit.toMap(),
         where: 'id = ?',
         whereArgs: [habit.id],
       );
-      if (n == 0) throw StateError('No habit with id ${habit.id}');
+      if (was.kind == habit.kind &&
+          was.avoidMode == habit.avoidMode &&
+          was.logType == habit.logType &&
+          was.goal == habit.goal) {
+        return;
+      }
       final rows = await txn.query(
         'entries',
         where: 'habitId = ?',
@@ -117,7 +132,8 @@ final class HabitRepository {
             'entries',
             {'state': nextState.name},
             where: 'habitId = ? AND day = ?',
-            whereArgs: [habit.id, e.day.toString()],
+            // The row's own day: one before 1970 reads as 1970-01-01.
+            whereArgs: [habit.id, r['day']],
           );
         }
       }
@@ -204,9 +220,7 @@ final class HabitRepository {
         orderBy: 'day',
       );
       await txn.delete('habits', where: 'id = ?', whereArgs: [id]);
-      return DeletedHabit(Habit.fromRow(rows.single), [
-        for (final r in entries) Entry.fromRow(r),
-      ]);
+      return DeletedHabit(Habit.fromRow(rows.single), _entriesFrom(entries));
     });
     _changed();
     return gone;
@@ -258,8 +272,15 @@ final class HabitRepository {
       whereArgs: args.isEmpty ? null : args,
       orderBy: 'day, habitId',
     );
-    return [for (final r in rows) Entry.fromRow(r)];
+    return _entriesFrom(rows);
   }
+
+  /// Entry rows in day order, read. Days before 1970 all read as 1970-01-01
+  /// (see [earliestDay]), so one habit can have several there: the last one
+  /// is kept, as the data holds one entry per habit and day.
+  List<Entry> _entriesFrom(List<Map<String, Object?>> rows) =>
+      {for (final e in rows.map(Entry.fromRow)) (e.habitId, e.day): e}.values
+          .toList();
 
   /// Stores [entry], replacing any for the same habit and day, and returns the
   /// one it replaced (so a photo it pointed at can be cleaned up).
@@ -305,7 +326,7 @@ final class HabitRepository {
 
   Future<Set<DayKey>> seenDays() async {
     final rows = await _db.query('seen_days');
-    return {for (final r in rows) DayKey.parse(r['day']! as String)};
+    return {for (final r in rows) storedDay(r['day']! as String)};
   }
 
   /// Records that the app was opened (or a check-in answered) on [day].
@@ -330,8 +351,8 @@ final class HabitRepository {
     final seenRows = await txn.query('seen_days');
     return Snapshot(
       habits: [for (final r in habitRows) Habit.fromRow(r)],
-      entries: [for (final r in entryRows) Entry.fromRow(r)],
-      seenDays: {for (final r in seenRows) DayKey.parse(r['day']! as String)},
+      entries: _entriesFrom(entryRows),
+      seenDays: {for (final r in seenRows) storedDay(r['day']! as String)},
     );
   });
 

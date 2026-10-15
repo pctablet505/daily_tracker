@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/database.dart';
 import 'package:daily_tracker/data/models.dart';
@@ -66,6 +67,52 @@ void main() {
       expect(() => repo.updateHabit(habit('nope')), throwsStateError);
     });
 
+    test(
+      'an edit that leaves the grading alone keeps an un-ticked day partial',
+      () async {
+        final a = await repo.addHabit(habit('a', logType: LogType.photo));
+        // Un-ticking a done day keeps its photo on a partial entry.
+        final unticked = entry(
+          'a',
+          mon,
+          EntryState.partial,
+        ).copyWith(photoPath: () => 'a.jpg');
+        await repo.setEntry(unticked);
+        await repo.updateHabit(
+          a.copyWith(
+            name: 'Renamed',
+            description: () => 'why',
+            daysMask: Habit.weekdaysOnly,
+            dayPart: DayPart.morning,
+            reminderMinutes: () => 480,
+            area: () => 'Health',
+          ),
+        );
+        expect((await repo.habits()).single.name, 'Renamed');
+        expect(await repo.entries(), [unticked]);
+      },
+    );
+
+    // A number habit with 4 of its goal of 8 logged, edited three ways that
+    // each stop the goal from grading it.
+    final number = habit('a', logType: LogType.number, goal: 8);
+    for (final c in [
+      ('log type', number, number.copyWith(logType: LogType.tick)),
+      ('kind', number, number.copyWith(kind: HabitKind.avoid)),
+      (
+        'avoid mode',
+        number.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.confirm),
+        number.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.track),
+      ),
+    ]) {
+      test('a change of ${c.$1} grades the entries again', () async {
+        await repo.addHabit(c.$2);
+        await repo.setEntry(entry('a', mon, EntryState.partial, 4));
+        await repo.updateHabit(c.$3);
+        expect((await repo.entries()).single.state, EntryState.done);
+      });
+    }
+
     test('a stay-clear habit still marked as a number counts its kept days as done', () async {
       // A backup can hold this mix; the form never makes it.
       final s = await repo.addHabit(
@@ -73,7 +120,7 @@ void main() {
       );
       await repo.setEntry(entry('s', mon, EntryState.partial, 3));
       await repo.setEntry(entry('s', tue, EntryState.done, 3));
-      await repo.updateHabit(s);
+      await repo.updateHabit(s.copyWith(goal: () => 12));
       expect(
         [for (final e in await repo.entries()) e.state],
         [EntryState.done, EntryState.done],
@@ -423,6 +470,109 @@ void main() {
       expect((await repo.habits()).map((h) => h.id), ['fresh']);
       await service.undoLastRestore();
       expect(await repo.habits(), hasLength(9));
+    });
+  });
+
+  group('a database holding days before 1970', () {
+    // 2.0.2 and 2.0.3 took such days in from a crafted backup. This version
+    // refuses them in a backup, so they must not reach one.
+    const first = DayKey(1970, 1, 1);
+    final old = habit(
+      'old',
+      created: const DayKey(1960, 3, 1),
+      logType: LogType.number,
+      goal: 8,
+    );
+
+    setUp(() async {
+      await db.insert('habits', old.toMap());
+      await db.insert(
+        'habits',
+        habit(
+          'gone',
+          created: const DayKey(1950, 1, 1),
+          end: const DayKey(1955, 1, 1),
+        ).toMap(),
+      );
+      for (final e in [
+        entry('old', const DayKey(1960, 3, 1), EntryState.partial, 4),
+        entry('old', const DayKey(1969, 12, 31), EntryState.partial, 5),
+        entry('gone', const DayKey(1950, 6, 1)),
+      ]) {
+        await db.insert('entries', e.toMap());
+      }
+      for (final d in ['1960-03-01', '1969-12-31', '1970-01-01']) {
+        await db.insert('seen_days', {'day': d});
+      }
+    });
+
+    test('reads them as 1970-01-01, keeping the later of two entries that meet there', () async {
+      final h = {for (final x in await repo.habits()) x.id: x};
+      expect((h['old']!.createdDay, h['old']!.endDay), (first, null));
+      // Ended before 1970: it stays ended, the day before its start.
+      expect(
+        (h['gone']!.createdDay, h['gone']!.endDay),
+        (first, first.addDays(-1)),
+      );
+      final entries = [
+        entry('gone', first),
+        entry('old', first, EntryState.partial, 5),
+      ];
+      expect(await repo.entries(), entries);
+      expect(await repo.seenDays(), {first});
+      final snap = await repo.snapshot();
+      expect(snap.habits, await repo.habits());
+      expect(snap.entries, entries);
+      expect(snap.seenDays, {first});
+    });
+
+    test('a backup made from it is taken back', () async {
+      final snap = await repo.snapshot();
+      final again = decodeBackup(
+        encodeBackup(snap, now: DateTime.utc(2026, 10, 11), appVersion: 'x'),
+      ).snapshot;
+      expect(again.habits, snap.habits);
+      expect(again.entries, snap.entries);
+      expect(again.seenDays, snap.seenDays);
+    });
+
+    test('a restore over it can be undone', () async {
+      final safety = await Directory.systemTemp.createTemp('dt_safe_');
+      addTearDown(() => safety.delete(recursive: true));
+      final service = BackupService(
+        repo: repo,
+        readSettings: () => const Settings(),
+        applySettings: (_) async {},
+        safetyDir: () async => safety,
+        now: () => DateTime.utc(2026, 10, 11, 12),
+        appVersion: () async => '2.0.3',
+      );
+      final before = await repo.snapshot();
+      await service.restore(
+        encodeBackup(
+          Snapshot(
+            habits: [habit('fresh')],
+            entries: const [],
+            seenDays: {mon},
+          ),
+          now: DateTime.utc(2026, 10, 11),
+          appVersion: '2.0.3',
+        ),
+      );
+      await service.undoLastRestore();
+      final after = await repo.snapshot();
+      expect(after.habits, before.habits);
+      expect(after.entries, before.entries);
+    });
+
+    test('a change of goal grades the entries stored before 1970', () async {
+      await repo.updateHabit(
+        (await repo.habits())
+            .firstWhere((h) => h.id == 'old')
+            .copyWith(goal: () => 5),
+      );
+      final kept = (await repo.entries(habitId: 'old')).single;
+      expect((kept.day, kept.state), (first, EntryState.done));
     });
   });
 

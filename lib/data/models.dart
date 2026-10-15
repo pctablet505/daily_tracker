@@ -78,6 +78,17 @@ bool _isPhotoName(Object? v) =>
     !v.contains(':') &&
     !v.contains('\x00');
 
+/// No phone dates a day before this. 2.0.2 and 2.0.3 stored earlier days a
+/// crafted backup held; such a day reads as this one, so a backup made from
+/// the database is one this version takes back.
+const earliestDay = DayKey(1970, 1, 1);
+
+/// A day as stored in the database, held to no earlier than [earliestDay].
+DayKey storedDay(String text) {
+  final day = DayKey.parse(text);
+  return day < earliestDay ? earliestDay : day;
+}
+
 /// A thing you want to do (or avoid) on a schedule. Holds no per-day data.
 final class Habit {
   const Habit({
@@ -213,7 +224,7 @@ final class Habit {
     if (end != null && end is! String) {
       throw FormatException('Habit with bad endDay', id);
     }
-    final createdDay = DayKey.parse(created);
+    final createdDay = mend ? storedDay(created) : DayKey.parse(created);
     var endDay = end is String ? DayKey.parse(end) : null;
     if (endDay != null && endDay < createdDay.addDays(-1)) {
       if (!mend) throw FormatException('Habit endDay before createdDay', id);
@@ -347,7 +358,7 @@ final class Entry {
     if (habitId is! String || habitId.isEmpty)
       throw const FormatException('Entry without habitId');
     if (dayText is! String) throw FormatException('Entry without day', habitId);
-    final day = DayKey.parse(dayText);
+    final day = mend ? storedDay(dayText) : DayKey.parse(dayText);
     final logged = m['loggedAt'];
     if (!mend && logged != null && logged is! String) {
       throw FormatException('Entry with bad loggedAt', habitId);

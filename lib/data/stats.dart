@@ -198,6 +198,8 @@ int currentStreak(
       case DayStatus.missed:
         if (d != today || (s.planned == 0 && s.slips > 0)) return n;
     }
+    // addDays stops at 0001-01-01, so that day would repeat for ever.
+    if (d == first) break;
   }
   return n;
 }
@@ -231,6 +233,8 @@ int bestStreak(
       case DayStatus.missed:
         run = 0;
     }
+    // addDays stops at 9999-12-31, so that day would repeat for ever.
+    if (d == today) break;
     d = d.addDays(1);
   }
   return best;
@@ -335,6 +339,7 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey day, {DayKey? today}) {
         run = 0;
       }
     }
+    if (d == last) break;
     d = d.addDays(1);
   }
   return HabitStreak(current: run, best: best);
