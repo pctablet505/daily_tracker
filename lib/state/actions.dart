@@ -127,7 +127,11 @@ final class HabitActions {
   /// Takes the habit off the lists from today on; its history stays.
   Future<void> archive(Habit h, DayKey today) async {
     if (h.isArchived) return;
-    await repo.archive(h.id, today.addDays(-1));
+    // A phone date before the start day (a flight west, a clock set back) must
+    // not store an end the habit's own start rules out.
+    final first = h.createdDay.addDays(-1);
+    final last = today.addDays(-1);
+    await repo.archive(h.id, last < first ? first : last);
   }
 
   Future<Habit> startAgain(Habit archived, DayKey today) =>

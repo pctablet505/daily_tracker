@@ -64,7 +64,7 @@ final class HabitRepository {
       'habits',
       orderBy: 'sortOrder, createdDay, id',
     );
-    return [for (final r in rows) Habit.fromMap(r)];
+    return [for (final r in rows) Habit.fromRow(r)];
   }
 
   /// Stores [habit] at the end of the list and returns it as stored.
@@ -99,7 +99,7 @@ final class HabitRepository {
         whereArgs: [habit.id],
       );
       for (final r in rows) {
-        final e = Entry.fromMap(r);
+        final e = Entry.fromRow(r);
         if (e.state != EntryState.done && e.state != EntryState.partial)
           continue;
         final EntryState nextState;
@@ -204,8 +204,8 @@ final class HabitRepository {
         orderBy: 'day',
       );
       await txn.delete('habits', where: 'id = ?', whereArgs: [id]);
-      return DeletedHabit(Habit.fromMap(rows.single), [
-        for (final r in entries) Entry.fromMap(r),
+      return DeletedHabit(Habit.fromRow(rows.single), [
+        for (final r in entries) Entry.fromRow(r),
       ]);
     });
     _changed();
@@ -258,7 +258,7 @@ final class HabitRepository {
       whereArgs: args.isEmpty ? null : args,
       orderBy: 'day, habitId',
     );
-    return [for (final r in rows) Entry.fromMap(r)];
+    return [for (final r in rows) Entry.fromRow(r)];
   }
 
   /// Stores [entry], replacing any for the same habit and day, and returns the
@@ -275,7 +275,7 @@ final class HabitRepository {
         entry.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      return old.isEmpty ? null : Entry.fromMap(old.single);
+      return old.isEmpty ? null : Entry.fromRow(old.single);
     });
     _changed();
     return replaced;
@@ -295,7 +295,7 @@ final class HabitRepository {
         where: 'habitId = ? AND day = ?',
         whereArgs: [habitId, day.toString()],
       );
-      return Entry.fromMap(old.single);
+      return Entry.fromRow(old.single);
     });
     if (removed != null) _changed();
     return removed;
@@ -329,8 +329,8 @@ final class HabitRepository {
     final entryRows = await txn.query('entries', orderBy: 'day, habitId');
     final seenRows = await txn.query('seen_days');
     return Snapshot(
-      habits: [for (final r in habitRows) Habit.fromMap(r)],
-      entries: [for (final r in entryRows) Entry.fromMap(r)],
+      habits: [for (final r in habitRows) Habit.fromRow(r)],
+      entries: [for (final r in entryRows) Entry.fromRow(r)],
       seenDays: {for (final r in seenRows) DayKey.parse(r['day']! as String)},
     );
   });

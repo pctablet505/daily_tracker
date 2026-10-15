@@ -185,15 +185,46 @@ void main() {
       },
     );
 
-    test('archiving ends the habit yesterday, and is a no-op if already archived', () async {
-      final h = await repo.addHabit(habit('a', created: mon));
-      await act.archive(h, sun);
-      final back = (await repo.habits()).single;
-      expect(back.endDay, sat);
-      expect(back.isActiveOn(sun), isFalse);
-      expect(back.isActiveOn(sat), isTrue);
-      await act.archive(back, sun.addDays(5));
-      expect((await repo.habits()).single.endDay, sat);
+    test(
+      'archiving ends the habit yesterday, and is a no-op if already archived',
+      () async {
+        final h = await repo.addHabit(habit('a', created: mon));
+        await act.archive(h, sun);
+        final back = (await repo.habits()).single;
+        expect(back.endDay, sat);
+        expect(back.isActiveOn(sun), isFalse);
+        expect(back.isActiveOn(sat), isTrue);
+        await act.archive(back, sun.addDays(5));
+        expect((await repo.habits()).single.endDay, sat);
+      },
+    );
+
+    test('archiving while the phone date is before the start day stores an end every reader accepts', () async {
+      final db = await openAppDatabase(
+        databaseFactoryFfi,
+        inMemoryDatabasePath,
+      );
+      addTearDown(db.close);
+      final r = HabitRepository(db);
+      final a = HabitActions(
+        repo: r,
+        photos: photos,
+        now: () => t0,
+        newId: () => 'x',
+      );
+      // Made on Thursday, archived with the phone's clock set back to Monday.
+      await a.archive(await r.addHabit(habit('a', created: thu)), mon);
+      // Made and archived on its first day: off the lists from that day on.
+      await a.archive(await r.addHabit(habit('b', created: sun)), sun);
+      final stored = [
+        for (final row in await db.query('habits', orderBy: 'id'))
+          Habit.fromMap(row),
+      ];
+      expect(stored.map((h) => h.endDay), [wed, sat]);
+      expect(
+        stored.any((h) => h.isActiveOn(thu) || h.isActiveOn(sun)),
+        isFalse,
+      );
     });
 
     test(
@@ -211,7 +242,8 @@ void main() {
         expect(
           photos.stored,
           {'ph0.jpg'},
-          reason: 'finishDelete after undoDelete must not delete restored photo',
+          reason:
+              'finishDelete after undoDelete must not delete restored photo',
         );
         final again = await act.deleteHabit('p');
         await act.finishDelete(again);

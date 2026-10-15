@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
+import 'package:daily_tracker/logic/habit_form.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fixtures.dart';
@@ -114,6 +116,41 @@ void main() {
     expect(decodeBackup(jsonEncode(m)).settings, isEmpty);
   });
 
+  group('values the form no longer allows are brought within its limits', () {
+    Habit readBack(Map<String, Object?> odd) {
+      final m = decoded(encodeBackup(sample(), now: when, appVersion: '2.0.2'));
+      (m['habits']! as List<Object?>).cast<Map<String, Object?>>().first.addAll(
+        odd,
+      );
+      return decodeBackup(jsonEncode(m)).snapshot.habits.first;
+    }
+
+    test('a long name is cut to the limit after trimming', () {
+      final name = readBack({'name': '  ${'n' * 58} xyz  '}).name;
+      expect(name, '${'n' * 58} x');
+      expect(name.length, HabitForm.maxNameLength);
+    });
+
+    test('a cut never splits a character in two', () {
+      final name = readBack({'name': '${'n' * 59}😀 tail'}).name;
+      expect(name, 'n' * 59);
+    });
+
+    test('a goal is held under the limit and kept to 2 decimals', () {
+      expect(readBack({'goal': 1.234}).goal, 1.23);
+      expect(readBack({'goal': 2.555}).goal, closeTo(2.56, 1e-9));
+      expect(readBack({'goal': 12345678901.0}).goal, HabitForm.maxGoal);
+      expect(readBack({'goal': 0.001}).goal, 0.01);
+      expect(HabitForm.fromHabit(readBack({'goal': 1.234})).goalError, isNull);
+    });
+
+    test('empty area, unit and description read as none', () {
+      final h = readBack({'area': '', 'unit': ' ', 'description': ''});
+      expect((h.area, h.unit, h.description), (null, null, null));
+      expect(readBack({'area': 'Mind'}).area, 'Mind');
+    });
+  });
+
   test('fields this version does not know are ignored', () {
     final m = decoded(encodeBackup(sample(), now: when, appVersion: '2.0.0'))
       ..['somethingNew'] = 1;
@@ -218,5 +255,88 @@ void main() {
       ),
       'damaged',
     );
+
+    // The database reader mends these; a backup that holds them is refused.
+    String habitWith(Map<String, Object?> odd) {
+      final m = good();
+      (m['habits']! as List<Object?>).cast<Map<String, Object?>>().first.addAll(
+        odd,
+      );
+      return jsonEncode(m);
+    }
+
+    String entryWith(Map<String, Object?> odd) {
+      final m = good();
+      (m['entries']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .first
+          .addAll(odd);
+      return jsonEncode(m);
+    }
+
+    for (final (why, odd) in <(String, Map<String, Object?>)>[
+      ('a goal of zero', {'goal': 0}),
+      ('a negative goal', {'goal': -2}),
+      ('no days in its schedule', {'daysMask': 0}),
+      ('days past Sunday in its schedule', {'daysMask': 200}),
+      ('a sort position too big to hold', {'sortOrder': 1e100}),
+      ('a sort position that is not whole', {'sortOrder': 1.5}),
+      ('an end long before its start', {'endDay': '2026-10-03'}),
+      ('a start before 1970', {'createdDay': '1969-12-31', 'endDay': null}),
+      ('a start in year 1', {'createdDay': '0001-01-01', 'endDay': null}),
+    ]) {
+      refused('a habit has $why', habitWith(odd), 'damaged');
+    }
+
+    for (final (why, odd) in <(String, Map<String, Object?>)>[
+      ('a negative value', {'value': -1}),
+      ('a log time that is not a time', {'loggedAt': 'yesterday'}),
+      ('a day before 1970', {'day': '1969-12-31'}),
+    ]) {
+      refused('an entry has $why', entryWith(odd), 'damaged');
+    }
+
+    for (final photo in [
+      '',
+      '  ',
+      ' p.jpg',
+      'p.jpg ',
+      '.p.jpg',
+      '../p.jpg',
+      'a/p.jpg',
+      r'a\p.jpg',
+      'c:p.jpg',
+      'p\x00.jpg',
+      5,
+    ]) {
+      refused(
+        'an entry has the photo name ${jsonEncode(photo)}',
+        entryWith({'photoPath': photo}),
+        'damaged',
+      );
+    }
+
+    refused(
+      'a seen day is before 1970',
+      jsonEncode(good()..['seenDays'] = ['1969-12-31']),
+      'damaged',
+    );
+    refused('a habit name is blank', habitWith({'name': '   '}), 'damaged');
+  });
+
+  test('an archived habit made on 1970-01-01 is still taken', () {
+    final s = Snapshot(
+      habits: [
+        habit(
+          'a',
+          created: const DayKey(1970, 1, 1),
+          end: const DayKey(1969, 12, 31),
+        ),
+      ],
+      entries: [entry('a', const DayKey(1970, 1, 1))],
+      seenDays: {const DayKey(1970, 1, 1)},
+    );
+    final back = decodeBackup(encodeBackup(s, now: when, appVersion: '2.0.3'));
+    expect(back.snapshot.habits, s.habits);
   });
 }
