@@ -70,6 +70,12 @@ class BackupService {
 
   static const _keepSafetyCopies = 3;
 
+  /// The photo names each safety copy refers to, by path, with the copy's
+  /// modified time and length when it was read. A copy is read again only once
+  /// it changes, not on every photo change or delete.
+  final _photosByCopy =
+      <String, ({DateTime modified, int size, Set<String> names})>{};
+
   Future<String> _encode() async => encodeBackup(
     await repo.snapshot(),
     settings: _readSettings().exportMap(),
@@ -112,21 +118,21 @@ class BackupService {
   }
 
   /// Reads [text] without changing anything. Throws [FormatException] with a readable message.
-  BackupPreview preview(String text) {
-    final b = decodeBackup(text);
-    return BackupPreview(
-      habits: b.snapshot.habits.length,
-      entries: b.snapshot.entries.length,
-      exportedAt: b.exportedAt,
-      appVersion: b.appVersion,
-    );
-  }
+  BackupPreview preview(String text) => _previewOf(decodeBackup(text));
+
+  BackupPreview _previewOf(BackupData b) => BackupPreview(
+    habits: b.snapshot.habits.length,
+    entries: b.snapshot.entries.length,
+    exportedAt: b.exportedAt,
+    appVersion: b.appVersion,
+  );
 
   /// Replaces everything with the backup in [text]. The current data is saved
   /// to a safety file first, and nothing is touched if the file is not valid.
   /// Then photos that neither the data nor a safety copy refers to are removed.
-  Future<void> restore(String text) async {
-    final backup = decodeBackup(text);
+  Future<void> restore(String text) async => _restore(decodeBackup(text));
+
+  Future<void> _restore(BackupData backup) async {
     await _saveSafetyCopy();
     await repo.replaceAll(backup.snapshot);
     await _applySettings(backup.settings);
@@ -173,13 +179,35 @@ class BackupService {
   /// since then which photos it needs is unknown.
   Future<Set<String>?> photosInSafetyCopies() async {
     try {
-      return {
-        for (final copy in await _safetyCopies())
-          for (final e in decodeBackup(
+      final copies = await _safetyCopies();
+      final paths = {for (final c in copies) c.path};
+      _photosByCopy.removeWhere((path, _) => !paths.contains(path));
+      final names = <String>{};
+      for (final copy in copies) {
+        // Read the time and length first: a write after this makes the next
+        // call read the copy again.
+        final stat = await copy.stat();
+        var known = _photosByCopy[copy.path];
+        if (known == null ||
+            known.modified != stat.modified ||
+            known.size != stat.size) {
+          final entries = decodeBackup(
             await copy.readAsString(),
-          ).snapshot.entries)
-            if (e.photoPath != null) e.photoPath!,
-      };
+            lenient: true,
+          ).snapshot.entries;
+          known = (
+            modified: stat.modified,
+            size: stat.size,
+            names: {
+              for (final e in entries)
+                if (e.photoPath != null) e.photoPath!,
+            },
+          );
+          _photosByCopy[copy.path] = known;
+        }
+        names.addAll(known.names);
+      }
+      return names;
     } catch (_) {
       return null;
     }
@@ -188,17 +216,15 @@ class BackupService {
   /// Whether there is a copy of what was here before a restore.
   Future<bool> hasSafetyCopy() async => (await _safetyCopies()).isNotEmpty;
 
-  /// The newest safety copy, checked. A damaged one is refused rather than
-  /// passed over: an older copy would quietly put back the wrong data. Throws
-  /// [FormatException] with a message fit to show.
-  Future<String> _lastSafetyCopy() async {
+  /// The newest safety copy, read as this phone's own rows. A damaged one is
+  /// refused rather than passed over: an older copy would quietly put back the
+  /// wrong data. Throws [FormatException] with a message fit to show.
+  Future<BackupData> _lastSafetyCopy() async {
     final copies = await _safetyCopies();
     if (copies.isEmpty)
       throw const FormatException('There is nothing to undo.');
     try {
-      final text = await copies.first.readAsString();
-      decodeBackup(text);
-      return text;
+      return decodeBackup(await copies.first.readAsString(), lenient: true);
     } on Exception {
       throw const FormatException(
         'The copy from before the last restore is damaged, so it cannot be put back. Nothing was changed.',
@@ -209,11 +235,11 @@ class BackupService {
   /// What [undoLastRestore] would put back, for the confirmation step. Throws
   /// [FormatException] as [undoLastRestore] does.
   Future<BackupPreview> lastRestorePreview() async =>
-      preview(await _lastSafetyCopy());
+      _previewOf(await _lastSafetyCopy());
 
   /// Puts back what was on the phone before the last restore. That itself saves
   /// a copy first, so undoing twice goes back and forth.
-  Future<void> undoLastRestore() async => restore(await _lastSafetyCopy());
+  Future<void> undoLastRestore() async => _restore(await _lastSafetyCopy());
 
   Future<void> _saveSafetyCopy() async {
     final dir = await _safetyDir();

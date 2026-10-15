@@ -107,6 +107,38 @@ void main() {
       expect(p.description, 'x' * 300);
     });
 
+    test('habit text longer than the form allows is cut to its limits', () {
+      final p = decodePack(
+        jsonEncode({
+          'format': 'daily-tracker-pack',
+          'version': 1,
+          'name': 'Coach',
+          'habits': [
+            {
+              'name': '  ${'n' * 59}😀 tail',
+              'description': 'd' * 201,
+              'logType': 'number',
+              'unit': '${'u' * 11} ${'u' * 5}',
+              'goal': 8,
+              'area': 'A' * 41,
+            },
+            {'name': ' Walk ', 'description': ' slow ', 'area': ' Health '},
+          ],
+        }),
+      );
+      final (cut, kept) = (p.habits.first, p.habits.last);
+      // The emoji would be split by the cut, so it goes whole.
+      expect(cut.name, 'n' * 59);
+      expect(cut.description, 'd' * HabitForm.maxDescriptionLength);
+      expect(cut.unit, 'u' * 11);
+      expect(cut.area, 'A' * HabitForm.maxAreaLength);
+      expect(cut.isValid, isTrue);
+      expect(
+        (kept.name, kept.description, kept.area),
+        ('Walk', ' slow ', ' Health '),
+      );
+    });
+
     group('is refused when', () {
       void refused(String why, Object? json) {
         test(
@@ -176,12 +208,6 @@ void main() {
         ...good(),
         'habits': [
           {'name': 'a', 'daysMask': 0},
-        ],
-      });
-      refused('a habit name is too long', {
-        ...good(),
-        'habits': [
-          {'name': 'x' * 61},
         ],
       });
       refused('it holds too many habits', {

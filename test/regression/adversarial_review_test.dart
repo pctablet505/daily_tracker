@@ -215,8 +215,8 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => Habit.fromMap({...validHabit, 'endDay': '1999-01-01'}),
-        throwsFormatException,
+        Habit.fromMap({...validHabit, 'endDay': '1999-01-01'}).endDay,
+        mon.addDays(-1),
       );
       expect(
         Habit.fromMap({...validHabit, 'reminderMinutes': 1440}).reminderMinutes,

@@ -477,6 +477,36 @@ void main() {
       },
     );
 
+    test(
+      'text longer than the form now allows survives a backup and its restore',
+      () async {
+        // 2.0.2's form had no limit on these; the phone keeps them whole.
+        await db.insert('habits', {
+          ...habit('long', logType: LogType.number).toMap(),
+          'name': '  ${'n' * 70}  ',
+          'description': List.generate(30, (i) => 'Reason $i.').join(' '),
+          'area': 'a' * 60,
+          'unit': ' ${'u' * 30}',
+          'goal': 1.234,
+        });
+        await db.insert('habits', {
+          ...habit('blank', logType: LogType.number).toMap(),
+          'area': '',
+          'unit': ' ',
+          'description': '',
+          'goal': 12345678901.5,
+        });
+        final snap = await repo.snapshot();
+        final again = decodeBackup(
+          encodeBackup(snap, now: DateTime.utc(2026, 10, 11), appVersion: 'x'),
+        ).snapshot;
+        expect(again.habits, snap.habits);
+        expect(again.entries, snap.entries);
+        final long = again.habits.firstWhere((h) => h.id == 'long');
+        expect(long.description!.length, greaterThan(300));
+      },
+    );
+
     test('every write that reads a row first still works', () async {
       await repo.updateHabit((await repo.habits()).first);
       expect(await repo.setEntry(entry('zero', mon)), isNotNull);

@@ -226,8 +226,9 @@ final class Habit {
     }
     final createdDay = mend ? storedDay(created) : DayKey.parse(created);
     var endDay = end is String ? DayKey.parse(end) : null;
+    // 2.0.2 archived a habit as ending the day before "today", even when the
+    // phone's date was before its start: it never ran, which is this end.
     if (endDay != null && endDay < createdDay.addDays(-1)) {
-      if (!mend) throw FormatException('Habit endDay before createdDay', id);
       endDay = createdDay.addDays(-1);
     }
     var daysMask = mend

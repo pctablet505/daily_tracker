@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/database.dart';
 import 'package:daily_tracker/data/models.dart';
@@ -315,6 +316,90 @@ void main() {
     },
   );
 
+  group('a safety copy an older version wrote from its own rows', () {
+    // 2.0.2 took these in from backups, so its database (and the copy it saved
+    // before a restore) can hold them. The database reader mends them.
+    late String copy;
+    setUp(() async {
+      await repo.addHabit(habit('a', logType: LogType.number));
+      await repo.setEntry(
+        entry(
+          'a',
+          mon,
+          EntryState.partial,
+          2,
+        ).copyWith(photoPath: () => 'kept.jpg'),
+      );
+      final m =
+          jsonDecode((await service.export()).text) as Map<String, Object?>;
+      final h = (m['habits']! as List<Object?>).single! as Map<String, Object?>;
+      h.addAll({
+        'goal': 0,
+        'daysMask': 0,
+        'createdDay': '2026-10-10',
+        'endDay': '2026-10-07',
+      });
+      final entries = m['entries']! as List<Object?>;
+      (entries.single! as Map<String, Object?>)['loggedAt'] = 'yesterday';
+      entries.addAll([
+        {...entry('a', tue).toMap(), 'value': -1, 'photoPath': ' p.jpg'},
+        {...entry('a', const DayKey(1960, 1, 1)).toMap()},
+        {...entry('a', const DayKey(1969, 12, 31), EntryState.skipped).toMap()},
+      ]);
+      m['seenDays'] = ['1969-12-31', '1970-01-01'];
+      copy = jsonEncode(m);
+      File(p.join(safety.path, 'before-restore-2026-10-01T10-00-00-000Z.json'))
+          .writeAsStringSync(copy);
+      await repo.addHabit(habit('now'));
+    });
+
+    test('is previewed, undone and its photos known, mended as the database '
+        'reader mends it', () async {
+      final preview = await service.lastRestorePreview();
+      expect((preview.habits, preview.entries), (1, 3));
+      expect(await service.photosInSafetyCopies(), {'kept.jpg'});
+
+      await service.undoLastRestore();
+      final h = (await repo.habits()).single;
+      expect(
+        (h.id, h.goal, h.daysMask, h.endDay),
+        ('a', null, Habit.everyDay, const DayKey(2026, 10, 9)),
+      );
+      final e = await repo.entries();
+      expect(e.map((x) => (x.day, x.state, x.value, x.photoPath)), [
+        (const DayKey(1970, 1, 1), EntryState.skipped, null, null),
+        (mon, EntryState.partial, 2.0, 'kept.jpg'),
+        (tue, EntryState.done, null, null),
+      ]);
+      expect(e[1].loggedAt, DateTime.utc(2026, 10, 5));
+      expect(await repo.seenDays(), {const DayKey(1970, 1, 1)});
+    });
+
+    test('is still refused as a backup file to restore', () async {
+      await expectLater(service.restore(copy), throwsFormatException);
+      expect((await repo.habits()).map((h) => h.id), ['a', 'now']);
+    });
+
+    test('of the wrong shape is still damaged', () async {
+      for (final f in safety.listSync().whereType<File>()) {
+        f.writeAsStringSync(
+          '{"format": "daily-tracker-backup", "version": 1, "habits": 5}',
+        );
+      }
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('damaged'),
+          ),
+        ),
+      );
+      expect(await service.photosInSafetyCopies(), isNull);
+    });
+  });
+
   test('a bad file is refused before anything is touched or saved', () async {
     await seed();
     await expectLater(service.restore('garbage'), throwsFormatException);
@@ -436,6 +521,56 @@ void main() {
       File(p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'))
           .writeAsStringSync('{"format": "daily-tracker-backup"');
       expect(await service.photosInSafetyCopies(), isNull);
+    });
+
+    group('the photo names of each safety copy are kept between calls', () {
+      late File copy;
+      late String text;
+      late DateTime written;
+      setUp(() async {
+        await withPhoto('p1.jpg');
+        await service.restore(backupOf(const []));
+        copy = safety.listSync().whereType<File>().single;
+        text = copy.readAsStringSync();
+        written = copy.lastModifiedSync();
+        expect(await service.photosInSafetyCopies(), {'p1.jpg'});
+      });
+
+      test('so an unchanged copy is not read again', () async {
+        // Same length and time: only a fresh read would see this damage.
+        copy
+          ..writeAsStringSync('x' * text.length)
+          ..setLastModifiedSync(written);
+        expect(await service.photosInSafetyCopies(), {'p1.jpg'});
+      });
+
+      test('but a copy written at another time is read again', () async {
+        copy
+          ..writeAsStringSync(text.replaceAll('p1.jpg', 'p2.jpg'))
+          ..setLastModifiedSync(written.add(const Duration(seconds: 1)));
+        expect(await service.photosInSafetyCopies(), {'p2.jpg'});
+      });
+
+      test('and a copy of another length is read again', () async {
+        copy
+          ..writeAsStringSync(text.replaceAll('p1.jpg', 'p22.jpg'))
+          ..setLastModifiedSync(written);
+        expect(await service.photosInSafetyCopies(), {'p22.jpg'});
+      });
+
+      test(
+        'a new copy adds its photos and a removed one takes them away',
+        () async {
+          final other = File(
+            p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'),
+          )..writeAsStringSync(text.replaceAll('p1.jpg', 'p3.jpg'));
+          expect(await service.photosInSafetyCopies(), {'p1.jpg', 'p3.jpg'});
+          copy.deleteSync();
+          expect(await service.photosInSafetyCopies(), {'p3.jpg'});
+          other.writeAsStringSync('{"format": "daily-tracker-backup"');
+          expect(await service.photosInSafetyCopies(), isNull);
+        },
+      );
     });
 
     test('a restore removes stored photos that neither the restored data nor a safety copy refers to', () async {

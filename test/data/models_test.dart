@@ -92,6 +92,18 @@ void main() {
       },
     );
 
+    test('an end before the day before its start reads as that day, as '
+        'the database reader has it', () {
+      final m = {
+        'id': 'a',
+        'name': 'x',
+        'createdDay': '2026-10-10',
+        'endDay': '2026-10-07',
+      };
+      expect(Habit.fromMap(m).endDay, const DayKey(2026, 10, 9));
+      expect(Habit.fromMap(m), Habit.fromRow(m));
+    });
+
     for (final c in <(String, Map<String, Object?>)>[
       ('no id', {'name': 'x', 'createdDay': '2026-10-05'}),
       ('empty id', {'id': '', 'name': 'x', 'createdDay': '2026-10-05'}),

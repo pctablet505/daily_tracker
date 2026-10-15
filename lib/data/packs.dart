@@ -183,6 +183,16 @@ T _enum<T extends Enum>(List<T> values, Object? name, T fallback) {
   throw FormatException('Unknown value in the pack', name.toString());
 }
 
+/// [text] as the form takes it: a pack is someone else's file, so text longer
+/// than the form allows is cut to fit rather than the whole pack refused.
+String _fit(String text, int max) {
+  final t = text.trim();
+  if (t.length <= max) return text;
+  // Never keep the first half of a two-unit character such as an emoji.
+  final cut = t.codeUnitAt(max - 1) & 0xFC00 == 0xD800 ? max - 1 : max;
+  return t.substring(0, cut).trimRight();
+}
+
 /// Reads a pack file. Throws [FormatException] with a message fit to show.
 StarterPack decodePack(String text) {
   final Object? root;
@@ -231,18 +241,21 @@ StarterPack decodePack(String text) {
       final rem = finiteInt(m['reminderMinutes']);
       if (rem != null && (rem < 0 || rem >= 24 * 60)) throw damaged;
       final form = HabitForm(
-        name: habitName,
-        description: (m['description'] as String?) ?? '',
+        name: _fit(habitName, HabitForm.maxNameLength),
+        description: _fit(
+          (m['description'] as String?) ?? '',
+          HabitForm.maxDescriptionLength,
+        ),
         kind: _enum(HabitKind.values, m['kind'], HabitKind.build),
         logType: _enum(LogType.values, m['logType'], LogType.tick),
-        unit: (m['unit'] as String?) ?? '',
+        unit: _fit((m['unit'] as String?) ?? '', HabitForm.maxUnitLength),
         goalText: goal == null
             ? ''
             : (goal is num ? goal.toString() : goal as String),
         daysMask: finiteInt(m['daysMask']) ?? Habit.everyDay,
         dayPart: _enum(DayPart.values, m['dayPart'], DayPart.anytime),
         reminderMinutes: rem,
-        area: (m['area'] as String?) ?? '',
+        area: _fit((m['area'] as String?) ?? '', HabitForm.maxAreaLength),
         avoidMode: _enum(AvoidMode.values, m['avoidMode'], AvoidMode.track),
       );
       if (!form.isValid ||

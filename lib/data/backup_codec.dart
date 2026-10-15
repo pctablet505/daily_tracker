@@ -1,15 +1,11 @@
 import 'dart:convert';
 
 import '../core/day_key.dart';
-import '../logic/habit_form.dart';
 import 'models.dart';
 import 'repository.dart';
 
 const backupFormat = 'daily-tracker-backup';
 const backupVersion = 1;
-
-/// No phone dates a day before this; an earlier day in a backup is damage, and
-/// would send every streak count back through the centuries.
 
 /// What a backup file holds once read.
 final class BackupData {
@@ -52,7 +48,11 @@ String encodeBackup(
 
 /// Reads a backup. Throws [FormatException] with a message fit to show the
 /// user when the file is not one of ours, is from a newer version, or is damaged.
-BackupData decodeBackup(String text) {
+///
+/// [lenient] is for the copies this phone saved of its own rows before a
+/// restore: those are read as the database reader reads the rows, mending what
+/// an older version stored, rather than refused like a file from elsewhere.
+BackupData decodeBackup(String text, {bool lenient = false}) {
   final Object? root;
   try {
     root = jsonDecode(text);
@@ -77,14 +77,22 @@ BackupData decodeBackup(String text) {
   try {
     final habits = [
       for (final m in _list(root['habits']))
-        _withinFormLimits(Habit.fromMap(_map(m))),
+        lenient ? Habit.fromRow(_map(m)) : Habit.fromMap(_map(m)),
     ];
-    final entries = [
-      for (final m in _list(root['entries'])) Entry.fromMap(_map(m)),
+    var entries = [
+      for (final m in _list(root['entries']))
+        lenient ? Entry.fromRow(_map(m)) : Entry.fromMap(_map(m)),
     ];
+    // Days before 1970 all read as 1970-01-01; as in the database, the last
+    // of a habit's entries that meet there stays.
+    if (lenient) {
+      entries = [
+        ...{for (final e in entries) (e.habitId, e.day): e}.values,
+      ];
+    }
     final seen = {
       for (final d in _list(root['seenDays'] ?? const <Object?>[]))
-        DayKey.parse(d! as String),
+        lenient ? storedDay(d! as String) : DayKey.parse(d! as String),
     };
     // A habit's end needs no check of its own: fromMap holds it to no earlier
     // than the day before the start.
@@ -119,30 +127,6 @@ BackupData decodeBackup(String text) {
     }
     throw damaged;
   }
-}
-
-/// An older version let in values the form no longer allows. They are brought
-/// within its limits rather than refused, so such a backup still restores.
-Habit _withinFormLimits(Habit h) {
-  String? text(String? v, int max) =>
-      v == null || v.trim().isEmpty ? null : _cut(v.trim(), max);
-  final goal = h.goal;
-  return h.copyWith(
-    name: _cut(h.name.trim(), HabitForm.maxNameLength),
-    description: () => text(h.description, HabitForm.maxDescriptionLength),
-    unit: () => text(h.unit, HabitForm.maxUnitLength),
-    area: () => text(h.area, HabitForm.maxAreaLength),
-    goal: () => goal == null
-        ? null
-        : (goal.clamp(0.01, HabitForm.maxGoal) * 100).roundToDouble() / 100,
-  );
-}
-
-String _cut(String text, int max) {
-  if (text.length <= max) return text;
-  // Never keep the first half of a two-unit character such as an emoji.
-  final cut = text.codeUnitAt(max - 1) & 0xFC00 == 0xD800 ? max - 1 : max;
-  return text.substring(0, cut).trimRight();
 }
 
 List<Object?> _list(Object? v) => v as List<Object?>;

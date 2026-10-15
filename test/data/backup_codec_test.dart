@@ -116,7 +116,8 @@ void main() {
     expect(decodeBackup(jsonEncode(m)).settings, isEmpty);
   });
 
-  group('values the form no longer allows are brought within its limits', () {
+  group('values the form no longer allows are kept as they are', () {
+    // The form's limits apply only to new typing; a restore keeps the text.
     Habit readBack(Map<String, Object?> odd) {
       final m = decoded(encodeBackup(sample(), now: when, appVersion: '2.0.2'));
       (m['habits']! as List<Object?>).cast<Map<String, Object?>>().first.addAll(
@@ -125,42 +126,31 @@ void main() {
       return decodeBackup(jsonEncode(m)).snapshot.habits.first;
     }
 
-    test('a long name is cut to the limit after trimming', () {
-      final name = readBack({'name': '  ${'n' * 58} xyz  '}).name;
-      expect(name, '${'n' * 58} x');
-      expect(name.length, HabitForm.maxNameLength);
+    test('a long name', () {
+      final name = '  ${'n' * 58} xyz😀  ';
+      expect(readBack({'name': name}).name, name);
     });
 
-    test('a cut never splits a character in two', () {
-      final name = readBack({'name': '${'n' * 59}😀 tail'}).name;
-      expect(name, 'n' * 59);
+    test('a goal past the limit or with more than 2 decimals', () {
+      expect(readBack({'goal': 1.234}).goal, 1.234);
+      expect(readBack({'goal': 12345678901.0}).goal, 12345678901.0);
+      expect(readBack({'goal': 0.001}).goal, 0.001);
     });
 
-    test('a goal is held under the limit and kept to 2 decimals', () {
-      expect(readBack({'goal': 1.234}).goal, 1.23);
-      expect(readBack({'goal': 2.555}).goal, closeTo(2.56, 1e-9));
-      expect(readBack({'goal': 12345678901.0}).goal, HabitForm.maxGoal);
-      expect(readBack({'goal': 0.001}).goal, 0.01);
-      expect(HabitForm.fromHabit(readBack({'goal': 1.234})).goalError, isNull);
-    });
-
-    test('area, unit and description are cut to the form limits', () {
+    test('a long area, unit and description', () {
       final h = readBack({
-        'area': 'a' * 60,
+        'area': 'a' * (HabitForm.maxAreaLength + 20),
         'unit': ' ${'u' * 30}',
-        'description': 'd' * 300,
+        'description': 'd' * (HabitForm.maxDescriptionLength + 100),
       });
-      expect(h.area, 'a' * HabitForm.maxAreaLength);
-      expect(h.unit, 'u' * HabitForm.maxUnitLength);
-      expect(h.description, 'd' * HabitForm.maxDescriptionLength);
-      expect(HabitForm.fromHabit(h).areaError, isNull);
-      expect(HabitForm.fromHabit(h).descriptionError, isNull);
+      expect(h.area, 'a' * (HabitForm.maxAreaLength + 20));
+      expect(h.unit, ' ${'u' * 30}');
+      expect(h.description, 'd' * (HabitForm.maxDescriptionLength + 100));
     });
 
-    test('empty area, unit and description read as none', () {
+    test('an empty area, unit and description', () {
       final h = readBack({'area': '', 'unit': ' ', 'description': ''});
-      expect((h.area, h.unit, h.description), (null, null, null));
-      expect(readBack({'area': 'Mind'}).area, 'Mind');
+      expect((h.area, h.unit, h.description), ('', ' ', ''));
     });
   });
 
@@ -294,7 +284,6 @@ void main() {
       ('days past Sunday in its schedule', {'daysMask': 200}),
       ('a sort position too big to hold', {'sortOrder': 1e100}),
       ('a sort position that is not whole', {'sortOrder': 1.5}),
-      ('an end long before its start', {'endDay': '2026-10-03'}),
       ('a start before 1970', {'createdDay': '1969-12-31', 'endDay': null}),
       ('a start in year 1', {'createdDay': '0001-01-01', 'endDay': null}),
     ]) {
@@ -335,6 +324,18 @@ void main() {
       'damaged',
     );
     refused('a habit name is blank', habitWith({'name': '   '}), 'damaged');
+  });
+
+  test('a habit 2.0.2 archived while the phone date was before its start '
+      'is taken, ending the day before it', () {
+    // 2.0.2 stored the day before "today" as the end, however early that was.
+    final m = decoded(encodeBackup(sample(), now: when, appVersion: '2.0.2'));
+    (m['habits']! as List<Object?>).cast<Map<String, Object?>>().first.addAll({
+      'createdDay': '2026-10-10',
+      'endDay': '2026-10-07',
+    });
+    final h = decodeBackup(jsonEncode(m)).snapshot.habits.first;
+    expect(h.endDay, const DayKey(2026, 10, 9));
   });
 
   test('an archived habit made on 1970-01-01 is still taken', () {
