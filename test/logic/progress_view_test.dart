@@ -242,6 +242,23 @@ void main() {
       },
     );
 
+    test(
+      'a habit archived inside the month is judged on the days it was active',
+      () {
+        const sep1 = DayKey(2026, 9, 1);
+        final a = habit('a', created: sep1, end: const DayKey(2026, 9, 20));
+        final l = ledger([a], [entry('a', sep1)]);
+        expect(
+          needsAttention(
+            l,
+            sep1,
+            const DayKey(2026, 9, 30),
+          ).map((i) => (i.habit.id, i.ratio)),
+          [('a', const Ratio(1, 20))],
+        );
+      },
+    );
+
     test('today, still open and not done, is not held against a habit', () {
       final a = habit('a'); // done Mon and Tue; Wednesday is today
       final l = ledger([a], [entry('a', mon), entry('a', tue)]);

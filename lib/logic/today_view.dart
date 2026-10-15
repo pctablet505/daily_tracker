@@ -89,7 +89,6 @@ TodayView buildTodayView(
   bool Function(String photoName)? photoExists,
 }) {
   final q = query.trim().toLowerCase();
-  final unseen = day < (today ?? day) && !l.wasSeen(day);
   final toDo = <HabitRow>[];
   final stayClear = <HabitRow>[];
   final finished = <HabitRow>[];
@@ -115,7 +114,7 @@ TodayView buildTodayView(
           entry: e,
           kind: e?.state == EntryState.slipped
               ? RowKind.slipped
-              : unseen
+              : day < (today ?? day) && !l.wasSeen(h.id, day)
               ? RowKind.unchecked
               : RowKind.onTrack,
           streak: habitStreak(l, h, day, today: today).current,
@@ -123,10 +122,13 @@ TodayView buildTodayView(
       );
       continue;
     }
-    // A slip on a Do habit (left by an edit from stay-clear) counts for
-    // nothing in the day summary, so it does not bring an unplanned day here.
+    // Listed as the day summary counts it: a slip on a Do habit (left by an
+    // edit from stay-clear) or a tick taken off that left data behind does
+    // not bring an unplanned day here.
     final listed =
-        h.isScheduledOn(day) || (e != null && e.state != EntryState.slipped);
+        plannedNotDone(h, day, e) ||
+        e?.state == EntryState.done ||
+        e?.state == EntryState.skipped;
     if (!listed || !_matches(h, q)) continue;
     final kind = switch (e?.state) {
       EntryState.done => RowKind.done,

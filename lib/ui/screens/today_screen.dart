@@ -99,9 +99,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     });
   }
 
-  void _stayedClear() {
+  void _stayedClear(HabitRow row) {
     HapticFeedback.lightImpact();
-    _guard(() => ref.read(actionsProvider).markSeen(_day));
+    _guard(() => ref.read(actionsProvider).stayedClear(row.habit, _day));
   }
 
   Future<void> _log(HabitRow row) async {
@@ -419,11 +419,19 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       );
     }
     if (v.stayClear.isNotEmpty) {
+      // A row not checked offers "I stayed clear" instead of "Slipped".
+      final unchecked = v.stayClear
+          .where((r) => r.kind == RowKind.unchecked)
+          .length;
       widgets
         ..add(
-          const SectionHeader(
+          SectionHeader(
             'Staying clear',
-            trailing: 'tap Slipped if it happened',
+            trailing: unchecked == 0
+                ? 'tap Slipped if it happened'
+                : unchecked == v.stayClear.length
+                ? 'tap I stayed clear if it went well'
+                : 'tap Slipped or I stayed clear',
           ),
         )
         ..add(
@@ -434,7 +442,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 row: v.stayClear[i],
                 showDivider: i > 0,
                 onSlip: () => _slip(v.stayClear[i]),
-                onStayedClear: _stayedClear,
+                onStayedClear: () => _stayedClear(v.stayClear[i]),
                 onMore: () => _more(v.stayClear[i]),
               ),
           ]),

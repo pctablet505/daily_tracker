@@ -29,6 +29,7 @@ final class HabitDetail {
     required this.latest,
     required this.change30,
     required this.photos,
+    required this.photoCount,
     required this.recentDays,
   });
 
@@ -50,22 +51,28 @@ final class HabitDetail {
   /// Entries with a photo, newest first.
   final List<Entry> photos;
 
+  /// Photos whose file is on this phone: a restore on a new phone brings
+  /// back the entries but not the files, and those are not counted.
+  final int photoCount;
+
   /// The 84 days (12 weeks) ending today, oldest first.
   final List<HabitDayDot> recentDays;
 }
 
 HabitDetail buildHabitDetail(
   Ledger l,
-  Habit h,
+  Habit stored,
   DayKey today, {
   int recentLimit = 20,
+  bool Function(String photoName)? photoExists,
 }) {
   // A habit archived on the day it started stores an end the day before it;
-  // its first day still belongs to it.
-  final end = h.endDay == null || h.endDay! >= h.createdDay
-      ? h.endDay
-      : h.createdDay;
-  final anchor = (end != null && end < today) ? end : today;
+  // its first day still belongs to it, for every count on the page.
+  final end = stored.endDay;
+  final h = end != null && end < stored.createdDay
+      ? stored.copyWith(endDay: () => stored.createdDay)
+      : stored;
+  final anchor = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
   final all = [
     for (final e in l.entriesOf(h.id))
       if (e.day <= anchor) e,
@@ -97,14 +104,14 @@ HabitDetail buildHabitDetail(
     } else if (h.tracksSlips) {
       if (e?.state == EntryState.slipped) {
         s = DotState.missed;
-      } else if (l.wasSeen(d)) {
+      } else if (l.wasSeen(h.id, d)) {
         s = DotState.done;
       } else {
         s = DotState.none;
       }
     } else if (e?.state == EntryState.done) {
       s = DotState.done;
-    } else if (h.isScheduledOn(d) || e?.state == EntryState.partial) {
+    } else if (plannedNotDone(h, d, e)) {
       s = d == today && !h.isArchived ? DotState.pending : DotState.missed;
     } else {
       s = DotState.none;
@@ -116,6 +123,10 @@ HabitDetail buildHabitDetail(
       ? habitRate(l, h, h.createdDay, anchor).done
       : all.where((e) => e.state == EntryState.done).length;
   final totalSlips = all.where((e) => e.state == EntryState.slipped).length;
+  final photos = [
+    for (final e in newestFirst)
+      if (e.photoPath != null && e.state != EntryState.skipped) e,
+  ];
 
   return HabitDetail(
     streak: habitStreak(l, h, today),
@@ -126,10 +137,10 @@ HabitDetail buildHabitDetail(
     series: series,
     latest: series.isEmpty ? null : series.last.value,
     change30: change,
-    photos: [
-      for (final e in newestFirst)
-        if (e.photoPath != null && e.state != EntryState.skipped) e,
-    ],
+    photos: photos,
+    photoCount: photos
+        .where((e) => photoExists?.call(e.photoPath!) ?? true)
+        .length,
     recentDays: dots,
   );
 }

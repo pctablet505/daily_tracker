@@ -120,6 +120,29 @@ void main() {
       );
     });
 
+    test(
+      'a month step too long for DateTime still lands on the end it points to',
+      () {
+        // Unchecked, these steps make DateTime throw or wrap round to the
+        // other end of the calendar, or back to this very month.
+        const d = DayKey(2026, 10, 17);
+        const first = DayKey(1, 1, 1);
+        const last = DayKey(9999, 12, 31);
+        for (final (n, end) in [
+          (200000, last),
+          (-200000, first),
+          (3300000, last),
+          (-3300000, first),
+          (4000000, last),
+          (-4000000, first),
+          (1 << 62, last),
+          (-(1 << 62), first),
+        ]) {
+          expect(d.monthStartPlus(n), end, reason: 'step $n');
+        }
+      },
+    );
+
     test('monthEnd is the last day, including leap February', () {
       expect(const DayKey(2026, 10, 3).monthEnd, const DayKey(2026, 10, 31));
       expect(const DayKey(2026, 12, 1).monthEnd, const DayKey(2026, 12, 31));

@@ -110,6 +110,29 @@ void main() {
       },
     );
 
+    test('on a past day the app never saw, each stay-clear habit is checked only by its own entry', () {
+      // Wednesday was never seen: "run" was ticked then, and "I stayed clear"
+      // answered for "sugar" alone.
+      final sugar = stayClear('sugar');
+      final smoke = stayClear('smoke');
+      final l = ledger(
+        [sugar, smoke, habit('run')],
+        [entry('run', wed), entry('sugar', wed)],
+        [mon, tue, thu, sun],
+      );
+      final rows = {
+        for (final r in buildTodayView(l, wed, today: sun).stayClear)
+          r.habit.id: r.kind,
+      };
+      expect(rows, {'sugar': RowKind.onTrack, 'smoke': RowKind.unchecked});
+      DotState dot(Habit h) => buildHabitDetail(
+        l,
+        h,
+        sun,
+      ).recentDays.firstWhere((d) => d.day == wed).state;
+      expect((dot(sugar), dot(smoke)), (DotState.done, DotState.none));
+    });
+
     test('a slip shows as slipped', () {
       final v = buildTodayView(ledger([stayClear('s')], [slip('s', mon)]), mon);
       expect(v.stayClear.single.kind, RowKind.slipped);
@@ -178,6 +201,20 @@ void main() {
       expect(friday.toDo.single.kind, RowKind.todo);
       expect((friday.summary.done, friday.summary.planned), (1, 2));
       expect(dots[fri], DotState.missed);
+    });
+
+    test('a tick taken off a day it does not run, still holding an amount, is off the list and the habit page', () {
+      // A weekday number habit logged 5 on Saturday, edited to Tick, and the
+      // extra Saturday tick taken off: the amount stays on a partial entry.
+      final h = habit('h', mask: Habit.weekdaysOnly);
+      final l = ledger([h], [entry('h', sat, EntryState.partial, 5)], [sat]);
+      final saturday = buildTodayView(l, sat);
+      expect(saturday.isEmpty, isTrue);
+      expect(saturday.summary.planned, 0);
+      final dots = {
+        for (final d in buildHabitDetail(l, h, sun).recentDays) d.day: d.state,
+      };
+      expect(dots[sat], DotState.none);
     });
 
     test('a stay-clear habit ignores the weekday mask', () {

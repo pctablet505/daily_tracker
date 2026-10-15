@@ -151,7 +151,9 @@ Entry photoEntry(
   photoPath: fileName,
 );
 
-/// Log a slip on a stay-clear habit; a second tap takes it back.
+/// Log a slip on a stay-clear habit; a second tap takes it back. A day taken
+/// back that still holds an amount, a note or a photo is on track (done) with
+/// them: taking a slip back never deletes what was logged.
 Entry? slipEntry(
   Habit h,
   DayKey day,
@@ -159,7 +161,21 @@ Entry? slipEntry(
   DateTime now, {
   String? note,
 }) {
-  if (existing?.state == EntryState.slipped) return null;
+  if (existing?.state == EntryState.slipped) {
+    return existing!.value == null &&
+            existing.note == null &&
+            existing.photoPath == null
+        ? null
+        : _make(
+            h,
+            day,
+            EntryState.done,
+            now,
+            value: existing.value,
+            note: existing.note,
+            photoPath: existing.photoPath,
+          );
+  }
   return _make(
     h,
     day,
@@ -170,6 +186,11 @@ Entry? slipEntry(
     photoPath: existing?.photoPath,
   );
 }
+
+/// "I stayed clear" on a stay-clear habit's day the app did not see: that
+/// habit, and no other, was on track. A day already logged stays as it is.
+Entry stayedClearEntry(Habit h, DayKey day, Entry? existing, DateTime now) =>
+    existing ?? _make(h, day, EntryState.done, now);
 
 /// Whether the menu may offer "Skip this day" (or take a skip back). A day that
 /// is done, partial or slipped stays as logged: a skip does not remember that

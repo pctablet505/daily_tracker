@@ -99,8 +99,10 @@ final class Ledger {
     return days.values.toList()..sort((a, b) => a.day.compareTo(b.day));
   }
 
-  /// The app was opened (or a check-in answered) that day, or something was logged.
-  bool wasSeen(DayKey day) => _seen.contains(day) || _entryDays.contains(day);
+  /// The app was opened (or a check-in answered) that day, or the habit has
+  /// an entry of its own then. Another habit's entry says nothing about it.
+  bool wasSeen(String habitId, DayKey day) =>
+      _seen.contains(day) || (_byHabit[habitId]?.containsKey(day) ?? false);
 
   /// The earliest day anything happened, or null when there are no habits.
   DayKey? get firstDay {
@@ -128,6 +130,17 @@ final class Ledger {
   );
 }
 
+/// Whether a Do habit's day that is not done still counts as planned: the
+/// habit runs that day, or an amount short of the goal was logged. Any other
+/// partial entry only keeps what the day held when it was taken off (a note
+/// or a photo, or an amount on a habit that no longer counts one), so it plans
+/// nothing the schedule does not.
+bool plannedNotDone(Habit h, DayKey day, Entry? e) =>
+    h.isScheduledOn(day) ||
+    (e?.state == EntryState.partial &&
+        h.logType == LogType.number &&
+        e?.value != null);
+
 DaySummary summarizeDay(
   Ledger l,
   DayKey day, {
@@ -137,20 +150,23 @@ DaySummary summarizeDay(
   var planned = 0;
   var done = 0;
   var slips = 0;
-  var tracking = 0;
+  var keptClear = 0;
   for (final h in l.habits) {
     if (!h.isActiveOn(day)) continue;
     final e = l.entryOf(h.id, day);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      tracking++;
-      if (e?.state == EntryState.slipped) slips++;
+      if (e?.state == EntryState.slipped) {
+        slips++;
+      } else if (l.wasSeen(h.id, day)) {
+        keptClear++;
+      }
       continue;
     }
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(day) || e?.state == EntryState.partial) {
+    } else if (plannedNotDone(h, day, e)) {
       planned++;
     }
   }
@@ -161,7 +177,7 @@ DaySummary summarizeDay(
         : DayStatus.missed;
   } else if (slips > 0) {
     status = DayStatus.missed;
-  } else if (tracking > 0 && l.wasSeen(day)) {
+  } else if (keptClear > 0) {
     status = DayStatus.good;
   } else {
     status = DayStatus.neutral;
@@ -314,7 +330,7 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey day, {DayKey? today}) {
       if (e?.state == EntryState.skipped) continue;
       if (e?.state == EntryState.slipped) {
         run = 0;
-      } else if (l.wasSeen(d)) {
+      } else if (l.wasSeen(h.id, d)) {
         run++;
         if (run > best) best = run;
       }
@@ -363,7 +379,7 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
     final e = l.entryOf(h.id, d);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      if (!l.wasSeen(d)) continue;
+      if (!l.wasSeen(h.id, d)) continue;
       planned++;
       if (e?.state != EntryState.slipped) done++;
       continue;
@@ -371,7 +387,7 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(d) || e?.state == EntryState.partial) {
+    } else if (plannedNotDone(h, d, e)) {
       planned++;
     }
   }

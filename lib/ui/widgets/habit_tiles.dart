@@ -215,7 +215,7 @@ class StayClearTile extends StatelessWidget {
   final HabitRow row;
   final VoidCallback onSlip;
 
-  /// Unchecked rows only: count the day as seen.
+  /// Unchecked rows only: this habit was on track that day.
   final VoidCallback onStayedClear;
   final VoidCallback onMore;
   final bool showDivider;

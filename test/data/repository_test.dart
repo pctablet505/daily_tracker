@@ -113,6 +113,32 @@ void main() {
       });
     }
 
+    test(
+      'a change of kind or log type keeps an un-ticked day partial',
+      () async {
+        // Ticks taken off days that still hold an amount and a photo: no goal
+        // graded them, so no edit makes them done again.
+        final t = await repo.addHabit(habit('t'));
+        final p = await repo.addHabit(habit('p', logType: LogType.photo));
+        final kept = [
+          entry('t', mon, EntryState.partial, 5),
+          entry(
+            'p',
+            mon,
+            EntryState.partial,
+          ).copyWith(photoPath: () => 'a.jpg'),
+        ];
+        for (final e in kept) {
+          await repo.setEntry(e);
+        }
+        await repo.updateHabit(
+          t.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.confirm),
+        );
+        await repo.updateHabit(p.copyWith(logType: LogType.note));
+        expect(await repo.entries(), unorderedEquals(kept));
+      },
+    );
+
     test('a stay-clear habit still marked as a number counts its kept days as done', () async {
       // A backup can hold this mix; the form never makes it.
       final s = await repo.addHabit(

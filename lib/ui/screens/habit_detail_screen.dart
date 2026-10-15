@@ -45,7 +45,12 @@ class HabitDetailScreen extends ConsumerWidget {
             ),
           );
         }
-        final d = buildHabitDetail(l, h, today);
+        final d = buildHabitDetail(
+          l,
+          h,
+          today,
+          photoExists: ref.watch(photoStoreProvider).exists,
+        );
         return Scaffold(
           appBar: AppBar(
             title: Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -78,7 +83,7 @@ class HabitDetailScreen extends ConsumerWidget {
               _Grid(days: d.recentDays),
               if (d.photos.isNotEmpty) ...[
                 SectionHeader(
-                  'Photos, ${d.photos.length}',
+                  'Photos, ${d.photoCount}',
                   padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
                 ),
                 _Photos(entries: d.photos),

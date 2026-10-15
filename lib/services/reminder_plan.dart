@@ -178,8 +178,12 @@ List<PlannedReminder> planReminders(
       );
     }
     if (settings.eveningCheckInOn &&
-        (!carryOverOnly || !ledger.wasSeen(day)) &&
-        ledger.habits.any((h) => h.tracksSlips && h.isActiveOn(day))) {
+        ledger.habits.any(
+          (h) =>
+              h.tracksSlips &&
+              h.isActiveOn(day) &&
+              (!carryOverOnly || !ledger.wasSeen(h.id, day)),
+        )) {
       add(
         day,
         settings.eveningCheckInMinutes,

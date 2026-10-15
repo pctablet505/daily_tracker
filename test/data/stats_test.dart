@@ -109,6 +109,30 @@ void main() {
       expect((s.done, s.planned, s.status), (0, 1, DayStatus.missed));
     });
 
+    test('a day taken off on a day the habit does not run plans nothing, even when it still holds an amount or a note', () {
+      // Weekdays only; Saturday was logged as an extra and taken off again.
+      final noted = entry(
+        't',
+        sat,
+        EntryState.partial,
+      ).copyWith(note: () => 'tired');
+      for (final (h, kept) in [
+        (
+          habit('t', mask: Habit.weekdaysOnly),
+          entry('t', sat, EntryState.partial, 5),
+        ),
+        (habit('t', mask: Habit.weekdaysOnly, logType: LogType.photo), noted),
+        (habit('t', mask: Habit.weekdaysOnly, logType: LogType.number), noted),
+      ]) {
+        final l = ledger([h], [kept]);
+        final s = summarizeDay(l, sat);
+        expect((s.done, s.planned, s.status), (0, 0, DayStatus.neutral));
+        expect(habitRate(l, h, sat, sat), const Ratio(0, 0));
+        expect(rateOver(l, sat, sat), const Ratio(0, 0));
+        expect(perfectDays(l, sat, sat), 0);
+      }
+    });
+
     test('an avoid habit in confirm mode is counted like any Do habit', () {
       final c = habit('c', kind: HabitKind.avoid, avoidMode: AvoidMode.confirm);
       expect(summarizeDay(ledger([c]), mon).planned, 1);
@@ -140,7 +164,7 @@ void main() {
       expect((d.status, d.slips), (DayStatus.missed, 1));
     });
 
-    test('logging anything that day counts as the app being seen', () {
+    test('a bonus entry of a Do habit makes the day a Do day', () {
       final l = ledger(
         [
           s,
@@ -148,9 +172,23 @@ void main() {
         ],
         [entry('a', mon)],
       );
-      expect(summarizeDay(l, mon).planned, 1); // bonus entry makes it a Do day
-      final l2 = ledger([s], [entry('other', mon)]);
-      expect(summarizeDay(l2, mon).status, DayStatus.good);
+      expect(summarizeDay(l, mon).planned, 1);
+    });
+
+    test('an unseen day is known clear only for a stay-clear habit with its own entry, not through another habit', () {
+      final t = stayClear('t');
+      // Monday was never seen; another habit was logged then, and "I stayed
+      // clear" answered for s alone.
+      final other = ledger([s, t], [entry('other', mon)]);
+      expect(summarizeDay(other, mon).status, DayStatus.neutral);
+      expect(habitRate(other, s, mon, mon), const Ratio(0, 0));
+      expect(habitStreak(other, s, mon).best, 0);
+      final own = ledger([s, t], [entry('other', mon), entry('s', mon)]);
+      expect(summarizeDay(own, mon).status, DayStatus.good);
+      expect(habitRate(own, s, mon, mon), const Ratio(1, 1));
+      expect(habitRate(own, t, mon, mon), const Ratio(0, 0));
+      expect(habitStreak(own, s, mon).best, 1);
+      expect(habitStreak(own, t, mon).best, 0);
     });
 
     test('before the habit existed it does not make a day good', () {

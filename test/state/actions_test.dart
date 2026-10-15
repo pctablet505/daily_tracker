@@ -111,15 +111,48 @@ void main() {
 
     test('a slip, then taking it back; a skip, then taking it back', () async {
       final s = await repo.addHabit(stayClear('s'));
-      await act.slip(s, mon, note: 'party');
-      expect((await entryOn('s', mon))?.note, 'party');
+      await act.slip(s, mon);
+      expect((await entryOn('s', mon))?.state, EntryState.slipped);
       await act.slip(s, mon);
       expect(await entryOn('s', mon), isNull);
+      // A note is never deleted by a tap: the day goes back on track with it.
+      await act.slip(s, tue, note: 'party');
+      expect((await entryOn('s', tue))?.note, 'party');
+      await act.slip(s, tue);
+      final back = await entryOn('s', tue);
+      expect((back?.state, back?.note), (EntryState.done, 'party'));
       final a = await repo.addHabit(habit('a'));
       await act.skip(a, tue);
       expect((await entryOn('a', tue))?.state, EntryState.skipped);
       await act.skip(a, tue);
       expect(await entryOn('a', tue), isNull);
+    });
+
+    test('taking back a slip on a day that holds a photo keeps the photo and its file', () async {
+      final h = await repo.addHabit(habit('p', logType: LogType.photo));
+      await act.logPhoto(h, mon, '/c/1.jpg');
+      // Edited to stay-clear: the photo day stays.
+      final s = h.copyWith(
+        kind: HabitKind.avoid,
+        avoidMode: AvoidMode.track,
+        logType: LogType.tick,
+      );
+      await act.updateHabit(s);
+      await act.slip(s, mon);
+      await act.slip(s, mon); // the toast's Undo, or "Undo slip"
+      final back = await entryOn('p', mon);
+      expect((back?.state, back?.photoPath), (EntryState.done, 'ph0.jpg'));
+      expect(photos.stored, {'ph0.jpg'});
+    });
+
+    test('"I stayed clear" puts that one habit on track for the day, and nothing else', () async {
+      final sugar = await repo.addHabit(stayClear('sugar'));
+      await repo.addHabit(stayClear('smoke'));
+      await act.stayedClear(sugar, wed);
+      final e = await entryOn('sugar', wed);
+      expect((e?.state, e?.loggedAt), (EntryState.done, t0));
+      expect(await entryOn('smoke', wed), isNull);
+      expect(await repo.seenDays(), isEmpty);
     });
 
     test('clear removes whatever was logged', () async {
@@ -259,6 +292,14 @@ void main() {
         expect(photos.stored, isEmpty);
       },
     );
+
+    test('finishing a delete removes a photo taken in the last hour, which the sweep keeps', () async {
+      final h = await repo.addHabit(habit('p', logType: LogType.photo));
+      await act.logPhoto(h, mon, '/c/1.jpg');
+      photos.modified['ph0.jpg'] = t0.subtract(const Duration(minutes: 5));
+      await act.finishDelete(await act.deleteHabit('p'));
+      expect(photos.stored, isEmpty);
+    });
 
     test(
       'adding several gives each an id and stores them together, in order',

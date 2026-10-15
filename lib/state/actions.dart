@@ -113,6 +113,11 @@ final class HabitActions {
     await _apply(h, day, slipEntry(h, day, before, _now(), note: note), before);
   }
 
+  Future<void> stayedClear(Habit h, DayKey day) async {
+    final before = await _existing(h, day);
+    await _apply(h, day, stayedClearEntry(h, day, before, _now()), before);
+  }
+
   Future<void> skip(Habit h, DayKey day) async {
     final before = await _existing(h, day);
     await _apply(h, day, skipEntry(h, day, before, _now()), before);

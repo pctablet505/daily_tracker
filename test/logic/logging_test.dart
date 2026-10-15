@@ -169,6 +169,34 @@ void main() {
       );
       expect(slipEntry(s, mon, null, now, note: '  ')?.note, isNull);
     });
+
+    test('taking back a slip on a day that holds a photo, a note or an amount keeps them on track', () {
+      // A photo, number or note habit edited to stay-clear keeps its entries.
+      final held = Entry(
+        habitId: 's',
+        day: mon,
+        state: EntryState.done,
+        value: 5,
+        note: 'sunrise',
+        photoPath: 'a.jpg',
+        loggedAt: now,
+      );
+      final slipped = slipEntry(s, mon, held, now);
+      expect(slipped?.state, EntryState.slipped);
+      final back = slipEntry(s, mon, slipped, now);
+      expect(
+        (back?.state, back?.photoPath, back?.note, back?.value),
+        (EntryState.done, 'a.jpg', 'sunrise', 5),
+      );
+      for (final only in [
+        held.copyWith(note: () => null, value: () => null),
+        held.copyWith(photoPath: () => null, value: () => null),
+        held.copyWith(photoPath: () => null, note: () => null),
+      ]) {
+        final undone = slipEntry(s, mon, slipEntry(s, mon, only, now), now);
+        expect(undone?.state, EntryState.done);
+      }
+    });
   });
 
   group('skipping a day', () {

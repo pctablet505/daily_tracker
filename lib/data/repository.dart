@@ -134,6 +134,11 @@ final class HabitRepository {
           nextState = habit.goal != null && e.value! < habit.goal!
               ? EntryState.partial
               : EntryState.done;
+        } else if (e.state == EntryState.partial &&
+            (was.logType != LogType.number || e.value == null)) {
+          // No goal made this day partial: its tick was taken off and it
+          // only keeps what it held, so it stays not done.
+          continue;
         } else {
           nextState = EntryState.done;
         }
