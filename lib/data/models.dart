@@ -210,6 +210,11 @@ final class Habit {
     if (goal != null && goal <= 0) {
       throw FormatException('Habit with non-positive goal', id);
     }
+    final rawReminder = _wholeNumber(m['reminderMinutes']);
+    final reminderMinutes =
+        rawReminder != null && rawReminder >= 0 && rawReminder < 24 * 60
+        ? rawReminder
+        : null;
     return Habit(
       id: id,
       name: name,
@@ -220,7 +225,7 @@ final class Habit {
       goal: goal,
       daysMask: daysMask,
       dayPart: _byName(DayPart.values, m['dayPart'], DayPart.anytime),
-      reminderMinutes: _wholeNumber(m['reminderMinutes']),
+      reminderMinutes: reminderMinutes,
       area: _optString(m['area']),
       avoidMode: _byName(AvoidMode.values, m['avoidMode'], AvoidMode.track),
       sortOrder: _wholeNumber(m['sortOrder']) ?? 0,
