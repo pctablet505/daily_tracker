@@ -111,6 +111,9 @@ class HabitTile extends StatelessWidget {
             lastValue: row.lastValue,
             photoCount: row.photoCount,
           );
+    // A stay-clear day set aside has nothing to mark done; the menu counts
+    // it again.
+    final markable = !h.tracksSlips;
     final markLabel = isTick
         ? (row.kind == RowKind.done
               ? 'Done: ${h.name}. Tap to undo'
@@ -124,24 +127,31 @@ class HabitTile extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 58),
         child: Row(
           children: [
-            Semantics(
-              button: true,
-              label: markLabel,
-              excludeSemantics: true,
-              onTap: isTick ? onToggle : onLog,
-              child: InkResponse(
+            if (markable)
+              Semantics(
+                button: true,
+                label: markLabel,
+                excludeSemantics: true,
                 onTap: isTick ? onToggle : onLog,
-                radius: 28,
-                child: SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: Center(child: _Mark(row: row)),
+                child: InkResponse(
+                  onTap: isTick ? onToggle : onLog,
+                  radius: 28,
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: Center(child: _Mark(row: row)),
+                  ),
                 ),
+              )
+            else
+              SizedBox(
+                width: 56,
+                height: 56,
+                child: Center(child: _Mark(row: row)),
               ),
-            ),
             Expanded(
               child: InkWell(
-                onTap: isTick ? onMore : onLog,
+                onTap: isTick || !markable ? onMore : onLog,
                 onLongPress: onMore,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
@@ -190,18 +200,23 @@ class HabitTile extends StatelessWidget {
   }
 }
 
-/// One stay-clear habit: starts on track, with a Slipped button.
+/// One stay-clear habit: starts on track, with a Slipped button. On a past
+/// day the app never saw it is not checked, and asks instead.
 class StayClearTile extends StatelessWidget {
   const StayClearTile({
     super.key,
     required this.row,
     required this.onSlip,
+    required this.onStayedClear,
     required this.onMore,
     this.showDivider = true,
   });
 
   final HabitRow row;
   final VoidCallback onSlip;
+
+  /// Unchecked rows only: count the day as seen.
+  final VoidCallback onStayedClear;
   final VoidCallback onMore;
   final bool showDivider;
 
@@ -209,6 +224,7 @@ class StayClearTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final slipped = row.kind == RowKind.slipped;
+    final unchecked = row.kind == RowKind.unchecked;
     final name = row.habit.name;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -227,7 +243,11 @@ class StayClearTile extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                slipped ? Icons.remove_rounded : Icons.check_rounded,
+                slipped
+                    ? Icons.remove_rounded
+                    : unchecked
+                    ? Icons.question_mark_rounded
+                    : Icons.check_rounded,
                 size: 16,
                 color: c.indigo,
               ),
@@ -238,11 +258,21 @@ class StayClearTile extends StatelessWidget {
                 onTap: onMore,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(name, style: AppType.body.copyWith(fontSize: 15)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: AppType.body.copyWith(fontSize: 15)),
+                      if (unchecked)
+                        Text(
+                          'Not checked',
+                          style: AppType.caption.copyWith(color: c.faint),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            if (!slipped && row.streak > 0)
+            if (row.kind == RowKind.onTrack && row.streak > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 6, right: 8),
                 child: Text(
@@ -255,14 +285,21 @@ class StayClearTile extends StatelessWidget {
               ),
             Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: PillButton(
-                label: slipped ? 'Undo slip' : 'Slipped',
-                outlined: true,
-                onPressed: onSlip,
-                semanticLabel: slipped
-                    ? 'Undo the slip: $name'
-                    : 'Log a slip: $name',
-              ),
+              child: unchecked
+                  ? PillButton(
+                      label: 'I stayed clear',
+                      outlined: true,
+                      onPressed: onStayedClear,
+                      semanticLabel: 'I stayed clear: $name',
+                    )
+                  : PillButton(
+                      label: slipped ? 'Undo slip' : 'Slipped',
+                      outlined: true,
+                      onPressed: onSlip,
+                      semanticLabel: slipped
+                          ? 'Undo the slip: $name'
+                          : 'Log a slip: $name',
+                    ),
             ),
           ],
         ),

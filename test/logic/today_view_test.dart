@@ -93,6 +93,23 @@ void main() {
       expect(v.finished.single.kind, RowKind.skipped);
     });
 
+    test(
+      'a stay-clear habit on a past day the app never saw is not checked',
+      () {
+        // Wednesday was never seen: the summary and the streak do not count it.
+        final l = ledger([stayClear('s')], [], [mon, tue, thu, sun]);
+        final row = buildTodayView(l, wed, today: sun).stayClear.single;
+        expect(row.kind, RowKind.unchecked);
+        // Today is still open, and a day that was seen counts as clean.
+        final today = buildTodayView(ledger([stayClear('s')]), sun, today: sun);
+        expect(today.stayClear.single.kind, RowKind.onTrack);
+        expect(
+          buildTodayView(l, thu, today: sun).stayClear.single.kind,
+          RowKind.onTrack,
+        );
+      },
+    );
+
     test('a slip shows as slipped', () {
       final v = buildTodayView(ledger([stayClear('s')], [slip('s', mon)]), mon);
       expect(v.stayClear.single.kind, RowKind.slipped);

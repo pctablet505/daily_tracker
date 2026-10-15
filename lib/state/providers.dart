@@ -105,9 +105,8 @@ class SettingsNotifier extends Notifier<Settings> {
     final prefs = ref.read(sharedPrefsProvider);
     final prev = _writing ?? Future<void>.value();
     final run = prev.then((_) => next.write(prefs));
-    _writing = run.whenComplete(() {
-      if (identical(_writing, run)) _writing = null;
-    });
+    // Only this call's caller gets a failure; the next write still runs.
+    _writing = run.then<void>((_) {}, onError: (Object _) {});
     return run;
   }
 }
@@ -157,22 +156,28 @@ final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(
 
 final todayViewProvider = Provider<AsyncValue<TodayView>>((ref) {
   final day = ref.watch(shownDayProvider);
+  final today = ref.watch(todayProvider);
   final query = ref.watch(searchQueryProvider);
   final threshold = ref.watch(
     settingsProvider.select((s) => s.streakThreshold),
   );
   final photos = ref.watch(photoStoreProvider);
-  return ref
-      .watch(ledgerProvider)
-      .whenData(
-        (l) => buildTodayView(
-          l,
-          day,
-          query: query,
-          threshold: threshold,
-          photoExists: photos.exists,
-        ),
-      );
+  var ledger = ref.watch(ledgerProvider);
+  // Every write reloads the ledger. Keep the last one meanwhile, so the screens
+  // do not drop to a spinner and the celebration can compare before and after.
+  if (ledger.isReloading && ledger.hasValue) {
+    ledger = AsyncData(ledger.requireValue);
+  }
+  return ledger.whenData(
+    (l) => buildTodayView(
+      l,
+      day,
+      today: today,
+      query: query,
+      threshold: threshold,
+      photoExists: photos.exists,
+    ),
+  );
 });
 
 // Typed by hand: it and backupServiceProvider refer to each other.

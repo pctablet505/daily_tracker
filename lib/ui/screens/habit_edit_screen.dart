@@ -42,6 +42,10 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
   bool _saving = false;
   bool _notificationsBlocked = false;
 
+  /// "Pick days" is chosen. Kept apart from the mask, so picking all seven
+  /// days or Monday to Friday does not take the picker away.
+  bool _customDays = false;
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +86,8 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     _unit.text = f.unit;
     _goal.text = f.goalText;
     _area.text = f.area;
+    _customDays =
+        f.daysMask != Habit.everyDay && f.daysMask != Habit.weekdaysOnly;
     _loaded = true;
   }
 
@@ -165,10 +171,9 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     if (_saving || _original == null) return;
     setState(() => _saving = true);
     try {
-      await ref.read(actionsProvider).archive(
-            _original!,
-            ref.read(todayProvider),
-          );
+      await ref
+          .read(actionsProvider)
+          .archive(_original!, ref.read(todayProvider));
       _dirty = false;
       _popOrHome();
     } catch (e) {
@@ -396,9 +401,10 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                             Expanded(
                               child: TextField(
                                 controller: _unit,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Unit',
                                   hintText: 'glasses',
+                                  errorText: _showErrors ? f.unitError : null,
                                 ),
                                 onChanged: (v) =>
                                     _change((x) => x.copyWith(unit: v)),
@@ -428,29 +434,19 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                   if (!f.logsSlips) ...[
                     const _Label('Repeats'),
                     _Options<int>(
-                      value: f.daysMask == Habit.everyDay
-                          ? Habit.everyDay
-                          : f.daysMask == Habit.weekdaysOnly
-                          ? Habit.weekdaysOnly
-                          : -1,
+                      value: _customDays ? -1 : f.daysMask,
                       options: const {
                         Habit.everyDay: 'Every day',
                         Habit.weekdaysOnly: 'Weekdays',
                         -1: 'Pick days',
                       },
-                      onChanged: (v) => _change(
-                        (x) => x.copyWith(
-                          daysMask: v == -1
-                              ? (x.daysMask == Habit.everyDay ||
-                                        x.daysMask == Habit.weekdaysOnly
-                                    ? 21
-                                    : x.daysMask)
-                              : v,
-                        ),
-                      ),
+                      onChanged: (v) => _change((x) {
+                        _customDays = v == -1;
+                        // The picker starts from the days already chosen.
+                        return _customDays ? x : x.copyWith(daysMask: v);
+                      }),
                     ),
-                    if (f.daysMask != Habit.everyDay &&
-                        f.daysMask != Habit.weekdaysOnly)
+                    if (_customDays)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
                         child: _DayPicker(
@@ -566,8 +562,9 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                   TextField(
                     controller: _area,
                     textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Health, Mind, Work...',
+                      errorText: _showErrors ? f.areaError : null,
                     ),
                     onChanged: (v) => _change((x) => x.copyWith(area: v)),
                   ),
@@ -592,8 +589,9 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
                     minLines: 1,
                     maxLines: 4,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Why this matters, or what counts',
+                      errorText: _showErrors ? f.descriptionError : null,
                     ),
                     onChanged: (v) =>
                         _change((x) => x.copyWith(description: v)),

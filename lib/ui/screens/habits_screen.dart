@@ -39,6 +39,20 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     return parts.join(' · ');
   }
 
+  /// Runs a write the list started; a failure is said, not lost.
+  Future<void> _guard(Future<void> Function() job) async {
+    try {
+      await job();
+    } catch (e) {
+      debugPrint('Habits action failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That did not save. Try again.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -79,7 +93,9 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
             ),
           ),
           Expanded(
+            // A write reloads the ledger; keep the list as it was meanwhile.
             child: ledger.when(
+              skipLoadingOnReload: true,
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => EmptyState(
                 icon: Icons.error_outline_rounded,
@@ -112,165 +128,174 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     final shown = selectedArea == null
         ? active
         : active.where((h) => h.area == selectedArea).toList();
-    return ReorderableListView.builder(
-      buildDefaultDragHandles: false,
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-      header: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionHeader(
-            'Starter packs',
-            padding: EdgeInsets.fromLTRB(4, 12, 4, 6),
-          ),
-          SizedBox(
-            height: MediaQuery.textScalerOf(context).scale(124),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final p in starterPacks)
-                  _PackCard(
-                    pack: p,
-                    onTap: () => context.push('/habits/packs?open=${p.id}'),
-                  ),
+    const padding = EdgeInsets.fromLTRB(20, 4, 20, 24);
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(
+          'Starter packs',
+          padding: EdgeInsets.fromLTRB(4, 12, 4, 6),
+        ),
+        SizedBox(
+          height: MediaQuery.textScalerOf(context).scale(124),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final p in starterPacks)
                 _PackCard(
-                  title: 'Import a pack',
-                  subtitle: 'from a file',
-                  icon: Icons.file_open_outlined,
-                  onTap: () => context.push('/habits/packs?import=1'),
+                  pack: p,
+                  onTap: () => context.push('/habits/packs?open=${p.id}'),
                 ),
+              _PackCard(
+                title: 'Import a pack',
+                subtitle: 'from a file',
+                icon: Icons.file_open_outlined,
+                onTap: () => context.push('/habits/packs?import=1'),
+              ),
+            ],
+          ),
+        ),
+        SectionHeader(
+          'Active, ${active.length}',
+          trailing: active.length > 1 && selectedArea == null
+              ? 'hold the handle to reorder'
+              : null,
+          padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
+        ),
+        if (areas.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                FilterChip(
+                  label: const Text('All'),
+                  selected: selectedArea == null,
+                  onSelected: (_) => setState(() => _area = null),
+                ),
+                for (final a in areas)
+                  FilterChip(
+                    label: Text(
+                      a,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: selectedArea == a,
+                    onSelected: (_) =>
+                        setState(() => _area = selectedArea == a ? null : a),
+                  ),
               ],
             ),
           ),
-          SectionHeader(
-            'Active, ${active.length}',
-            trailing: active.length > 1 && selectedArea == null
-                ? 'hold the handle to reorder'
-                : null,
-            padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
+        if (active.isEmpty)
+          EmptyState(
+            icon: Icons.spa_outlined,
+            title: 'No habits yet',
+            message:
+                'Pick a starter pack above, or add your own with the + button.',
+            action: FilledButton(
+              onPressed: () => context.push('/habit/new'),
+              child: const Text('Add a habit'),
+            ),
           ),
-          if (areas.length > 1)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
+      ],
+    );
+    Widget item(BuildContext context, int i) {
+      final h = shown[i];
+      return Padding(
+        key: ValueKey(h.id),
+        padding: const EdgeInsets.only(bottom: 8),
+        child: SurfaceCard(
+          radius: 16,
+          child: InkWell(
+            onTap: () => context.push('/habit/${Uri.encodeComponent(h.id)}'),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 64),
+              child: Row(
                 children: [
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: selectedArea == null,
-                    onSelected: (_) => setState(() => _area = null),
+                  const SizedBox(width: 16),
+                  Icon(
+                    h.kind == HabitKind.avoid
+                        ? Icons.block_flipped
+                        : (h.logType == LogType.tick
+                              ? Icons.task_alt_rounded
+                              : logIcon(h.logType)),
+                    size: 22,
+                    color: h.kind == HabitKind.avoid ? c.indigo : c.accentInk,
                   ),
-                  for (final a in areas)
-                    FilterChip(
-                      label: Text(
-                        a,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(h.name, style: AppType.body),
+                          Text(
+                            _sub(h, use24h),
+                            style: AppType.caption.copyWith(color: c.faint),
+                          ),
+                        ],
                       ),
-                      selected: selectedArea == a,
-                      onSelected: (_) =>
-                          setState(() => _area = selectedArea == a ? null : a),
                     ),
+                  ),
+                  if (selectedArea == null && active.length > 1)
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: Semantics(
+                        label: 'Reorder ${h.name}',
+                        child: const SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Icon(Icons.drag_indicator_rounded),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 12),
                 ],
               ),
             ),
-          if (active.isEmpty)
-            EmptyState(
-              icon: Icons.spa_outlined,
-              title: 'No habits yet',
-              message:
-                  'Pick a starter pack above, or add your own with the + button.',
-              action: FilledButton(
-                onPressed: () => context.push('/habit/new'),
-                child: const Text('Add a habit'),
-              ),
-            ),
-        ],
-      ),
+          ),
+        ),
+      );
+    }
+
+    // A filtered list cannot be reordered: a move inside it has no clear
+    // place in the full order.
+    if (selectedArea != null) {
+      return ListView.builder(
+        padding: padding,
+        itemCount: shown.length + 1,
+        itemBuilder: (context, i) => i == 0 ? header : item(context, i - 1),
+      );
+    }
+    return ReorderableListView.builder(
+      buildDefaultDragHandles: false,
+      padding: padding,
+      header: header,
       itemCount: shown.length,
       onReorderItem: (from, to) {
-        if (selectedArea != null) return;
         final ids = [for (final h in shown) h.id];
         ids.insert(to, ids.removeAt(from));
-        ref
-            .read(actionsProvider)
-            .reorder(ids, [for (final h in active) h.id]);
-      },
-      itemBuilder: (context, i) {
-        final h = shown[i];
-        return Padding(
-          key: ValueKey(h.id),
-          padding: const EdgeInsets.only(bottom: 8),
-          child: SurfaceCard(
-            radius: 16,
-            child: InkWell(
-              onTap: () => context.push('/habit/${Uri.encodeComponent(h.id)}'),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 64),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    Icon(
-                      h.kind == HabitKind.avoid
-                          ? Icons.block_flipped
-                          : (h.logType == LogType.tick
-                                ? Icons.task_alt_rounded
-                                : logIcon(h.logType)),
-                      size: 22,
-                      color: h.kind == HabitKind.avoid ? c.indigo : c.accentInk,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(h.name, style: AppType.body),
-                            Text(
-                              _sub(h, use24h),
-                              style: AppType.caption.copyWith(color: c.faint),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (selectedArea == null && active.length > 1)
-                      ReorderableDragStartListener(
-                        index: i,
-                        child: Semantics(
-                          label: 'Reorder ${h.name}',
-                          child: const SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: Icon(Icons.drag_indicator_rounded),
-                          ),
-                        ),
-                      )
-                    else
-                      const SizedBox(width: 12),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        _guard(
+          () => ref.read(actionsProvider).reorder(ids, [
+            for (final h in active) h.id,
+          ]),
         );
       },
+      itemBuilder: item,
     );
   }
 
-  Widget _archivedList(
-    List<Habit> archived,
-    List<Habit> active,
-    bool use24h,
-  ) {
+  Widget _archivedList(List<Habit> archived, List<Habit> active, bool use24h) {
     final c = context.colors;
     if (archived.isEmpty) {
       return const EmptyState(
         icon: Icons.inventory_2_outlined,
         title: 'Nothing archived',
-        message:
-            'Archive a habit you are done with. Its history stays, and it leaves your lists.',
+        message: 'Archive a habit you are done with. Its history stays, and it leaves your lists.',
       );
     }
     return ListView(
@@ -353,8 +378,9 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                           child: const Text('Start again'),
                         ),
                         TextButton(
-                          onPressed: () =>
-                              confirmAndDeleteHabit(context, ref, h),
+                          onPressed: () => _guard(
+                            () => confirmAndDeleteHabit(context, ref, h),
+                          ),
                           style: TextButton.styleFrom(
                             foregroundColor: c.danger,
                           ),

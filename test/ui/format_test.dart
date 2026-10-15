@@ -85,6 +85,17 @@ void main() {
       ).copyWith(unit: () => 'kg', dayPart: DayPart.morning);
       expect(habitMeta(w, lastValue: 75.9), 'Morning · last 75.9 kg');
     });
+    test('number with no goal shows the amount logged that day', () {
+      final w = habit('w', logType: LogType.number).copyWith(unit: () => 'kg');
+      expect(
+        habitMeta(
+          w,
+          entry: entry('w', sat, EntryState.done, 75.9),
+          lastValue: 76.2,
+        ),
+        'Anytime · 75.9 kg',
+      );
+    });
     test('number with a goal shows progress, or the goal', () {
       final w = habit(
         'w',

@@ -21,6 +21,33 @@ void main() {
       expect(form(name: '  ${'x' * 60}  ').nameError, isNull);
     });
 
+    test('area, unit and note have length limits once trimmed', () {
+      final number = form().copyWith(logType: LogType.number);
+      for (final (f, n) in [
+        (form().copyWith(area: 'x' * 40), 40),
+        (number.copyWith(unit: 'x' * 12), 12),
+        (form().copyWith(description: 'x' * 200), 200),
+      ]) {
+        expect(f.isValid, isTrue, reason: '$n characters');
+      }
+      for (final f in [
+        form().copyWith(area: 'x' * 41),
+        number.copyWith(unit: 'x' * 13),
+        form().copyWith(description: 'x' * 201),
+      ]) {
+        expect(f.isValid, isFalse);
+      }
+      expect(form().copyWith(area: 'x' * 41).areaError, isNotNull);
+      expect(number.copyWith(unit: 'x' * 13).unitError, isNotNull);
+      expect(
+        form().copyWith(description: 'x' * 201).descriptionError,
+        isNotNull,
+      );
+      expect(form().copyWith(area: '  ${'x' * 40}  ').isValid, isTrue);
+      // A unit is only kept, and so only checked, on a number habit.
+      expect(form().copyWith(unit: 'x' * 13).isValid, isTrue);
+    });
+
     test('at least one day must be chosen', () {
       expect(form().copyWith(daysMask: 0).daysError, isNotNull);
       expect(form().copyWith(daysMask: daysOf([3])).daysError, isNull);
@@ -122,7 +149,14 @@ void main() {
           )
           .toHabit(base);
       expect(
-        (h.logType, h.unit, h.goal, h.reminderMinutes, h.tracksSlips, h.daysMask),
+        (
+          h.logType,
+          h.unit,
+          h.goal,
+          h.reminderMinutes,
+          h.tracksSlips,
+          h.daysMask,
+        ),
         (LogType.tick, null, null, null, true, Habit.everyDay),
       );
     });

@@ -60,7 +60,12 @@ HabitDetail buildHabitDetail(
   DayKey today, {
   int recentLimit = 20,
 }) {
-  final anchor = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+  // A habit archived on the day it started stores an end the day before it;
+  // its first day still belongs to it.
+  final end = h.endDay == null || h.endDay! >= h.createdDay
+      ? h.endDay
+      : h.createdDay;
+  final anchor = (end != null && end < today) ? end : today;
   final all = [
     for (final e in l.entriesOf(h.id))
       if (e.day <= anchor) e,

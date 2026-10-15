@@ -2,7 +2,18 @@ import '../core/day_key.dart';
 import '../data/models.dart';
 import '../data/stats.dart';
 
-enum RowKind { todo, partial, done, skipped, onTrack, slipped }
+enum RowKind {
+  todo,
+  partial,
+  done,
+  skipped,
+  onTrack,
+  slipped,
+
+  /// A stay-clear habit on a past day the app never saw: nobody said whether
+  /// it went well, so the day is not counted until someone does.
+  unchecked,
+}
 
 /// One habit on one day, as the Today list shows it.
 final class HabitRow {
@@ -78,6 +89,7 @@ TodayView buildTodayView(
   bool Function(String photoName)? photoExists,
 }) {
   final q = query.trim().toLowerCase();
+  final unseen = day < (today ?? day) && !l.wasSeen(day);
   final toDo = <HabitRow>[];
   final stayClear = <HabitRow>[];
   final finished = <HabitRow>[];
@@ -103,6 +115,8 @@ TodayView buildTodayView(
           entry: e,
           kind: e?.state == EntryState.slipped
               ? RowKind.slipped
+              : unseen
+              ? RowKind.unchecked
               : RowKind.onTrack,
           streak: habitStreak(l, h, day, today: today).current,
         ),

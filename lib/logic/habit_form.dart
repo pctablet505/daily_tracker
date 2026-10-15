@@ -17,6 +17,9 @@ final class HabitForm {
   });
 
   static const maxNameLength = 60;
+  static const maxAreaLength = 40;
+  static const maxUnitLength = 12;
+  static const maxDescriptionLength = 200;
   static const maxGoal = 9999999.99;
 
   factory HabitForm.fromHabit(Habit h) {
@@ -66,6 +69,16 @@ final class HabitForm {
     return null;
   }
 
+  static String? _tooLong(String text, int max) =>
+      text.trim().length > max ? 'Keep it under $max characters' : null;
+
+  String? get areaError => _tooLong(area, maxAreaLength);
+
+  /// Only a number habit keeps its unit.
+  String? get unitError => isNumber ? _tooLong(unit, maxUnitLength) : null;
+
+  String? get descriptionError => _tooLong(description, maxDescriptionLength);
+
   String? get daysError => logsSlips
       ? null
       : (daysMask & Habit.everyDay == 0 ? 'Pick at least one day' : null);
@@ -94,7 +107,12 @@ final class HabitForm {
   }
 
   bool get isValid =>
-      nameError == null && daysError == null && goalError == null;
+      nameError == null &&
+      daysError == null &&
+      goalError == null &&
+      areaError == null &&
+      unitError == null &&
+      descriptionError == null;
 
   /// Applies the form to [base] (a new habit's blank, or the one being edited). Only call when [isValid].
   Habit toHabit(Habit base) {

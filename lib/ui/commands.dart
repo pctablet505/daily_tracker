@@ -49,6 +49,9 @@ Future<bool> confirmAndDeleteHabit(
           SnackBar(
             content: Text('Deleted ${habit.name}'),
             duration: const Duration(seconds: 6),
+            // An action would otherwise keep it open until tapped, and the
+            // photos go only once it closes.
+            persist: false,
             action: SnackBarAction(
               label: 'Undo',
               onPressed: () {

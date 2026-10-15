@@ -19,7 +19,8 @@ class DayDot {
   final bool isFuture;
 }
 
-/// Seven days, Monday to Sunday, each with a small ring of how it went.
+/// Seven days, Monday to Sunday, each with a small ring of how it went, between
+/// buttons that move to the week before or after. Null turns a button off.
 class DayStrip extends StatelessWidget {
   const DayStrip({
     super.key,
@@ -27,20 +28,29 @@ class DayStrip extends StatelessWidget {
     required this.selected,
     required this.today,
     required this.onSelect,
+    required this.onPreviousWeek,
+    required this.onNextWeek,
   });
 
   final List<DayDot> days;
   final DayKey selected;
   final DayKey today;
   final ValueChanged<DayKey> onSelect;
+  final VoidCallback? onPreviousWeek;
+  final VoidCallback? onNextWeek;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
       child: Row(
         children: [
+          _WeekButton(
+            icon: Icons.chevron_left_rounded,
+            tooltip: 'Previous week',
+            onPressed: onPreviousWeek,
+          ),
           for (final d in days)
             Expanded(
               child: _Cell(
@@ -51,10 +61,35 @@ class DayStrip extends StatelessWidget {
                 onTap: d.isFuture ? null : () => onSelect(d.day),
               ),
             ),
+          _WeekButton(
+            icon: Icons.chevron_right_rounded,
+            tooltip: 'Next week',
+            onPressed: onNextWeek,
+          ),
         ],
       ),
     );
   }
+}
+
+class _WeekButton extends StatelessWidget {
+  const _WeekButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    icon: Icon(icon),
+    tooltip: tooltip,
+    onPressed: onPressed,
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints(minWidth: 40, minHeight: 48),
+  );
 }
 
 class _Cell extends StatelessWidget {
@@ -86,7 +121,7 @@ class _Cell extends StatelessWidget {
       excludeSemantics: true,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 1),
         child: Material(
           color: selected ? c.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(16),

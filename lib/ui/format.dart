@@ -89,6 +89,8 @@ String habitMeta(
       final v = entry?.value;
       if (v != null && h.goal != null) {
         parts.add('${formatAmount(v)} of ${formatAmountUnit(h.goal!, h.unit)}');
+      } else if (v != null) {
+        parts.add(formatAmountUnit(v, h.unit));
       } else if (lastValue != null) {
         parts.add('last ${formatAmountUnit(lastValue, h.unit)}');
       } else if (h.goal != null) {

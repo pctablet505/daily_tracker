@@ -176,4 +176,11 @@ void main() {
       expect(sw.elapsedMilliseconds, lessThan(50));
     },
   );
+
+  test('a habit logged and archived on its first day keeps that entry', () {
+    // Archiving on the day a habit started stores an end the day before it.
+    final h = habit('a', created: sun, end: sat);
+    final d = buildHabitDetail(ledger([h], [entry('a', sun)]), h, sun);
+    expect((d.totalDone, d.recent.length), (1, 1));
+  });
 }
