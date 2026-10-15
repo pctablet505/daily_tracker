@@ -65,6 +65,7 @@ class CloudBackup {
   static const _emailKey = 'cloud.email';
   static const _autoKey = 'cloud.auto';
   static const _lastKey = 'cloud.last';
+  static const _dueKey = 'cloud.backupDue';
   static const _fileKey = 'cloud.file';
   static const _oldFileIdKey = 'cloud.fileId';
   static const _oldFileModifiedKey = 'cloud.fileModified';
@@ -140,6 +141,7 @@ class CloudBackup {
     await _prefs.remove(_emailKey);
     await _prefs.remove(_autoKey);
     await _prefs.remove(_lastKey);
+    await _prefs.remove(_dueKey);
     await _prefs.remove(_sessionLostKey);
     await _prefs.remove(_autoFailureKey);
   }
@@ -249,6 +251,7 @@ class CloudBackup {
     try {
       final f = await _drive.upload(await _backup.encodeForUpload());
       await _prefs.setInt(_lastKey, _now().millisecondsSinceEpoch);
+      await _prefs.remove(_dueKey);
       await _keepFileOnRecord(f);
       await _prefs.remove(_sessionLostKey);
       await _prefs.remove(_autoFailureKey);
@@ -302,7 +305,7 @@ class CloudBackup {
     if (kept != null &&
         kept.id == file.id &&
         kept.modified > file.modified.millisecondsSinceEpoch) {
-      await _prefs.remove(_lastKey);
+      await _prefs.setBool(_dueKey, true);
       return;
     }
     await _keepFileOnRecord(file);
@@ -332,7 +335,8 @@ class CloudBackup {
         if (!autoBackup || email == null) return;
         final last = lastBackupAt;
         final now = _now();
-        if (last != null &&
+        if (_prefs.getBool(_dueKey) != true &&
+            last != null &&
             !now.isBefore(last) &&
             now.difference(last) < autoEvery) {
           return;

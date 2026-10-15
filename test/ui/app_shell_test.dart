@@ -273,6 +273,73 @@ void main() {
       expect(find.text('Half-typed habit'), findsOneWidget);
     });
 
+    testWidgets(
+      'a recent entry on the habit page a tap opened goes back to the '
+      'half-typed habit, not past it',
+      (tester) async {
+        final app = _App(tester);
+        await app.pump();
+        await tester.tap(find.bySemanticsLabel('Add a habit'));
+        await app.settle();
+        await tester.enterText(
+          find.byType(TextField).first,
+          'Half-typed habit',
+        );
+        await app.settle();
+        app.notifications.tap('habit:run@2026-10-11');
+        await app.settle();
+        final rows = find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_EntryTile',
+        );
+        expect(rows, findsWidgets);
+        await tester.ensureVisible(rows.first);
+        await app.settle();
+        await tester.tap(rows.first);
+        await app.settle();
+        expect(find.byType(HabitDetailScreen), findsNothing);
+        expect(find.byType(HabitEditScreen), findsOneWidget);
+        expect(find.text('Half-typed habit'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a recent entry on a habit page with nothing unsaved below it '
+        'goes to Today', (tester) async {
+      final app = _App(tester);
+      await app.pump();
+      app.notifications.tap('habit:run@2026-10-11');
+      await app.settle();
+      final rows = find.byWidgetPredicate(
+        (w) => w.runtimeType.toString() == '_EntryTile',
+      );
+      await tester.ensureVisible(rows.first);
+      await app.settle();
+      await tester.tap(rows.first);
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(find.byType(HabitDetailScreen), findsNothing);
+    });
+
+    testWidgets('a dialog opened and closed on Settings does not hold the '
+        'check-in tap', (tester) async {
+      final app = _App(tester);
+      await app.pump();
+      await tester.tap(find.byTooltip('Settings').first);
+      await app.settle();
+      unawaited(
+        showDialog<void>(
+          context: tester.element(find.byType(Scaffold).last),
+          builder: (_) => const AlertDialog(content: Text('A popup')),
+        ),
+      );
+      await app.settle();
+      await tester.binding.handlePopRoute();
+      await app.settle();
+      expect(find.text('A popup'), findsNothing);
+      app.notifications.tap('today');
+      await app.settle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
     testWidgets('a second tap keeps the half-typed habit below the habit', (
       tester,
     ) async {

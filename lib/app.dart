@@ -24,6 +24,7 @@ import 'ui/screens/packs_screen.dart';
 import 'ui/screens/progress_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/today_screen.dart';
+import 'ui/root_routes.dart';
 import 'ui/shell.dart';
 import 'ui/sheets/update_sheet.dart';
 import 'ui/theme/theme.dart';
@@ -115,39 +116,6 @@ GoRouter buildRouter({
   );
 }
 
-/// The root navigator's routes, bottom first: [Navigator] does not list them.
-final class _RootRoutes extends NavigatorObserver {
-  final routes = <Route<dynamic>>[];
-
-  // go_router also reports the tab navigators' routes here.
-  bool _isRoot(Route<dynamic> route) => route.navigator == navigator;
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    if (_isRoot(route)) routes.add(route);
-  }
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      routes.remove(route);
-
-  @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      routes.remove(route);
-
-  @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
-    final at = oldRoute == null ? -1 : routes.indexOf(oldRoute);
-    if (at < 0) {
-      if (newRoute != null && _isRoot(newRoute)) routes.add(newRoute);
-    } else if (newRoute == null) {
-      routes.removeAt(at);
-    } else {
-      routes[at] = newRoute;
-    }
-  }
-}
-
 class DailyTrackerApp extends ConsumerStatefulWidget {
   const DailyTrackerApp({super.key});
 
@@ -159,7 +127,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     with WidgetsBindingObserver {
   final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
-  final _rootRoutes = _RootRoutes();
+  final _rootRoutes = RootRoutes();
   late final GoRouter _router = buildRouter(
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
     navigatorKey: _rootKey,
@@ -311,9 +279,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
   /// refuses Back (an unsaved form). An earlier tap can have opened a habit
   /// above the form, so every route counts, not only the top one; a tap then
   /// opens its page on top instead.
-  bool _wouldLoseSomething() => _rootRoutes.routes.any(
-    (r) => r is PopupRoute || r.popDisposition == RoutePopDisposition.doNotPop,
-  );
+  bool _wouldLoseSomething() => _rootRoutes.wouldLoseSomething;
 
   /// Whether the top page is this habit's page; a second one would only stack up.
   bool _showsHabit(String id) {
@@ -420,33 +386,36 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     final choice = ref.watch(settingsProvider.select((s) => s.theme));
     final locked = ref.watch(lockedProvider);
     final lockOn = ref.watch(settingsProvider.select((s) => s.lockOn));
-    return MaterialApp.router(
-      title: 'Daily Tracker',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      themeMode: switch (choice) {
-        ThemeChoice.system => ThemeMode.system,
-        ThemeChoice.light => ThemeMode.light,
-        ThemeChoice.dark => ThemeMode.dark,
-      },
-      routerConfig: _router,
-      scaffoldMessengerKey: _messengerKey,
-      builder: (context, child) => PrivacyCover(
-        enabled: lockOn,
-        stayCovered: _lockCheck != null,
-        child: Stack(
-          children: [
-            // While locked the app underneath is kept out of the accessibility tree and out of reach.
-            ExcludeFocus(
-              excluding: locked,
-              child: ExcludeSemantics(
+    return RootRoutesScope(
+      routes: _rootRoutes,
+      child: MaterialApp.router(
+        title: 'Daily Tracker',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        themeMode: switch (choice) {
+          ThemeChoice.system => ThemeMode.system,
+          ThemeChoice.light => ThemeMode.light,
+          ThemeChoice.dark => ThemeMode.dark,
+        },
+        routerConfig: _router,
+        scaffoldMessengerKey: _messengerKey,
+        builder: (context, child) => PrivacyCover(
+          enabled: lockOn,
+          stayCovered: _lockCheck != null,
+          child: Stack(
+            children: [
+              // While locked the app underneath is kept out of the accessibility tree and out of reach.
+              ExcludeFocus(
                 excluding: locked,
-                child: IgnorePointer(ignoring: locked, child: child),
+                child: ExcludeSemantics(
+                  excluding: locked,
+                  child: IgnorePointer(ignoring: locked, child: child),
+                ),
               ),
-            ),
-            if (locked) const Positioned.fill(child: LockScreen()),
-          ],
+              if (locked) const Positioned.fill(child: LockScreen()),
+            ],
+          ),
         ),
       ),
     );

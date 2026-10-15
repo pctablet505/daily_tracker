@@ -8,6 +8,7 @@ import '../../logic/habit_detail.dart';
 import '../../services/photo_store.dart';
 import '../../state/providers.dart';
 import '../format.dart';
+import '../root_routes.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
@@ -119,7 +120,15 @@ class HabitDetailScreen extends ConsumerWidget {
                                       ? null
                                       : d.recent[i].day,
                                 );
-                            context.go('/');
+                            // Opened above an unsaved form (a reminder tap), going
+                            // to Today would drop the form: go back to it instead.
+                            if (RootRoutesScope.maybeOf(context)
+                                    ?.wouldLoseSomething ??
+                                false) {
+                              context.pop();
+                            } else {
+                              context.go('/');
+                            }
                           },
                         ),
                     ],

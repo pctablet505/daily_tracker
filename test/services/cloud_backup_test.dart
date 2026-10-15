@@ -418,6 +418,22 @@ void main() {
       expect(onDrive, isNot(contains('"mistake"')));
     });
 
+    test('the backup that is due again after such a restore keeps the real '
+        'time of the last backup', () async {
+      await cloud.setAutoBackup(true);
+      await cloud.backupNow();
+      await repo.deleteHabit('a');
+      await repo.addHabit(habit('mistake'));
+      final f = (await cloud.fetchForRestore())!;
+      nextDay();
+      await cloud.autoBackupIfDue();
+      final last = cloud.lastBackupAt;
+      expect(last, isNotNull);
+      await cloud.restore(f.text);
+      await cloud.restoredFrom(f.file);
+      expect(cloud.lastBackupAt, last);
+    });
+
     test('a restore confirmed while a backup is uploading waits for it, and the next return backs up the restored data', () async {
       await cloud.setAutoBackup(true);
       await cloud.backupNow();
