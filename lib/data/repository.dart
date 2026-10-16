@@ -64,42 +64,67 @@ final class HabitRepository {
       'habits',
       orderBy: 'sortOrder, createdDay, id',
     );
-    return [for (final r in rows) Habit.fromMap(r)];
+    return [for (final r in rows) Habit.fromRow(r)];
   }
 
   /// Stores [habit] at the end of the list and returns it as stored.
-  Future<Habit> addHabit(Habit habit) async {
+  Future<Habit> addHabit(Habit habit) async =>
+      (await addHabits([habit])).single;
+
+  /// Stores [habits] at the end of the list, in order, all or none, and
+  /// returns them as stored.
+  Future<List<Habit>> addHabits(List<Habit> habits) async {
     final stored = await _db.transaction((txn) async {
-      final maxOrder = Sqflite.firstIntValue(
+      var last = Sqflite.firstIntValue(
         await txn.rawQuery('SELECT MAX(sortOrder) FROM habits'),
       );
-      final next = maxOrder == null || maxOrder < -1
-          ? 0
-          : (maxOrder >= 0x7fffffff ? maxOrder : maxOrder + 1);
-      final h = habit.copyWith(sortOrder: next);
-      await txn.insert('habits', h.toMap());
-      return h;
+      final out = <Habit>[];
+      for (final habit in habits) {
+        final next = last == null || last < -1
+            ? 0
+            : (last >= 0x7fffffff ? last : last + 1);
+        final h = habit.copyWith(sortOrder: next);
+        await txn.insert('habits', h.toMap());
+        out.add(h);
+        last = next;
+      }
+      return out;
     });
     _changed();
     return stored;
   }
 
+  /// Stores [habit]. Its entries are graded again only when what grades them
+  /// (kind, avoid mode, log type or goal) changed, so a rename leaves an
+  /// un-ticked day partial.
   Future<void> updateHabit(Habit habit) async {
     await _db.transaction((txn) async {
-      final n = await txn.update(
+      final stored = await txn.query(
+        'habits',
+        where: 'id = ?',
+        whereArgs: [habit.id],
+      );
+      if (stored.isEmpty) throw StateError('No habit with id ${habit.id}');
+      final was = Habit.fromRow(stored.single);
+      await txn.update(
         'habits',
         habit.toMap(),
         where: 'id = ?',
         whereArgs: [habit.id],
       );
-      if (n == 0) throw StateError('No habit with id ${habit.id}');
+      if (was.kind == habit.kind &&
+          was.avoidMode == habit.avoidMode &&
+          was.logType == habit.logType &&
+          was.goal == habit.goal) {
+        return;
+      }
       final rows = await txn.query(
         'entries',
         where: 'habitId = ?',
         whereArgs: [habit.id],
       );
       for (final r in rows) {
-        final e = Entry.fromMap(r);
+        final e = Entry.fromRow(r);
         if (e.state != EntryState.done && e.state != EntryState.partial)
           continue;
         final EntryState nextState;
@@ -109,6 +134,11 @@ final class HabitRepository {
           nextState = habit.goal != null && e.value! < habit.goal!
               ? EntryState.partial
               : EntryState.done;
+        } else if (e.state == EntryState.partial &&
+            (was.logType != LogType.number || e.value == null)) {
+          // No goal made this day partial: its tick was taken off and it
+          // only keeps what it held, so it stays not done.
+          continue;
         } else {
           nextState = EntryState.done;
         }
@@ -117,7 +147,8 @@ final class HabitRepository {
             'entries',
             {'state': nextState.name},
             where: 'habitId = ? AND day = ?',
-            whereArgs: [habit.id, e.day.toString()],
+            // The row's own day: one before 1970 reads as 1970-01-01.
+            whereArgs: [habit.id, r['day']],
           );
         }
       }
@@ -204,9 +235,7 @@ final class HabitRepository {
         orderBy: 'day',
       );
       await txn.delete('habits', where: 'id = ?', whereArgs: [id]);
-      return DeletedHabit(Habit.fromMap(rows.single), [
-        for (final r in entries) Entry.fromMap(r),
-      ]);
+      return DeletedHabit(Habit.fromRow(rows.single), _entriesFrom(entries));
     });
     _changed();
     return gone;
@@ -258,8 +287,15 @@ final class HabitRepository {
       whereArgs: args.isEmpty ? null : args,
       orderBy: 'day, habitId',
     );
-    return [for (final r in rows) Entry.fromMap(r)];
+    return _entriesFrom(rows);
   }
+
+  /// Entry rows in day order, read. Days before 1970 all read as 1970-01-01
+  /// (see [earliestDay]), so one habit can have several there: the last one
+  /// is kept, as the data holds one entry per habit and day.
+  List<Entry> _entriesFrom(List<Map<String, Object?>> rows) =>
+      {for (final e in rows.map(Entry.fromRow)) (e.habitId, e.day): e}.values
+          .toList();
 
   /// Stores [entry], replacing any for the same habit and day, and returns the
   /// one it replaced (so a photo it pointed at can be cleaned up).
@@ -275,7 +311,7 @@ final class HabitRepository {
         entry.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      return old.isEmpty ? null : Entry.fromMap(old.single);
+      return old.isEmpty ? null : Entry.fromRow(old.single);
     });
     _changed();
     return replaced;
@@ -295,7 +331,7 @@ final class HabitRepository {
         where: 'habitId = ? AND day = ?',
         whereArgs: [habitId, day.toString()],
       );
-      return Entry.fromMap(old.single);
+      return Entry.fromRow(old.single);
     });
     if (removed != null) _changed();
     return removed;
@@ -305,7 +341,7 @@ final class HabitRepository {
 
   Future<Set<DayKey>> seenDays() async {
     final rows = await _db.query('seen_days');
-    return {for (final r in rows) DayKey.parse(r['day']! as String)};
+    return {for (final r in rows) storedDay(r['day']! as String)};
   }
 
   /// Records that the app was opened (or a check-in answered) on [day].
@@ -329,9 +365,9 @@ final class HabitRepository {
     final entryRows = await txn.query('entries', orderBy: 'day, habitId');
     final seenRows = await txn.query('seen_days');
     return Snapshot(
-      habits: [for (final r in habitRows) Habit.fromMap(r)],
-      entries: [for (final r in entryRows) Entry.fromMap(r)],
-      seenDays: {for (final r in seenRows) DayKey.parse(r['day']! as String)},
+      habits: [for (final r in habitRows) Habit.fromRow(r)],
+      entries: _entriesFrom(entryRows),
+      seenDays: {for (final r in seenRows) storedDay(r['day']! as String)},
     );
   });
 

@@ -1,3 +1,5 @@
+import 'dart:isolate';
+
 import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/stats.dart';
@@ -10,6 +12,22 @@ Ledger ledger(
   List<Entry> entries = const [],
   List<DayKey> seen = const [],
 ]) => Ledger(habits: habits, entries: entries, seenDays: seen);
+
+/// Runs [count] in its own isolate, so a walk that never ends fails the test
+/// instead of hanging it.
+Future<Object?> endsInTime(Object? Function() count) async {
+  final port = ReceivePort();
+  final worker = await Isolate.spawn((job) => job.$2.send(job.$1()), (
+    count,
+    port.sendPort,
+  ));
+  try {
+    return await port.first.timeout(const Duration(seconds: 20));
+  } finally {
+    worker.kill(priority: Isolate.immediate);
+    port.close();
+  }
+}
 
 void main() {
   group('summarizeDay: the 60% rule', () {
@@ -91,6 +109,30 @@ void main() {
       expect((s.done, s.planned, s.status), (0, 1, DayStatus.missed));
     });
 
+    test('a day taken off on a day the habit does not run plans nothing, even when it still holds an amount or a note', () {
+      // Weekdays only; Saturday was logged as an extra and taken off again.
+      final noted = entry(
+        't',
+        sat,
+        EntryState.partial,
+      ).copyWith(note: () => 'tired');
+      for (final (h, kept) in [
+        (
+          habit('t', mask: Habit.weekdaysOnly),
+          entry('t', sat, EntryState.partial, 5),
+        ),
+        (habit('t', mask: Habit.weekdaysOnly, logType: LogType.photo), noted),
+        (habit('t', mask: Habit.weekdaysOnly, logType: LogType.number), noted),
+      ]) {
+        final l = ledger([h], [kept]);
+        final s = summarizeDay(l, sat);
+        expect((s.done, s.planned, s.status), (0, 0, DayStatus.neutral));
+        expect(habitRate(l, h, sat, sat), const Ratio(0, 0));
+        expect(rateOver(l, sat, sat), const Ratio(0, 0));
+        expect(perfectDays(l, sat, sat), 0);
+      }
+    });
+
     test('an avoid habit in confirm mode is counted like any Do habit', () {
       final c = habit('c', kind: HabitKind.avoid, avoidMode: AvoidMode.confirm);
       expect(summarizeDay(ledger([c]), mon).planned, 1);
@@ -122,7 +164,7 @@ void main() {
       expect((d.status, d.slips), (DayStatus.missed, 1));
     });
 
-    test('logging anything that day counts as the app being seen', () {
+    test('a bonus entry of a Do habit makes the day a Do day', () {
       final l = ledger(
         [
           s,
@@ -130,9 +172,43 @@ void main() {
         ],
         [entry('a', mon)],
       );
-      expect(summarizeDay(l, mon).planned, 1); // bonus entry makes it a Do day
-      final l2 = ledger([s], [entry('other', mon)]);
-      expect(summarizeDay(l2, mon).status, DayStatus.good);
+      expect(summarizeDay(l, mon).planned, 1);
+    });
+
+    test('an unseen day is known clear only for a stay-clear habit with its own entry, not through another habit', () {
+      final t = stayClear('t');
+      // Monday was never seen; another habit was logged then, and "I stayed
+      // clear" answered for s alone.
+      final other = ledger([s, t], [entry('other', mon)]);
+      expect(summarizeDay(other, mon).status, DayStatus.neutral);
+      expect(habitRate(other, s, mon, mon), const Ratio(0, 0));
+      expect(habitStreak(other, s, mon).best, 0);
+      final own = ledger([s, t], [entry('other', mon), entry('s', mon)]);
+      expect(summarizeDay(own, mon).status, DayStatus.good);
+      expect(habitRate(own, s, mon, mon), const Ratio(1, 1));
+      expect(habitRate(own, t, mon, mon), const Ratio(0, 0));
+      expect(habitStreak(own, s, mon).best, 1);
+      expect(habitStreak(own, t, mon).best, 0);
+    });
+
+    test('counts the stay-clear habits not checked: no slip, no entry of their own, an unseen day', () {
+      final l = ledger(
+        [
+          s,
+          stayClear('kept'),
+          stayClear('slipped'),
+          stayClear('skipped'),
+          stayClear('later', created: wed),
+          habit('a'),
+        ],
+        [
+          entry('kept', mon),
+          slip('slipped', mon),
+          entry('skipped', mon, EntryState.skipped),
+        ],
+      );
+      expect(summarizeDay(l, mon).notChecked, 1);
+      expect(summarizeDay(ledger([s], [], [mon]), mon).notChecked, 0);
     });
 
     test('before the habit existed it does not make a day good', () {
@@ -224,6 +300,24 @@ void main() {
       final slippedToday = ledger([s], [slip('s', sun)], [fri, sat, sun]);
       expect(currentStreak(slippedToday, sun), 0);
     });
+
+    for (final early in [const DayKey(1970, 1, 1), const DayKey(1, 1, 1)]) {
+      test('a seen day of $early, long before any habit, does not slow it', () {
+        final l = ledger(
+          [for (var i = 0; i < 20; i++) habit('h$i')],
+          [
+            for (var i = 0; i < 20; i++)
+              for (final d in mon.through(sun)) entry('h$i', d),
+          ],
+          [early, ...mon.through(sun)],
+        );
+        final sw = Stopwatch()..start();
+        final n = currentStreak(l, sun);
+        sw.stop();
+        expect(n, 7);
+        expect(sw.elapsedMilliseconds, lessThan(50));
+      });
+    }
   });
 
   group('bestStreak', () {
@@ -313,6 +407,17 @@ void main() {
         expect(perfectDays(l, mon, sun), 2); // Mon and Wed
       },
     );
+
+    test(
+      'with only stay-clear habits, a seen day without a slip is perfect',
+      () {
+        final l = ledger([stayClear('s')], [slip('s', tue)], [mon, tue, wed]);
+        expect(summarizeDay(l, mon).perfect, isTrue);
+        expect(summarizeDay(l, tue).perfect, isFalse); // slipped
+        expect(summarizeDay(l, thu).perfect, isFalse); // not seen: neutral
+        expect(perfectDays(l, mon, sun), 2); // Mon and Wed
+      },
+    );
   });
 
   group('habitStreak: a Do habit', () {
@@ -355,11 +460,38 @@ void main() {
       expect(habitStreak(l, a, sun), const HabitStreak(current: 3, best: 3));
     });
 
+    test('an archived habit missed on its last day has no streak, on that day or after', () {
+      final a = habit('a', end: wed);
+      final l = ledger([a], [entry('a', mon), entry('a', tue)]);
+      expect(habitStreak(l, a, wed), const HabitStreak(current: 0, best: 2));
+      expect(habitStreak(l, a, thu), const HabitStreak(current: 0, best: 2));
+    });
+
     test('a missed day today is not yet a miss', () {
       final a = habit('a');
       final l = ledger([a], [entry('a', mon)]);
       expect(habitStreak(l, a, tue), const HabitStreak(current: 1, best: 1));
       expect(habitStreak(l, a, wed), const HabitStreak(current: 0, best: 1));
+    });
+
+    test('a past day looked back on is not open: missing it was a miss', () {
+      final a = habit('a');
+      final l = ledger(
+        [a],
+        [entry('a', mon), entry('a', tue), entry('a', wed)],
+      );
+      expect(
+        habitStreak(l, a, thu, today: fri),
+        const HabitStreak(current: 0, best: 3),
+      );
+      expect(
+        habitStreak(l, a, fri, today: fri),
+        const HabitStreak(current: 0, best: 3),
+      );
+      expect(
+        habitStreak(l, a, thu, today: thu),
+        const HabitStreak(current: 3, best: 3),
+      );
     });
   });
 
@@ -418,6 +550,68 @@ void main() {
       );
       expect(l.entriesOf('a').map((e) => e.day), [mon, wed]);
       expect(l.entriesOf('zzz'), isEmpty);
+    });
+  });
+
+  group('every walk ends at the ends of the calendar', () {
+    test('a ledger that begins on 0001-01-01', () async {
+      const start = DayKey(1, 1, 1);
+      final s = stayClear('s', created: start);
+      final a = habit('a', created: start, end: start);
+      final l = ledger([s, a], [entry('a', start)], [start, sun]);
+      expect(await endsInTime(() => currentStreak(l, sun)), 2);
+      expect(await endsInTime(() => bestStreak(l, sun)), 2);
+      expect(
+        await endsInTime(() => habitStreak(l, a, sun)),
+        const HabitStreak(current: 1, best: 1),
+      );
+      expect(
+        await endsInTime(() => habitStreak(l, s, sun)),
+        const HabitStreak(current: 2, best: 2),
+      );
+      expect(
+        await endsInTime(() => habitRate(l, a, start, sun)),
+        const Ratio(1, 1),
+      );
+      expect(
+        await endsInTime(() => habitRate(l, s, start, sun)),
+        const Ratio(2, 2),
+      );
+      expect(
+        await endsInTime(() => rateOver(l, start, sun)),
+        const Ratio(1, 1),
+      );
+      expect(await endsInTime(() => perfectDays(l, start, sun)), 2);
+    });
+
+    test('a ledger that reaches 9999-12-31', () async {
+      const last = DayKey(9999, 12, 31);
+      final before = last.addDays(-1);
+      final s = stayClear('s', created: before);
+      final a = habit('a', created: before);
+      final l = ledger([s, a], [entry('a', before), entry('a', last)], [
+        before,
+        last,
+      ]);
+      expect(await endsInTime(() => currentStreak(l, last)), 2);
+      expect(await endsInTime(() => bestStreak(l, last)), 2);
+      expect(
+        await endsInTime(() => habitStreak(l, a, last)),
+        const HabitStreak(current: 2, best: 2),
+      );
+      expect(
+        await endsInTime(() => habitStreak(l, s, last)),
+        const HabitStreak(current: 2, best: 2),
+      );
+      expect(
+        await endsInTime(() => habitRate(l, a, before, last)),
+        const Ratio(2, 2),
+      );
+      expect(
+        await endsInTime(() => rateOver(l, before, last)),
+        const Ratio(2, 2),
+      );
+      expect(await endsInTime(() => perfectDays(l, before, last)), 2);
     });
   });
 }

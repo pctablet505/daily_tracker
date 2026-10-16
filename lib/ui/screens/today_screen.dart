@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/day_key.dart';
 import '../../data/models.dart';
 import '../../data/stats.dart';
+import '../../logic/logging.dart';
 import '../../logic/today_view.dart';
 import '../../services/photo_picker.dart';
 import '../../state/providers.dart';
@@ -32,6 +33,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   bool _searching = false;
   bool _showFinished = false;
 
+  /// Monday of the week on the strip when moved away from the shown day's.
+  DayKey? _stripWeek;
+
   @override
   void dispose() {
     _confetti.dispose();
@@ -45,6 +49,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     m.showSnackBar(
       SnackBar(
         content: Text(message),
+        // An Undo would otherwise keep it open until tapped.
+        persist: false,
         action: onUndo == null
             ? null
             : SnackBarAction(label: undoLabel ?? 'Undo', onPressed: onUndo),
@@ -55,12 +61,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   DayKey get _day => ref.read(shownDayProvider);
   DayKey get _today => ref.read(todayProvider);
 
-  Future<void> _guard(Future<void> Function() job) async {
+  /// Runs [job]; on failure says so and returns false.
+  Future<bool> _guard(Future<void> Function() job) async {
     try {
       await job();
+      return true;
     } catch (e) {
       if (mounted) _toast('That did not save. Try again.');
       debugPrint('Today action failed: $e');
+      return false;
     }
   }
 
@@ -88,6 +97,11 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
         );
       }
     });
+  }
+
+  void _stayedClear(HabitRow row) {
+    HapticFeedback.lightImpact();
+    _guard(() => ref.read(actionsProvider).stayedClear(row.habit, _day));
   }
 
   Future<void> _log(HabitRow row) async {
@@ -128,8 +142,10 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           hasPhoto: row.entry?.photoPath != null,
         );
         if (choice == null || !mounted) return;
-        if (choice == PhotoChoice.remove)
-          return _guard(() => actions.clear(h, day));
+        if (choice == PhotoChoice.remove) {
+          await _guard(() => actions.clear(h, day));
+          return;
+        }
         try {
           final path = await ref
               .read(lockedProvider.notifier)
@@ -138,6 +154,8 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                   choice == PhotoChoice.camera
                       ? PhotoSource.camera
                       : PhotoSource.gallery,
+                  habitId: h.id,
+                  day: day,
                 ),
               );
           if (path != null && mounted) {
@@ -162,7 +180,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       context,
       habit: h,
       skipped: row.kind == RowKind.skipped,
-      canSkip: !h.tracksSlips || row.kind == RowKind.skipped,
+      canSkip: canSkipDay(h, row.entry),
     );
     if (action == null || !mounted) return;
     final actions = ref.read(actionsProvider);
@@ -176,10 +194,19 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       case HabitMenuAction.details:
         await context.push('/habit/$encodedId');
       case HabitMenuAction.archive:
-        await _guard(() => actions.archive(h, today));
-        if (mounted)
+        final archived = await _guard(() => actions.archive(h, today));
+        if (archived && mounted)
           _toast('Archived ${h.name}. Find it under Habits > Archived.');
     }
+  }
+
+  /// Today's tab is the one shown, and neither its page nor the shell around
+  /// it is covered by another screen.
+  bool get _inSight {
+    if (!TickerMode.getValuesNotifier(context).value.enabled) return false;
+    final page = ModalRoute.of(context);
+    final shell = ModalRoute.of(Navigator.of(context).context);
+    return (page?.isCurrent ?? true) && (shell?.isCurrent ?? true);
   }
 
   void _celebrateIfPerfect(
@@ -189,7 +216,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final b = before?.value;
     final a = after.value;
     if (a == null || b == null || a.day != _today || b.day != a.day) return;
-    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    if (!_inSight) return;
     if (a.summary.perfect &&
         !b.summary.perfect &&
         a.summary.done > b.summary.done &&
@@ -203,6 +230,9 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen(todayViewProvider, _celebrateIfPerfect);
+    ref.listen(shownDayProvider, (_, _) {
+      if (_stripWeek != null) setState(() => _stripWeek = null);
+    });
     final c = context.colors;
     final day = ref.watch(shownDayProvider);
     final today = ref.watch(todayProvider);
@@ -212,6 +242,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       settingsProvider.select((s) => s.streakThreshold),
     );
     final isToday = day == today;
+    final monday = _stripWeek ?? day.addDays(-(day.weekday - 1));
 
     return SafeArea(
       bottom: false,
@@ -237,12 +268,17 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
               ),
               if (ledger != null)
                 DayStrip(
-                  days: _weekDots(ledger, day, today, threshold),
+                  days: _weekDots(ledger, monday, today, threshold),
                   selected: day,
                   today: today,
                   onSelect: (d) => ref
                       .read(selectedDayProvider.notifier)
                       .select(d == today ? null : d),
+                  onPreviousWeek: () =>
+                      setState(() => _stripWeek = monday.addDays(-7)),
+                  onNextWeek: monday.addDays(7) > today
+                      ? null
+                      : () => setState(() => _stripWeek = monday.addDays(7)),
                 ),
               if (!isToday)
                 Padding(
@@ -289,17 +325,20 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     );
   }
 
-  List<DayDot> _weekDots(Ledger l, DayKey shown, DayKey today, int threshold) {
-    final monday = shown.addDays(-(shown.weekday - 1));
+  List<DayDot> _weekDots(Ledger l, DayKey monday, DayKey today, int threshold) {
     return [
       for (final d in monday.through(monday.addDays(6)))
-        DayDot(
-          day: d,
-          fraction: summarizeDay(l, d, threshold: threshold).fraction,
-          isFuture: d > today,
-        ),
+        _dot(summarizeDay(l, d, threshold: threshold), d > today),
     ];
   }
+
+  DayDot _dot(DaySummary s, bool isFuture) => DayDot(
+    day: s.day,
+    fraction: s.fraction,
+    isFuture: isFuture,
+    detail: s.planned == 0 ? dayDetail(s) : null,
+    notChecked: s.notChecked,
+  );
 
   List<Widget> _body(
     BuildContext context,
@@ -384,11 +423,15 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
       );
     }
     if (v.stayClear.isNotEmpty) {
+      // A row not checked offers "I stayed clear" as well as "Slipped".
+      final unchecked = v.stayClear.any((r) => r.kind == RowKind.unchecked);
       widgets
         ..add(
-          const SectionHeader(
+          SectionHeader(
             'Staying clear',
-            trailing: 'tap Slipped if it happened',
+            trailing: unchecked
+                ? 'tap Slipped or I stayed clear'
+                : 'tap Slipped if it happened',
           ),
         )
         ..add(
@@ -399,6 +442,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
                 row: v.stayClear[i],
                 showDivider: i > 0,
                 onSlip: () => _slip(v.stayClear[i]),
+                onStayedClear: () => _stayedClear(v.stayClear[i]),
                 onMore: () => _more(v.stayClear[i]),
               ),
           ]),
@@ -570,6 +614,9 @@ class _SummaryCard extends StatelessWidget {
     final clearOk = view.stayClear
         .where((r) => r.kind == RowKind.onTrack)
         .length;
+    final unchecked = view.stayClear
+        .where((r) => r.kind == RowKind.unchecked)
+        .length;
     final headline = s.planned == 0
         ? 'Nothing planned'
         : '${s.done} of ${s.planned} done';
@@ -600,7 +647,8 @@ class _SummaryCard extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          'Staying clear: $clearOk of $clearTotal on track',
+                          'Staying clear: $clearOk of $clearTotal on track'
+                          '${unchecked > 0 ? ', $unchecked not checked' : ''}',
                           style: AppType.small.copyWith(color: c.muted),
                         ),
                       ),
@@ -657,9 +705,15 @@ class _FinishedToggle extends StatelessWidget {
                   Text('Done', style: AppType.button.copyWith(color: c.muted)),
                   const SizedBox(width: 8),
                   Container(
-                    constraints: const BoxConstraints(minWidth: 22),
-                    height: 22,
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    // Grows with large text instead of cutting the number off.
+                    constraints: const BoxConstraints(
+                      minWidth: 22,
+                      minHeight: 22,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: c.accent,
                       borderRadius: BorderRadius.circular(11),

@@ -41,6 +41,7 @@ class UpdatePrompter {
 
   Future<void> markOffered(String version) async {
     final now = _now();
+    await _markChecked(now);
     await _prefs.setString(_offeredVersionKey, version);
     await _prefs.setInt(_offeredAtKey, now.millisecondsSinceEpoch);
   }
@@ -58,23 +59,32 @@ class UpdatePrompter {
     if (_wifiOnly() && !await _isOnWifi()) return null;
 
     final result = await _check();
-    // A failed check does not count as a check for long, so the next launch tries again soon.
-    final stamp = result is UpdateCheckFailed
-        ? now.subtract(_checkEvery - _retryAfterFailure)
-        : now;
-    await _prefs.setInt(_lastCheckKey, stamp.millisecondsSinceEpoch);
-    if (result is! UpdateAvailable) return null;
-
-    final release = result.release;
-    if (_prefs.getString(_skippedKey) == release.version) return null;
-    final offeredAt = _time(_offeredAtKey);
-    if (_prefs.getString(_offeredVersionKey) == release.version &&
-        offeredAt != null &&
-        !now.isBefore(offeredAt) &&
-        now.difference(offeredAt) < _offerAgainAfter) {
+    if (result is! UpdateAvailable) {
+      // A failed check does not count as a check for long, so the next launch tries again soon.
+      final stamp = result is UpdateCheckFailed
+          ? now.subtract(_checkEvery - _retryAfterFailure)
+          : now;
+      await _markChecked(stamp);
       return null;
     }
+
+    final release = result.release;
+    final offeredAt = _time(_offeredAtKey);
+    if (_prefs.getString(_skippedKey) == release.version ||
+        (_prefs.getString(_offeredVersionKey) == release.version &&
+            offeredAt != null &&
+            !now.isBefore(offeredAt) &&
+            now.difference(offeredAt) < _offerAgainAfter)) {
+      await _markChecked(now);
+      return null;
+    }
+    // Without [recordOffer] the check only counts once [markOffered] says the
+    // user saw it: an offer given up (the app locked or left meanwhile) is
+    // asked for again next time.
     if (recordOffer) await markOffered(release.version);
     return release;
   }
+
+  Future<void> _markChecked(DateTime at) =>
+      _prefs.setInt(_lastCheckKey, at.millisecondsSinceEpoch);
 }

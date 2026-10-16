@@ -48,7 +48,11 @@ String encodeBackup(
 
 /// Reads a backup. Throws [FormatException] with a message fit to show the
 /// user when the file is not one of ours, is from a newer version, or is damaged.
-BackupData decodeBackup(String text) {
+///
+/// [lenient] is for the copies this phone saved of its own rows before a
+/// restore: those are read as the database reader reads the rows, mending what
+/// an older version stored, rather than refused like a file from elsewhere.
+BackupData decodeBackup(String text, {bool lenient = false}) {
   final Object? root;
   try {
     root = jsonDecode(text);
@@ -72,15 +76,31 @@ BackupData decodeBackup(String text) {
   const damaged = FormatException('The backup file is damaged.');
   try {
     final habits = [
-      for (final m in _list(root['habits'])) Habit.fromMap(_map(m)),
+      for (final m in _list(root['habits']))
+        lenient ? Habit.fromRow(_map(m)) : Habit.fromMap(_map(m)),
     ];
-    final entries = [
-      for (final m in _list(root['entries'])) Entry.fromMap(_map(m)),
+    var entries = [
+      for (final m in _list(root['entries']))
+        lenient ? Entry.fromRow(_map(m)) : Entry.fromMap(_map(m)),
     ];
+    // Days before 1970 all read as 1970-01-01; as in the database, the last
+    // of a habit's entries that meet there stays.
+    if (lenient) {
+      entries = [
+        ...{for (final e in entries) (e.habitId, e.day): e}.values,
+      ];
+    }
     final seen = {
       for (final d in _list(root['seenDays'] ?? const <Object?>[]))
-        DayKey.parse(d! as String),
+        lenient ? storedDay(d! as String) : DayKey.parse(d! as String),
     };
+    // A habit's end needs no check of its own: fromMap holds it to no earlier
+    // than the day before the start.
+    if (habits.any((h) => h.createdDay < earliestDay) ||
+        entries.any((e) => e.day < earliestDay) ||
+        seen.any((d) => d < earliestDay)) {
+      throw damaged;
+    }
     final snapshot = Snapshot(habits: habits, entries: entries, seenDays: seen)
       ..validate();
     final exported = root['exportedAt'];

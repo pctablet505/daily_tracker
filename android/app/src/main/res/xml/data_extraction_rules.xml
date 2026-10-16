@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12 and newer. Cloud backup carries habits and entries only: never the
      app-lock PIN (a short PIN's hash can be guessed offline), settings or photos.
-     A direct phone-to-phone transfer keeps everything, photos included. -->
+     A direct phone-to-phone transfer carries the habits and the photos, but not the
+     settings or the PIN: those stay on the old phone, so the new one starts with the
+     lock off and the default settings. -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="database" path="." />

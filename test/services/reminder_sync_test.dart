@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:daily_tracker/data/database.dart';
+import 'package:daily_tracker/data/models.dart';
+import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/services/notifications.dart';
 import 'package:daily_tracker/services/reminder_plan.dart';
 import 'package:daily_tracker/services/reminder_sync.dart';
@@ -28,11 +30,19 @@ final class FakeScheduler implements ReminderScheduler {
     return granted;
   }
 
+  /// Payloads of snoozed reminders still waiting. A re-plan keeps only those
+  /// [keepSnooze] allows, as the real scheduler does.
+  var snoozed = <String?>[];
+
   @override
   Future<void> replaceAll(
     List<PlannedReminder> plan, {
     bool Function(String? payload)? keepSnooze,
-  }) async => plans.add(plan);
+  }) async {
+    plans.add(plan);
+    if (keepSnooze != null) snoozed = snoozed.where(keepSnooze).toList();
+  }
+
   @override
   Stream<String> get taps => tapController.stream;
   @override
@@ -147,4 +157,71 @@ void main() {
       expect(scheduler.plans.last, isNotEmpty);
     },
   );
+
+  test(
+    "yesterday's reminder that quiet hours moved to this morning stays planned",
+    () async {
+      now = DateTime(2026, 10, 12, 6);
+      await c
+          .read(settingsProvider.notifier)
+          .update(
+            (s) => s.copyWith(
+              eveningCheckInOn: false,
+              quietHoursOn: true,
+              quietStartMinutes: 22 * 60,
+              quietEndMinutes: 7 * 60,
+            ),
+          );
+      await c
+          .read(repositoryProvider)
+          .addHabit(habit('a').copyWith(reminderMinutes: () => 23 * 60));
+      c.read(reminderSyncProvider);
+      await settle();
+      final first = scheduler.plans.last.first;
+      expect((first.when, first.forDay), (DateTime(2026, 10, 12, 7), sun));
+    },
+  );
+
+  group('a snoozed reminder', () {
+    const payload = 'habit:a@2026-10-11';
+    late HabitRepository repo;
+
+    setUp(() async {
+      repo = c.read(repositoryProvider);
+      await repo.addHabit(habit('a').copyWith(reminderMinutes: () => 8 * 60));
+      scheduler.snoozed = [payload];
+      c.read(reminderSyncProvider);
+      await settle();
+    });
+
+    test('outlives a re-plan while its habit is still open that day', () {
+      expect(scheduler.plans, isNotEmpty);
+      expect(scheduler.snoozed, [payload]);
+    });
+
+    for (final (what, change) in <(String, Future<void> Function())>[
+      ('done', () => repo.setEntry(entry('a', sun))),
+      ('skipped', () => repo.setEntry(entry('a', sun, EntryState.skipped))),
+      ('archived', () => repo.archive('a', sun.addDays(-1))),
+      ('deleted', () => repo.deleteHabit('a')),
+      (
+        'without a reminder time',
+        () async => repo.updateHabit(
+          (await repo.habits()).single.copyWith(reminderMinutes: () => null),
+        ),
+      ),
+      (
+        'reminded no more (reminders off)',
+        () => c
+            .read(settingsProvider.notifier)
+            .update((s) => s.copyWith(remindersOn: false)),
+      ),
+    ]) {
+      test('is dropped once its habit is $what', () async {
+        await change();
+        await settle();
+        expect(scheduler.snoozed, isEmpty);
+      });
+    }
+  });
 }

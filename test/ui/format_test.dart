@@ -1,5 +1,6 @@
 import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/models.dart';
+import 'package:daily_tracker/data/stats.dart';
 import 'package:daily_tracker/ui/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -47,6 +48,49 @@ void main() {
     });
   });
 
+  group('dayDetail', () {
+    String detail({
+      int planned = 0,
+      int done = 0,
+      int slips = 0,
+      int notChecked = 0,
+      DayStatus status = DayStatus.neutral,
+    }) => dayDetail(
+      DaySummary(
+        day: mon,
+        planned: planned,
+        done: done,
+        slips: slips,
+        notChecked: notChecked,
+        status: status,
+      ),
+    );
+
+    for (final (said, expected) in <(String, String)>[
+      (detail(), 'nothing planned'),
+      (detail(status: DayStatus.good), 'on track'),
+      (detail(notChecked: 2), 'not checked'),
+      (detail(slips: 1), '1 slip'),
+      (detail(planned: 3, done: 2), '2 of 3 done'),
+      (detail(planned: 2, done: 2, slips: 1), '2 of 2 done, 1 slip'),
+      (
+        detail(status: DayStatus.good, notChecked: 1),
+        'on track, 1 not checked',
+      ),
+      (detail(slips: 2, notChecked: 1), '2 slips, 1 not checked'),
+      (
+        detail(planned: 1, done: 1, notChecked: 1),
+        '1 of 1 done, 1 not checked',
+      ),
+      (
+        detail(planned: 2, done: 2, slips: 1, notChecked: 1),
+        '2 of 2 done, 1 slip, 1 not checked',
+      ),
+    ]) {
+      test('reads "$expected"', () => expect(said, expected));
+    }
+  });
+
   group('formatMinutes', () {
     test('12 and 24 hour', () {
       expect(formatMinutes(0, use24h: false), '12:00 AM');
@@ -84,6 +128,17 @@ void main() {
         logType: LogType.number,
       ).copyWith(unit: () => 'kg', dayPart: DayPart.morning);
       expect(habitMeta(w, lastValue: 75.9), 'Morning · last 75.9 kg');
+    });
+    test('number with no goal shows the amount logged that day', () {
+      final w = habit('w', logType: LogType.number).copyWith(unit: () => 'kg');
+      expect(
+        habitMeta(
+          w,
+          entry: entry('w', sat, EntryState.done, 75.9),
+          lastValue: 76.2,
+        ),
+        'Anytime · 75.9 kg',
+      );
     });
     test('number with a goal shows progress, or the goal', () {
       final w = habit(

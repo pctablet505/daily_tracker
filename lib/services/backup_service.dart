@@ -27,8 +27,10 @@ final class ExportedFile {
 }
 
 /// A cell a spreadsheet might run as a formula gets a leading apostrophe.
-String _safeCell(String s) =>
-    s.isNotEmpty && '=+-@\t\r\n'.contains(s[0]) ? "'$s" : s;
+/// Spreadsheets skip leading spaces, so a formula behind them counts too.
+final _formula = RegExp(r'^([\t\r\n]|\s*[=+\-@])');
+
+String _safeCell(String s) => _formula.hasMatch(s) ? "'$s" : s;
 
 String csvRow(List<String> cells) => cells
     .map((c) {
@@ -40,8 +42,8 @@ String csvRow(List<String> cells) => cells
     .join(',');
 
 String _date(DateTime d) {
-  final u = d.toUtc();
-  return '${u.year.toString().padLeft(4, '0')}-${u.month.toString().padLeft(2, '0')}-${u.day.toString().padLeft(2, '0')}';
+  final l = d.toLocal();
+  return '${l.year.toString().padLeft(4, '0')}-${l.month.toString().padLeft(2, '0')}-${l.day.toString().padLeft(2, '0')}';
 }
 
 /// Export, preview and restore of the local backup file.
@@ -53,6 +55,7 @@ class BackupService {
     required this._safetyDir,
     required this._now,
     required this._appVersion,
+    this._sweepPhotos,
   });
 
   final HabitRepository repo;
@@ -62,7 +65,16 @@ class BackupService {
   final DateTime Function() _now;
   final Future<String> Function() _appVersion;
 
+  /// Removes the photos nothing refers to once a restore is done.
+  final Future<void> Function()? _sweepPhotos;
+
   static const _keepSafetyCopies = 3;
+
+  /// The photo names each safety copy refers to, by path, with the copy's
+  /// modified time and length when it was read. A copy is read again only once
+  /// it changes, not on every photo change or delete.
+  final _photosByCopy =
+      <String, ({DateTime modified, int size, Set<String> names})>{};
 
   Future<String> _encode() async => encodeBackup(
     await repo.snapshot(),
@@ -106,28 +118,38 @@ class BackupService {
   }
 
   /// Reads [text] without changing anything. Throws [FormatException] with a readable message.
-  BackupPreview preview(String text) {
-    final b = decodeBackup(text);
-    return BackupPreview(
-      habits: b.snapshot.habits.length,
-      entries: b.snapshot.entries.length,
-      exportedAt: b.exportedAt,
-      appVersion: b.appVersion,
-    );
-  }
+  BackupPreview preview(String text) => _previewOf(decodeBackup(text));
+
+  BackupPreview _previewOf(BackupData b) => BackupPreview(
+    habits: b.snapshot.habits.length,
+    entries: b.snapshot.entries.length,
+    exportedAt: b.exportedAt,
+    appVersion: b.appVersion,
+  );
 
   /// Replaces everything with the backup in [text]. The current data is saved
   /// to a safety file first, and nothing is touched if the file is not valid.
-  Future<void> restore(String text) async {
-    final backup = decodeBackup(text);
+  /// Then photos that neither the data nor a safety copy refers to are removed.
+  Future<void> restore(String text) async => _restore(decodeBackup(text));
+
+  Future<void> _restore(BackupData backup) async {
     await _saveSafetyCopy();
     await repo.replaceAll(backup.snapshot);
     await _applySettings(backup.settings);
+    await _sweepPhotos?.call();
   }
 
-  /// The copies made before restores, newest first. The order comes from when
-  /// each was written, not from its name: a phone clock that was wrong once
-  /// must not make an old copy look new.
+  static final _numbered = RegExp(r'-n(\d+)\.json$');
+
+  static int? _number(File f) {
+    final m = _numbered.firstMatch(p.basename(f.path));
+    return m == null ? null : int.tryParse(m[1]!);
+  }
+
+  /// The copies made before restores, newest first. Each copy is numbered one
+  /// above the copies before it, so the order never depends on the phone's
+  /// clock, which may have been wrong once. Copies from versions that did not
+  /// number them are older than any numbered one, and go by when they were written.
   Future<List<File>> _safetyCopies() async {
     final dir = await _safetyDir();
     if (!dir.existsSync()) return [];
@@ -142,6 +164,8 @@ class BackupService {
         .toList();
     DateTime when(File f) => f.statSync().modified;
     copies.sort((a, b) {
+      final (na, nb) = (_number(a), _number(b));
+      if (na != null || nb != null) return (nb ?? -1).compareTo(na ?? -1);
       final byTime = when(b).compareTo(when(a));
       return byTime != 0
           ? byTime
@@ -150,27 +174,72 @@ class BackupService {
     return copies;
   }
 
+  /// The photo names the copies made before restores refer to, so their
+  /// photos stay for "Undo the last restore". Null when a copy cannot be read,
+  /// since then which photos it needs is unknown.
+  Future<Set<String>?> photosInSafetyCopies() async {
+    try {
+      final copies = await _safetyCopies();
+      final paths = {for (final c in copies) c.path};
+      _photosByCopy.removeWhere((path, _) => !paths.contains(path));
+      final names = <String>{};
+      for (final copy in copies) {
+        // Read the time and length first: a write after this makes the next
+        // call read the copy again.
+        final stat = await copy.stat();
+        var known = _photosByCopy[copy.path];
+        if (known == null ||
+            known.modified != stat.modified ||
+            known.size != stat.size) {
+          final entries = decodeBackup(
+            await copy.readAsString(),
+            lenient: true,
+          ).snapshot.entries;
+          known = (
+            modified: stat.modified,
+            size: stat.size,
+            names: {
+              for (final e in entries)
+                if (e.photoPath != null) e.photoPath!,
+            },
+          );
+          _photosByCopy[copy.path] = known;
+        }
+        names.addAll(known.names);
+      }
+      return names;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Whether there is a copy of what was here before a restore.
   Future<bool> hasSafetyCopy() async => (await _safetyCopies()).isNotEmpty;
 
-  /// Puts back what was on the phone before the last restore. That itself saves
-  /// a copy first, so undoing twice goes back and forth.
-  Future<void> undoLastRestore() async {
+  /// The newest safety copy, read as this phone's own rows. A damaged one is
+  /// refused rather than passed over: an older copy would quietly put back the
+  /// wrong data. Throws [FormatException] with a message fit to show.
+  Future<BackupData> _lastSafetyCopy() async {
     final copies = await _safetyCopies();
     if (copies.isEmpty)
       throw const FormatException('There is nothing to undo.');
-    for (final copy in copies) {
-      final text = await copy.readAsString();
-      try {
-        decodeBackup(text);
-      } on FormatException {
-        continue;
-      }
-      await restore(text);
-      return;
+    try {
+      return decodeBackup(await copies.first.readAsString(), lenient: true);
+    } on Exception {
+      throw const FormatException(
+        'The copy from before the last restore is damaged, so it cannot be put back. Nothing was changed.',
+      );
     }
-    throw const FormatException('The safety copy is damaged.');
   }
+
+  /// What [undoLastRestore] would put back, for the confirmation step. Throws
+  /// [FormatException] as [undoLastRestore] does.
+  Future<BackupPreview> lastRestorePreview() async =>
+      _previewOf(await _lastSafetyCopy());
+
+  /// Puts back what was on the phone before the last restore. That itself saves
+  /// a copy first, so undoing twice goes back and forth.
+  Future<void> undoLastRestore() async => _restore(await _lastSafetyCopy());
 
   Future<void> _saveSafetyCopy() async {
     final dir = await _safetyDir();
@@ -179,13 +248,15 @@ class BackupService {
       RegExp(r'[:.]'),
       '-',
     );
-    final written = File(p.join(dir.path, 'before-restore-$stamp.json'));
+    final copies = await _safetyCopies();
+    final number = (copies.isEmpty ? 0 : _number(copies.first) ?? 0) + 1;
+    final written = File(
+      p.join(dir.path, 'before-restore-$stamp-n$number.json'),
+    );
     final tmp = File('${written.path}.tmp');
     await tmp.writeAsString(await _encode(), flush: true);
     await tmp.rename(written.path);
-    // Keep the copy just made, plus the newest of the others.
-    final others = (await _safetyCopies()).where((f) => f.path != written.path);
-    for (final old in others.skip(_keepSafetyCopies - 1)) {
+    for (final old in (await _safetyCopies()).skip(_keepSafetyCopies)) {
       await old.delete();
     }
   }

@@ -69,6 +69,16 @@ android {
     }
 }
 
+// Phones only: the workflow builds arm and arm64. A library that ships x86_64 code
+// (androidx datastore) would otherwise make the release APK look installable on an x86_64
+// device, where the app crashes because the Flutter engine is not in it. (abiFilters does
+// not remove it.) tool/check_apk_abis.sh fails the release build if one comes back.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll("lib/x86/**", "lib/x86_64/**")
+    }
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }

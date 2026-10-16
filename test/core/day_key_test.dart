@@ -120,6 +120,29 @@ void main() {
       );
     });
 
+    test(
+      'a month step too long for DateTime still lands on the end it points to',
+      () {
+        // Unchecked, these steps make DateTime throw or wrap round to the
+        // other end of the calendar, or back to this very month.
+        const d = DayKey(2026, 10, 17);
+        const first = DayKey(1, 1, 1);
+        const last = DayKey(9999, 12, 31);
+        for (final (n, end) in [
+          (200000, last),
+          (-200000, first),
+          (3300000, last),
+          (-3300000, first),
+          (4000000, last),
+          (-4000000, first),
+          (1 << 62, last),
+          (-(1 << 62), first),
+        ]) {
+          expect(d.monthStartPlus(n), end, reason: 'step $n');
+        }
+      },
+    );
+
     test('monthEnd is the last day, including leap February', () {
       expect(const DayKey(2026, 10, 3).monthEnd, const DayKey(2026, 10, 31));
       expect(const DayKey(2026, 12, 1).monthEnd, const DayKey(2026, 12, 31));
@@ -172,6 +195,73 @@ void main() {
         const DayKey(2026, 10, 12),
       );
       expect(const DayKey(2026, 10, 11).date, DateTime(2026, 10, 11));
+    });
+  });
+
+  group('range', () {
+    const first = DayKey(1, 1, 1);
+    const last = DayKey(9999, 12, 31);
+
+    void roundTrips(DayKey d) =>
+        expect(DayKey.tryParse(d.toString()), d, reason: d.toString());
+
+    test('stepping past either end stops at 0001-01-01 or 9999-12-31', () {
+      expect(first.addDays(-1), first);
+      expect(first.addDays(-1000000), first);
+      expect(const DayKey(2026, 10, 11).addDays(-1 << 40), first);
+      expect(last.addDays(1), last);
+      expect(const DayKey(2026, 10, 11).addDays(1 << 40), last);
+      expect(first.monthStartPlus(-1), first);
+      expect(last.monthStartPlus(1), last);
+      expect(const DayKey(2026, 10, 11).monthStartPlus(1 << 40), last);
+      expect(last.monthEnd, last);
+      expect(const DayKey(9999, 12, 5).monthEnd, last);
+      for (final d in [
+        first.addDays(-1),
+        last.addDays(1),
+        first.monthStartPlus(-1),
+        last.monthStartPlus(1),
+      ]) {
+        roundTrips(d);
+      }
+    });
+
+    test('a day built from out-of-range parts is clamped into a real day', () {
+      expect(const DayKey(0, 12, 31), first);
+      expect(const DayKey(-5, 6, 6), first);
+      expect(const DayKey(10000, 1, 1), last);
+      expect(const DayKey(2026, 2, 30), const DayKey(2026, 2, 28));
+      expect(const DayKey(2028, 2, 30), const DayKey(2028, 2, 29));
+      expect(const DayKey(2026, 4, 31), const DayKey(2026, 4, 30));
+      expect(const DayKey(2026, 13, 1), const DayKey(2026, 12, 1));
+      expect(const DayKey(2026, 0, 0), const DayKey(2026, 1, 1));
+      expect(DayKey.fromDate(DateTime.utc(-3, 4, 5)), first);
+      expect(DayKey.fromDate(DateTime.utc(12000, 4, 5)), last);
+      for (final d in const [
+        DayKey(0, 12, 31),
+        DayKey(10000, 1, 1),
+        DayKey(2026, 2, 30),
+        DayKey(1900, 2, 29),
+        DayKey(2026, 13, 0),
+      ]) {
+        roundTrips(d);
+      }
+    });
+
+    test('every day near both ends prints text that reads back as itself', () {
+      for (var n = -3; n <= 400; n++) {
+        roundTrips(first.addDays(n));
+        roundTrips(last.addDays(-n));
+      }
+    });
+
+    test('through ends at the last possible day', () {
+      // take() keeps a range that never ends from hanging the test.
+      expect(last.addDays(-2).through(last).take(5).toList(), [
+        last.addDays(-2),
+        last.addDays(-1),
+        last,
+      ]);
     });
   });
 }

@@ -266,12 +266,44 @@ void main() {
     });
   });
 
-  test('ids are 1, 2, 3 ... in time order, so they are unique and the plan is repeatable', () {
-    final habits = [for (var i = 0; i < 12; i++) remind('h$i', 8 * 60 + i)];
-    final a = plan(habits, days: 14);
-    expect(a.map((r) => r.id), [for (var i = 1; i <= a.length; i++) i]);
-    expect(plan(habits, days: 14).map((r) => r.id), a.map((r) => r.id));
+  test(
+    'ids are unique, below the snooze range, and the plan is repeatable',
+    () {
+      final habits = [for (var i = 0; i < 12; i++) remind('h$i', 8 * 60 + i)];
+      final a = plan(habits, days: 14);
+      expect(a.map((r) => r.id).toSet(), hasLength(a.length));
+      expect(a.every((r) => r.id > 0 && r.id < snoozeIdBase), isTrue);
+      expect(plan(habits, days: 14).map((r) => r.id), a.map((r) => r.id));
+    },
+  );
+
+  test('a re-plan keeps every reminder on its id, and never hands a fired '
+      "reminder's id to another", () {
+    // The plugin's cancel(id) also clears a notification already in the shade.
+    final habits = [remind('walk', 8 * 60), remind('read', 9 * 60)];
+    final morning = plan(habits, now: DateTime(2026, 10, 11, 7));
+    final later = plan(habits, now: DateTime(2026, 10, 11, 8, 10));
+    final walkToday = morning.first;
+    expect((walkToday.habitId, walkToday.forDay), ('walk', sun));
+    expect(later.map((r) => r.id), isNot(contains(walkToday.id)));
+    final before = {for (final r in morning) r.payload: r.id};
+    for (final r in later) {
+      expect(r.id, before[r.payload], reason: r.payload);
+    }
   });
+
+  test(
+    'two reminders whose ids clash get different ids, the same each time',
+    () {
+      // These two habit ids hash to the same reminder id on this day.
+      final habits = [remind('h44671', 8 * 60), remind('h15143', 8 * 60)];
+      Map<String?, int> ids(List<Habit> hs) => {
+        for (final r in plan(hs, days: 1)) r.habitId: r.id,
+      };
+      expect(ids(habits), {'h15143': 574542116, 'h44671': 574542117});
+      expect(ids(habits.reversed.toList()), ids(habits));
+    },
+  );
 
   test('the order is by time, so the soonest comes first', () {
     final p = plan([remind('b', 9 * 60), remind('a', 8 * 60)], days: 2);
@@ -342,8 +374,11 @@ void main() {
       expect(parseHabitPayload('habit:@2026-10-11'), isNull);
     });
 
-    test('a day that does not parse is dropped, not guessed', () {
-      expect(parseHabitPayload('habit:a@nonsense')!.day, isNull);
+    test('a day that does not parse makes the whole payload unreadable', () {
+      // Read as "no day", the Done button would mark today instead.
+      expect(parseHabitPayload('habit:a@nonsense'), isNull);
+      expect(parseHabitPayload('habit:a@'), isNull);
+      expect(parseHabitPayload('habit:a@2026-13-01'), isNull);
     });
   });
 
@@ -351,9 +386,7 @@ void main() {
     final many = [for (var i = 0; i < 60; i++) remind('h$i', 8 * 60)];
     final p = plan(many, days: 14);
     expect(p, hasLength(maxPlannedReminders));
-    expect(p.map((r) => r.id), [
-      for (var i = 1; i <= maxPlannedReminders; i++) i,
-    ]);
+    expect(p.map((r) => r.id).toSet(), hasLength(maxPlannedReminders));
     // soonest first: the dropped ones are the furthest away
     expect(p.last.when.isBefore(DateTime(2026, 10, 25)), isTrue);
     expect(p.first.when, DateTime(2026, 10, 11, 8));

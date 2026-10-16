@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../data/models.dart';
 
 /// The values on the add/edit screen, and the rules for turning them into a [Habit].
@@ -14,9 +16,13 @@ final class HabitForm {
     this.reminderMinutes,
     this.area = '',
     this.avoidMode = AvoidMode.track,
+    this.original,
   });
 
   static const maxNameLength = 60;
+  static const maxAreaLength = 40;
+  static const maxUnitLength = 12;
+  static const maxDescriptionLength = 200;
   static const maxGoal = 9999999.99;
 
   factory HabitForm.fromHabit(Habit h) {
@@ -34,6 +40,7 @@ final class HabitForm {
       reminderMinutes: rem != null && rem >= 0 && rem < 24 * 60 ? rem : null,
       area: h.area ?? '',
       avoidMode: h.avoidMode,
+      original: h,
     );
   }
 
@@ -54,6 +61,11 @@ final class HabitForm {
   final String area;
   final AvoidMode avoidMode;
 
+  /// The habit being edited. 2.0.2 had no limits on area, unit and note, so
+  /// its own text stays valid, and editing it is fine while it does not grow:
+  /// the limits apply only to new typing.
+  final Habit? original;
+
   /// An avoid habit that is ticked like a Do habit, or a Do habit.
   bool get logsSlips => kind == HabitKind.avoid && avoidMode == AvoidMode.track;
   bool get isNumber => !logsSlips && logType == LogType.number;
@@ -65,6 +77,20 @@ final class HabitForm {
       return 'Keep it under $maxNameLength characters';
     return null;
   }
+
+  static String? _tooLong(String text, int max, String? kept) =>
+      text.trim().length > math.max(max, kept?.trim().length ?? 0)
+      ? 'Keep it under $max characters'
+      : null;
+
+  String? get areaError => _tooLong(area, maxAreaLength, original?.area);
+
+  /// Only a number habit keeps its unit.
+  String? get unitError =>
+      isNumber ? _tooLong(unit, maxUnitLength, original?.unit) : null;
+
+  String? get descriptionError =>
+      _tooLong(description, maxDescriptionLength, original?.description);
 
   String? get daysError => logsSlips
       ? null
@@ -85,6 +111,8 @@ final class HabitForm {
     if (!isNumber) return null;
     if (goalText.trim().isEmpty) return null;
     final g = goal;
+    // The habit's own goal: 2.0.2 took any number of decimals and size.
+    if (g != null && g == original?.goal) return null;
     if (g == null || g <= 0) return 'Enter a number above zero';
     if ((g * 100 - (g * 100).round()).abs() > 1e-6) {
       return 'Use at most 2 decimal places';
@@ -94,7 +122,12 @@ final class HabitForm {
   }
 
   bool get isValid =>
-      nameError == null && daysError == null && goalError == null;
+      nameError == null &&
+      daysError == null &&
+      goalError == null &&
+      areaError == null &&
+      unitError == null &&
+      descriptionError == null;
 
   /// Applies the form to [base] (a new habit's blank, or the one being edited). Only call when [isValid].
   Habit toHabit(Habit base) {
@@ -146,5 +179,6 @@ final class HabitForm {
         : this.reminderMinutes,
     area: area ?? this.area,
     avoidMode: avoidMode ?? this.avoidMode,
+    original: original,
   );
 }

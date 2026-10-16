@@ -11,15 +11,25 @@ class DayDot {
     required this.day,
     required this.fraction,
     required this.isFuture,
+    this.detail,
+    this.notChecked = 0,
   });
   final DayKey day;
 
   /// Share of planned habits done, or null when nothing was planned.
   final double? fraction;
   final bool isFuture;
+
+  /// How a day with nothing planned went ("on track", "1 slip", "not
+  /// checked"), for a screen reader; null reads as nothing planned.
+  final String? detail;
+
+  /// Stay-clear habits not answered that day.
+  final int notChecked;
 }
 
-/// Seven days, Monday to Sunday, each with a small ring of how it went.
+/// Seven days, Monday to Sunday, each with a small ring of how it went, between
+/// buttons that move to the week before or after. Null turns a button off.
 class DayStrip extends StatelessWidget {
   const DayStrip({
     super.key,
@@ -27,20 +37,29 @@ class DayStrip extends StatelessWidget {
     required this.selected,
     required this.today,
     required this.onSelect,
+    required this.onPreviousWeek,
+    required this.onNextWeek,
   });
 
   final List<DayDot> days;
   final DayKey selected;
   final DayKey today;
   final ValueChanged<DayKey> onSelect;
+  final VoidCallback? onPreviousWeek;
+  final VoidCallback? onNextWeek;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 0),
       child: Row(
         children: [
+          _WeekButton(
+            icon: Icons.chevron_left_rounded,
+            tooltip: 'Previous week',
+            onPressed: onPreviousWeek,
+          ),
           for (final d in days)
             Expanded(
               child: _Cell(
@@ -51,10 +70,35 @@ class DayStrip extends StatelessWidget {
                 onTap: d.isFuture ? null : () => onSelect(d.day),
               ),
             ),
+          _WeekButton(
+            icon: Icons.chevron_right_rounded,
+            tooltip: 'Next week',
+            onPressed: onNextWeek,
+          ),
         ],
       ),
     );
   }
+}
+
+class _WeekButton extends StatelessWidget {
+  const _WeekButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    icon: Icon(icon),
+    tooltip: tooltip,
+    onPressed: onPressed,
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints(minWidth: 40, minHeight: 48),
+  );
 }
 
 class _Cell extends StatelessWidget {
@@ -78,7 +122,7 @@ class _Cell extends StatelessWidget {
     final pct = dot.fraction == null ? null : (dot.fraction! * 100).round();
     final label =
         '${isToday ? 'Today, ' : ''}${longDate(dot.day)}'
-        '${dot.isFuture ? '' : (pct == null ? ', nothing planned' : ', $pct percent done')}';
+        '${dot.isFuture ? '' : (pct == null ? ', ${dot.detail ?? 'nothing planned'}' : ', $pct percent done${dot.notChecked > 0 ? ', ${dot.notChecked} not checked' : ''}')}';
     return Semantics(
       button: onTap != null,
       selected: selected,
@@ -86,7 +130,7 @@ class _Cell extends StatelessWidget {
       excludeSemantics: true,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 1),
         child: Material(
           color: selected ? c.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(16),

@@ -2,7 +2,18 @@ import '../core/day_key.dart';
 import '../data/models.dart';
 import '../data/stats.dart';
 
-enum RowKind { todo, partial, done, skipped, onTrack, slipped }
+enum RowKind {
+  todo,
+  partial,
+  done,
+  skipped,
+  onTrack,
+  slipped,
+
+  /// A stay-clear habit on a past day the app never saw: nobody said whether
+  /// it went well, so the day is not counted until someone does.
+  unchecked,
+}
 
 /// One habit on one day, as the Today list shows it.
 final class HabitRow {
@@ -67,11 +78,15 @@ int _byPartThenOrder(HabitRow a, HabitRow b) {
   return o != 0 ? o : a.habit.name.compareTo(b.habit.name);
 }
 
+/// The list for [day]. [today] is the real day ([day] when not given): only it
+/// is still open, so a past day not done ends a row's streak.
 TodayView buildTodayView(
   Ledger l,
   DayKey day, {
+  DayKey? today,
   String query = '',
   int threshold = defaultStreakThreshold,
+  bool Function(String photoName)? photoExists,
 }) {
   final q = query.trim().toLowerCase();
   final toDo = <HabitRow>[];
@@ -88,7 +103,7 @@ TodayView buildTodayView(
             habit: h,
             entry: e,
             kind: RowKind.skipped,
-            streak: habitStreak(l, h, day).current,
+            streak: habitStreak(l, h, day, today: today).current,
           ),
         );
         continue;
@@ -99,17 +114,27 @@ TodayView buildTodayView(
           entry: e,
           kind: e?.state == EntryState.slipped
               ? RowKind.slipped
+              : day < (today ?? day) && !l.wasSeen(h.id, day)
+              ? RowKind.unchecked
               : RowKind.onTrack,
-          streak: habitStreak(l, h, day).current,
+          streak: habitStreak(l, h, day, today: today).current,
         ),
       );
       continue;
     }
-    if (!(h.isScheduledOn(day) || e != null) || !_matches(h, q)) continue;
+    // Listed as the day summary counts it: a slip on a Do habit (left by an
+    // edit from stay-clear) or a tick taken off that left data behind does
+    // not bring an unplanned day here.
+    final listed =
+        plannedNotDone(h, day, e) ||
+        e?.state == EntryState.done ||
+        e?.state == EntryState.skipped;
+    if (!listed || !_matches(h, q)) continue;
     final kind = switch (e?.state) {
       EntryState.done => RowKind.done,
       EntryState.skipped => RowKind.skipped,
-      EntryState.partial => RowKind.partial,
+      // Only an amount can be part of the way; any other kind is still to do.
+      EntryState.partial when h.logType == LogType.number => RowKind.partial,
       _ => RowKind.todo,
     };
     final history = l.entriesOf(h.id);
@@ -117,7 +142,7 @@ TodayView buildTodayView(
       habit: h,
       entry: e,
       kind: kind,
-      streak: habitStreak(l, h, day).current,
+      streak: habitStreak(l, h, day, today: today).current,
       lastValue: h.logType == LogType.number
           ? history
                 .where(
@@ -135,7 +160,8 @@ TodayView buildTodayView(
                   (x) =>
                       x.day <= day &&
                       x.photoPath != null &&
-                      x.state != EntryState.skipped,
+                      x.state != EntryState.skipped &&
+                      (photoExists?.call(x.photoPath!) ?? true),
                 )
                 .length
           : 0,

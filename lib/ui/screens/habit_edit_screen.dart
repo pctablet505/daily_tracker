@@ -34,6 +34,13 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
   final _goal = TextEditingController();
   final _area = TextEditingController();
 
+  // Where each error is drawn, to bring the first one into view on Save.
+  final _nameKey = GlobalKey();
+  final _numberKey = GlobalKey();
+  final _daysKey = GlobalKey();
+  final _areaKey = GlobalKey();
+  final _descriptionKey = GlobalKey();
+
   HabitForm _form = const HabitForm();
   Habit? _original;
   bool _loaded = false;
@@ -41,6 +48,10 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
   bool _showErrors = false;
   bool _saving = false;
   bool _notificationsBlocked = false;
+
+  /// "Pick days" is chosen. Kept apart from the mask, so picking all seven
+  /// days or Monday to Friday does not take the picker away.
+  bool _customDays = false;
 
   @override
   void initState() {
@@ -82,6 +93,8 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     _unit.text = f.unit;
     _goal.text = f.goalText;
     _area.text = f.area;
+    _customDays =
+        f.daysMask != Habit.everyDay && f.daysMask != Habit.weekdaysOnly;
     _loaded = true;
   }
 
@@ -132,9 +145,37 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     }
   }
 
+  /// The first error may be off screen: scroll to it, and say so.
+  void _showFirstError() {
+    final f = _form;
+    final key = [
+      (f.nameError, _nameKey),
+      (f.unitError ?? f.goalError, _numberKey),
+      (f.daysError, _daysKey),
+      (f.areaError, _areaKey),
+      (f.descriptionError, _descriptionKey),
+    ].firstWhere((e) => e.$1 != null).$2;
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 300);
+    // After this frame, which draws the error text.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = key.currentContext;
+      if (target != null && target.mounted) {
+        unawaited(Scrollable.ensureVisible(target, duration: duration));
+      }
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text('Check the fields marked in red.')),
+      );
+  }
+
   Future<void> _save() async {
     setState(() => _showErrors = true);
-    if (!_form.isValid || _saving) return;
+    if (_saving) return;
+    if (!_form.isValid) return _showFirstError();
     setState(() => _saving = true);
     final actions = ref.read(actionsProvider);
     try {
@@ -165,10 +206,9 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     if (_saving || _original == null) return;
     setState(() => _saving = true);
     try {
-      await ref.read(actionsProvider).archive(
-            _original!,
-            ref.read(todayProvider),
-          );
+      await ref
+          .read(actionsProvider)
+          .archive(_original!, ref.read(todayProvider));
       _dirty = false;
       _popOrHome();
     } catch (e) {
@@ -275,10 +315,12 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
     final f = _form;
     final editing = _original != null;
     final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
+    // A 2.0.2 area can be over the limit, and picking it would be refused.
     final areas = {
       ..._suggestedAreas,
       for (final h in ledger.value?.habits ?? const <Habit>[])
-        if (h.area != null) h.area!,
+        if (h.area != null && h.area!.trim().length <= HabitForm.maxAreaLength)
+          h.area!,
     }.toList();
 
     return PopScope(
@@ -321,298 +363,304 @@ class _HabitEditScreenState extends ConsumerState<HabitEditScreen>
         body: Column(
           children: [
             Expanded(
-              child: ListView(
+              // Not a lazy list: a field in error must exist to be scrolled to.
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                children: [
-                  TextField(
-                    controller: _name,
-                    textCapitalization: TextCapitalization.sentences,
-                    textInputAction: TextInputAction.next,
-                    maxLength: HabitForm.maxNameLength + 20,
-                    buildCounter: (
-                      _, {
-                      required currentLength,
-                      required isFocused,
-                      maxLength,
-                    }) => null,
-                    style: AppType.heading,
-                    decoration: InputDecoration(
-                      hintText: 'Name, e.g. Drink water',
-                      errorText: _showErrors ? f.nameError : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      key: _nameKey,
+                      controller: _name,
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.next,
+                      maxLength: HabitForm.maxNameLength + 20,
+                      buildCounter: (
+                        _, {
+                        required currentLength,
+                        required isFocused,
+                        maxLength,
+                      }) => null,
+                      style: AppType.heading,
+                      decoration: InputDecoration(
+                        hintText: 'Name, e.g. Drink water',
+                        errorText: _showErrors ? f.nameError : null,
+                      ),
+                      onChanged: (v) => _change((x) => x.copyWith(name: v)),
                     ),
-                    onChanged: (v) => _change((x) => x.copyWith(name: v)),
-                  ),
-                  const _Label('I want to'),
-                  _Options<HabitKind>(
-                    value: f.kind,
-                    options: const {
-                      HabitKind.build: 'Do this',
-                      HabitKind.avoid: 'Avoid this',
-                    },
-                    onChanged: (v) => _change((x) => x.copyWith(kind: v)),
-                  ),
-                  if (f.kind == HabitKind.avoid) ...[
-                    const _Label('How do you want to track it?'),
-                    _Options<AvoidMode>(
-                      value: f.avoidMode,
+                    const _Label('I want to'),
+                    _Options<HabitKind>(
+                      value: f.kind,
                       options: const {
-                        AvoidMode.track: 'Log slips only',
-                        AvoidMode.confirm: 'Tick it each day',
+                        HabitKind.build: 'Do this',
+                        HabitKind.avoid: 'Avoid this',
                       },
-                      onChanged: (v) =>
-                          _change((x) => x.copyWith(avoidMode: v)),
+                      onChanged: (v) => _change((x) => x.copyWith(kind: v)),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        f.avoidMode == AvoidMode.track
-                            ? 'Every day starts on track. You only tap Slipped when it happens, and an evening check-in asks how the day went.'
-                            : 'You tick it each day to confirm you stayed clear. A day you do not tick counts as missed.',
-                        style: AppType.small.copyWith(
-                          color: c.muted,
-                          height: 1.4,
+                    if (f.kind == HabitKind.avoid) ...[
+                      const _Label('How do you want to track it?'),
+                      _Options<AvoidMode>(
+                        value: f.avoidMode,
+                        options: const {
+                          AvoidMode.track: 'Log slips only',
+                          AvoidMode.confirm: 'Tick it each day',
+                        },
+                        onChanged: (v) =>
+                            _change((x) => x.copyWith(avoidMode: v)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          f.avoidMode == AvoidMode.track
+                              ? 'Every day starts on track. You only tap Slipped when it happens, and an evening check-in asks how the day went.'
+                              : 'You tick it each day to confirm you stayed clear. A day you do not tick counts as missed.',
+                          style: AppType.small.copyWith(
+                            color: c.muted,
+                            height: 1.4,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                  if (!f.logsSlips) ...[
-                    const _Label('How do you log it?'),
-                    _Options<LogType>(
-                      value: f.logType,
-                      options: const {
-                        LogType.tick: 'Tick',
-                        LogType.number: 'Number',
-                        LogType.note: 'Note',
-                        LogType.photo: 'Photo',
-                      },
-                      onChanged: (v) => _change((x) => x.copyWith(logType: v)),
-                    ),
-                    if (f.logType == LogType.number)
+                    ],
+                    if (!f.logsSlips) ...[
+                      const _Label('How do you log it?'),
+                      _Options<LogType>(
+                        value: f.logType,
+                        options: const {
+                          LogType.tick: 'Tick',
+                          LogType.number: 'Number',
+                          LogType.note: 'Note',
+                          LogType.photo: 'Photo',
+                        },
+                        onChanged: (v) =>
+                            _change((x) => x.copyWith(logType: v)),
+                      ),
+                      if (f.logType == LogType.number)
+                        Padding(
+                          key: _numberKey,
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _unit,
+                                  decoration: InputDecoration(
+                                    labelText: 'Unit',
+                                    hintText: 'glasses',
+                                    errorText: _showErrors ? f.unitError : null,
+                                  ),
+                                  onChanged: (v) =>
+                                      _change((x) => x.copyWith(unit: v)),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: _goal,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: InputDecoration(
+                                    labelText: 'Daily goal',
+                                    hintText: 'optional',
+                                    errorText: _showErrors ? f.goalError : null,
+                                  ),
+                                  onChanged: (v) =>
+                                      _change((x) => x.copyWith(goalText: v)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    if (!f.logsSlips) ...[
+                      const _Label('Repeats'),
+                      _Options<int>(
+                        key: _daysKey,
+                        value: _customDays ? -1 : f.daysMask,
+                        options: const {
+                          Habit.everyDay: 'Every day',
+                          Habit.weekdaysOnly: 'Weekdays',
+                          -1: 'Pick days',
+                        },
+                        onChanged: (v) => _change((x) {
+                          _customDays = v == -1;
+                          // The picker starts from the days already chosen.
+                          return _customDays ? x : x.copyWith(daysMask: v);
+                        }),
+                      ),
+                      if (_customDays)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _DayPicker(
+                            mask: f.daysMask,
+                            onChanged: (m) =>
+                                _change((x) => x.copyWith(daysMask: m)),
+                          ),
+                        ),
+                      if (_showErrors && f.daysError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            f.daysError!,
+                            style: AppType.small.copyWith(color: c.danger),
+                          ),
+                        ),
+                    ],
+                    if (editing)
                       Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          'Changing the days, or how you track it, applies to earlier days too, so past streaks can change.',
+                          style: AppType.small.copyWith(
+                            color: c.muted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    const _Label('Time of day'),
+                    _Options<DayPart>(
+                      value: f.dayPart,
+                      options: {
+                        for (final p in DayPart.values) p: dayPartName(p),
+                      },
+                      onChanged: (v) => _change((x) => x.copyWith(dayPart: v)),
+                    ),
+                    if (!f.logsSlips) ...[
+                      const SizedBox(height: 20),
+                      SurfaceCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _unit,
-                                decoration: const InputDecoration(
-                                  labelText: 'Unit',
-                                  hintText: 'glasses',
+                            // The card paints a background; ink needs its own Material above it.
+                            Material(
+                              type: MaterialType.transparency,
+                              child: SwitchListTile.adaptive(
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  f.reminderMinutes == null
+                                      ? 'Remind me'
+                                      : 'Remind me at ${formatMinutes(f.reminderMinutes!, use24h: use24h)}',
+                                  style: AppType.body,
                                 ),
-                                onChanged: (v) =>
-                                    _change((x) => x.copyWith(unit: v)),
+                                subtitle: Text(
+                                  f.reminderMinutes == null
+                                      ? 'A notification at a time you pick.'
+                                      : 'On the days it repeats. Quiet hours are respected.',
+                                  style: AppType.small.copyWith(color: c.muted),
+                                ),
+                                value: f.reminderMinutes != null,
+                                onChanged: _toggleReminder,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: _goal,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
+                            if (f.reminderMinutes != null)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: _pickTime,
+                                  icon: const Icon(Icons.schedule_rounded),
+                                  label: const Text('Change time'),
+                                ),
+                              ),
+                            if (_notificationsBlocked &&
+                                f.reminderMinutes != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.notifications_off_outlined,
+                                      size: 18,
+                                      color: c.amberInk,
                                     ),
-                                decoration: InputDecoration(
-                                  labelText: 'Daily goal',
-                                  hintText: 'optional',
-                                  errorText: _showErrors ? f.goalError : null,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Notifications are off for this app, so this reminder will not show.',
+                                        style: AppType.small.copyWith(
+                                          color: c.amberInk,
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => ref
+                                          .read(lockedProvider.notifier)
+                                          .runExternal(
+                                            openAppSettings,
+                                            opensActivity: true,
+                                          ),
+                                      child: const Text('Open settings'),
+                                    ),
+                                  ],
                                 ),
-                                onChanged: (v) =>
-                                    _change((x) => x.copyWith(goalText: v)),
                               ),
-                            ),
                           ],
                         ),
                       ),
-                  ],
-                  if (!f.logsSlips) ...[
-                    const _Label('Repeats'),
-                    _Options<int>(
-                      value: f.daysMask == Habit.everyDay
-                          ? Habit.everyDay
-                          : f.daysMask == Habit.weekdaysOnly
-                          ? Habit.weekdaysOnly
-                          : -1,
-                      options: const {
-                        Habit.everyDay: 'Every day',
-                        Habit.weekdaysOnly: 'Weekdays',
-                        -1: 'Pick days',
-                      },
-                      onChanged: (v) => _change(
-                        (x) => x.copyWith(
-                          daysMask: v == -1
-                              ? (x.daysMask == Habit.everyDay ||
-                                        x.daysMask == Habit.weekdaysOnly
-                                    ? 21
-                                    : x.daysMask)
-                              : v,
-                        ),
+                    ],
+                    const _Label('Area (optional)'),
+                    TextField(
+                      key: _areaKey,
+                      controller: _area,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: InputDecoration(
+                        hintText: 'Health, Mind, Work...',
+                        errorText: _showErrors ? f.areaError : null,
                       ),
+                      onChanged: (v) => _change((x) => x.copyWith(area: v)),
                     ),
-                    if (f.daysMask != Habit.everyDay &&
-                        f.daysMask != Habit.weekdaysOnly)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: _DayPicker(
-                          mask: f.daysMask,
-                          onChanged: (m) =>
-                              _change((x) => x.copyWith(daysMask: m)),
-                        ),
-                      ),
-                    if (_showErrors && f.daysError != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          f.daysError!,
-                          style: AppType.small.copyWith(color: c.danger),
-                        ),
-                      ),
-                  ],
-                  if (editing)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        'Changing the days, or how you track it, applies to earlier days too, so past streaks can change.',
-                        style: AppType.small.copyWith(
-                          color: c.muted,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  const _Label('Time of day'),
-                  _Options<DayPart>(
-                    value: f.dayPart,
-                    options: {
-                      for (final p in DayPart.values) p: dayPartName(p),
-                    },
-                    onChanged: (v) => _change((x) => x.copyWith(dayPart: v)),
-                  ),
-                  if (!f.logsSlips) ...[
-                    const SizedBox(height: 20),
-                    SurfaceCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      child: Column(
-                        children: [
-                          // The card paints a background; ink needs its own Material above it.
-                          Material(
-                            type: MaterialType.transparency,
-                            child: SwitchListTile.adaptive(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                f.reminderMinutes == null
-                                    ? 'Remind me'
-                                    : 'Remind me at ${formatMinutes(f.reminderMinutes!, use24h: use24h)}',
-                                style: AppType.body,
-                              ),
-                              subtitle: Text(
-                                f.reminderMinutes == null
-                                    ? 'A notification at a time you pick.'
-                                    : 'On the days it repeats. Quiet hours are respected.',
-                                style: AppType.small.copyWith(color: c.muted),
-                              ),
-                              value: f.reminderMinutes != null,
-                              onChanged: _toggleReminder,
-                            ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final a in areas)
+                          ActionChip(
+                            label: Text(a),
+                            onPressed: () {
+                              _area.text = a;
+                              _change((x) => x.copyWith(area: a));
+                            },
                           ),
-                          if (f.reminderMinutes != null)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: _pickTime,
-                                icon: const Icon(Icons.schedule_rounded),
-                                label: const Text('Change time'),
-                              ),
-                            ),
-                          if (_notificationsBlocked &&
-                              f.reminderMinutes != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.notifications_off_outlined,
-                                    size: 18,
-                                    color: c.amberInk,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Notifications are off for this app, so this reminder will not show.',
-                                      style: AppType.small.copyWith(
-                                        color: c.amberInk,
-                                      ),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => ref
-                                        .read(lockedProvider.notifier)
-                                        .runExternal(openAppSettings),
-                                    child: const Text('Open settings'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                      ],
+                    ),
+                    const _Label('Note to self (optional)'),
+                    TextField(
+                      key: _descriptionKey,
+                      controller: _description,
+                      minLines: 1,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Why this matters, or what counts',
+                        errorText: _showErrors ? f.descriptionError : null,
                       ),
+                      onChanged: (v) =>
+                          _change((x) => x.copyWith(description: v)),
                     ),
-                  ],
-                  const _Label('Area (optional)'),
-                  TextField(
-                    controller: _area,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      hintText: 'Health, Mind, Work...',
-                    ),
-                    onChanged: (v) => _change((x) => x.copyWith(area: v)),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      for (final a in areas)
-                        ActionChip(
-                          label: Text(a),
-                          onPressed: () {
-                            _area.text = a;
-                            _change((x) => x.copyWith(area: a));
-                          },
+                    if (editing) ...[
+                      const SizedBox(height: 28),
+                      if (!_original!.isArchived) ...[
+                        OutlinedButton.icon(
+                          onPressed: _saving ? null : _archiveHabit,
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          label: const Text('Archive, keep history'),
                         ),
-                    ],
-                  ),
-                  const _Label('Note to self (optional)'),
-                  TextField(
-                    controller: _description,
-                    minLines: 1,
-                    maxLines: 4,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Why this matters, or what counts',
-                    ),
-                    onChanged: (v) =>
-                        _change((x) => x.copyWith(description: v)),
-                  ),
-                  if (editing) ...[
-                    const SizedBox(height: 28),
-                    if (!_original!.isArchived) ...[
-                      OutlinedButton.icon(
-                        onPressed: _saving ? null : _archiveHabit,
-                        icon: const Icon(Icons.inventory_2_outlined),
-                        label: const Text('Archive, keep history'),
+                        const SizedBox(height: 8),
+                      ],
+                      TextButton.icon(
+                        style: TextButton.styleFrom(foregroundColor: c.danger),
+                        onPressed: _saving ? null : _deleteHabit,
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('Delete habit and history'),
                       ),
-                      const SizedBox(height: 8),
                     ],
-                    TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: c.danger),
-                      onPressed: _saving ? null : _deleteHabit,
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('Delete habit and history'),
-                    ),
                   ],
-                ],
+                ),
               ),
             ),
             SafeArea(
@@ -655,6 +703,7 @@ class _Label extends StatelessWidget {
 /// A row of mutually exclusive choices, drawn as bordered chips.
 class _Options<T> extends StatelessWidget {
   const _Options({
+    super.key,
     required this.value,
     required this.options,
     required this.onChanged,

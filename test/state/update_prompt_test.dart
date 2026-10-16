@@ -121,4 +121,44 @@ void main() {
     );
     expect((await p.releaseToOffer())?.version, '2.2.0');
   });
+
+  test('an offer the app gave up on (locked or left meanwhile) is checked again next time', () async {
+    final p = make();
+    expect(await p.releaseToOffer(recordOffer: false), release);
+    now = now.add(const Duration(minutes: 1));
+    expect(await p.releaseToOffer(recordOffer: false), release);
+    expect(checks, 2);
+    await p.markOffered(release.version);
+    now = now.add(const Duration(minutes: 1));
+    expect(await p.releaseToOffer(recordOffer: false), isNull);
+    expect(checks, 2, reason: 'shown, so the check counts');
+  });
+
+  test('a skipped version still counts as a check', () async {
+    final p = make();
+    await p.skip('2.1.0');
+    expect(await p.releaseToOffer(), isNull);
+    now = now.add(const Duration(hours: 1));
+    expect(await p.releaseToOffer(), isNull);
+    expect(checks, 1, reason: 'GitHub is not asked again for 12 hours');
+  });
+
+  test('a version offered lately still counts as a check', () async {
+    final p = make();
+    await p.markOffered('2.1.0');
+    now = now.add(const Duration(hours: 13));
+    expect(await p.releaseToOffer(), isNull);
+    now = now.add(const Duration(hours: 1));
+    expect(await p.releaseToOffer(), isNull);
+    expect(checks, 1, reason: 'GitHub is not asked again for 12 hours');
+  });
+
+  test('a check with nothing to offer still counts as a check', () async {
+    final p = make();
+    result = const UpToDate();
+    expect(await p.releaseToOffer(recordOffer: false), isNull);
+    now = now.add(const Duration(hours: 1));
+    expect(await p.releaseToOffer(recordOffer: false), isNull);
+    expect(checks, 1);
+  });
 }

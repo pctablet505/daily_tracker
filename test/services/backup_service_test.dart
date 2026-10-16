@@ -1,9 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/database.dart';
+import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
 import 'package:daily_tracker/services/backup_service.dart';
+import 'package:daily_tracker/services/photo_store.dart';
+import 'package:daily_tracker/state/actions.dart';
 import 'package:daily_tracker/state/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -166,6 +171,235 @@ void main() {
     expect((await repo.habits()).map((h) => h.id), contains('mine'));
   });
 
+  test('undo puts back the copy made last, even when the clock was ahead for an older one', () async {
+    var clock = now.add(const Duration(days: 9));
+    final s = BackupService(
+      repo: repo,
+      readSettings: () => settings,
+      applySettings: (_) async {},
+      safetyDir: () async => safety,
+      now: () => clock,
+      appVersion: () async => '2.0.0',
+    );
+    await seed();
+    final text = (await s.export()).text;
+    await repo.addHabit(habit('older'));
+    await s.restore(text);
+    for (final f in safety.listSync().whereType<File>()) {
+      f.setLastModifiedSync(DateTime.now().add(const Duration(days: 9)));
+    }
+    clock = now;
+    await repo.addHabit(habit('newer'));
+    await s.restore(text);
+
+    await s.undoLastRestore();
+    expect(
+      (await repo.habits()).map((h) => h.id),
+      allOf(contains('newer'), isNot(contains('older'))),
+    );
+  });
+
+  test('restores made in the same second each keep their own copy', () async {
+    await seed();
+    final text = (await service.export()).text;
+    await repo.addHabit(habit('first'));
+    await service.restore(text);
+    await repo.addHabit(habit('second'));
+    await service.restore(text);
+    expect(safety.listSync().whereType<File>(), hasLength(2));
+
+    await service.undoLastRestore();
+    expect((await repo.habits()).map((h) => h.id), contains('second'));
+  });
+
+  test(
+    'pruning keeps the three copies made last, whatever their times',
+    () async {
+      await seed();
+      final text = (await service.export()).text;
+      for (var i = 0; i < 5; i++) {
+        await repo.addHabit(habit('v$i'));
+        await service.restore(text);
+      }
+      final kept = [
+        for (final f in safety.listSync().whereType<File>())
+          decodeBackup(f.readAsStringSync()).snapshot.habits
+              .map((h) => h.id)
+              .where((id) => id.startsWith('v'))
+              .single,
+      ]..sort();
+      expect(kept, ['v2', 'v3', 'v4']);
+    },
+  );
+
+  test(
+    'when the newest safety copy is damaged, undo says so and changes nothing',
+    () async {
+      await seed();
+      final text = (await service.export()).text;
+      await repo.addHabit(habit('first'));
+      await service.restore(text);
+      final before = safety.listSync().map((f) => f.path).toSet();
+      await repo.addHabit(habit('second'));
+      await service.restore(text);
+      final newest = safety.listSync().whereType<File>().singleWhere(
+        (f) => !before.contains(f.path),
+      );
+
+      for (final damage in [
+        utf8.encode('{corrupt'),
+        [0xff, 0xfe, 0x00],
+      ]) {
+        newest.writeAsBytesSync(damage);
+        await expectLater(
+          service.undoLastRestore(),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('damaged'),
+            ),
+          ),
+        );
+        expect((await repo.habits()).map((h) => h.id).toSet(), {'a', 's'});
+      }
+    },
+  );
+
+  test('the copy an undo would put back can be previewed', () async {
+    await seed();
+    final text = (await service.export()).text;
+    await repo.addHabit(habit('mine'));
+    await service.restore(text);
+
+    final p = await service.lastRestorePreview();
+    expect((p.habits, p.entries, p.exportedAt), (3, 2, now));
+    expect(
+      (await repo.habits()).length,
+      2,
+      reason: 'previewing changes nothing',
+    );
+  });
+
+  test(
+    'previewing with no safety copy says there is nothing to undo',
+    () async {
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            'There is nothing to undo.',
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'previewing a damaged safety copy says it is damaged, as undo does',
+    () async {
+      await seed();
+      await service.restore((await service.export()).text);
+      safety.listSync().whereType<File>().single.writeAsStringSync('{corrupt');
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('damaged'),
+          ),
+        ),
+      );
+    },
+  );
+
+  group('a safety copy an older version wrote from its own rows', () {
+    // 2.0.2 took these in from backups, so its database (and the copy it saved
+    // before a restore) can hold them. The database reader mends them.
+    late String copy;
+    setUp(() async {
+      await repo.addHabit(habit('a', logType: LogType.number));
+      await repo.setEntry(
+        entry(
+          'a',
+          mon,
+          EntryState.partial,
+          2,
+        ).copyWith(photoPath: () => 'kept.jpg'),
+      );
+      final m =
+          jsonDecode((await service.export()).text) as Map<String, Object?>;
+      final h = (m['habits']! as List<Object?>).single! as Map<String, Object?>;
+      h.addAll({
+        'goal': 0,
+        'daysMask': 0,
+        'createdDay': '2026-10-10',
+        'endDay': '2026-10-07',
+      });
+      final entries = m['entries']! as List<Object?>;
+      (entries.single! as Map<String, Object?>)['loggedAt'] = 'yesterday';
+      entries.addAll([
+        {...entry('a', tue).toMap(), 'value': -1, 'photoPath': ' p.jpg'},
+        {...entry('a', const DayKey(1960, 1, 1)).toMap()},
+        {...entry('a', const DayKey(1969, 12, 31), EntryState.skipped).toMap()},
+      ]);
+      m['seenDays'] = ['1969-12-31', '1970-01-01'];
+      copy = jsonEncode(m);
+      File(p.join(safety.path, 'before-restore-2026-10-01T10-00-00-000Z.json'))
+          .writeAsStringSync(copy);
+      await repo.addHabit(habit('now'));
+    });
+
+    test('is previewed, undone and its photos known, mended as the database '
+        'reader mends it', () async {
+      final preview = await service.lastRestorePreview();
+      expect((preview.habits, preview.entries), (1, 3));
+      expect(await service.photosInSafetyCopies(), {'kept.jpg'});
+
+      await service.undoLastRestore();
+      final h = (await repo.habits()).single;
+      expect(
+        (h.id, h.goal, h.daysMask, h.endDay),
+        ('a', null, Habit.everyDay, const DayKey(2026, 10, 9)),
+      );
+      final e = await repo.entries();
+      expect(e.map((x) => (x.day, x.state, x.value, x.photoPath)), [
+        (const DayKey(1970, 1, 1), EntryState.skipped, null, null),
+        (mon, EntryState.partial, 2.0, 'kept.jpg'),
+        (tue, EntryState.done, null, null),
+      ]);
+      expect(e[1].loggedAt, DateTime.utc(2026, 10, 5));
+      expect(await repo.seenDays(), {const DayKey(1970, 1, 1)});
+    });
+
+    test('is still refused as a backup file to restore', () async {
+      await expectLater(service.restore(copy), throwsFormatException);
+      expect((await repo.habits()).map((h) => h.id), ['a', 'now']);
+    });
+
+    test('of the wrong shape is still damaged', () async {
+      for (final f in safety.listSync().whereType<File>()) {
+        f.writeAsStringSync(
+          '{"format": "daily-tracker-backup", "version": 1, "habits": 5}',
+        );
+      }
+      await expectLater(
+        service.lastRestorePreview(),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('damaged'),
+          ),
+        ),
+      );
+      expect(await service.photosInSafetyCopies(), isNull);
+    });
+  });
+
   test('a bad file is refused before anything is touched or saved', () async {
     await seed();
     await expectLater(service.restore('garbage'), throwsFormatException);
@@ -192,9 +426,206 @@ void main() {
 
     test('a cell that a spreadsheet would run as a formula is neutralised', () {
       expect(
-        csvRow(['=SUM(A1)', '+1', '-2', '@x', '\t=1', 'ok', ' =not a formula']),
-        "'=SUM(A1),'+1,'-2,'@x,'\t=1,ok, =not a formula",
+        csvRow(['=SUM(A1)', '+1', '-2', '@x', '\t=1', 'ok']),
+        "'=SUM(A1),'+1,'-2,'@x,'\t=1,ok",
       );
+    });
+
+    test('a formula behind leading spaces is neutralised too', () {
+      expect(
+        csvRow([' =CMD()', '   +1', ' @x', ' plain', 'a =b']),
+        "' =CMD(),'   +1,' @x, plain,a =b",
+      );
+    });
+  });
+
+  test(
+    'exported files are named for the local date, not the UTC one',
+    () async {
+      for (final local in [
+        DateTime(2026, 10, 12, 0, 30),
+        DateTime(2026, 10, 12, 23, 30),
+      ]) {
+        final s = BackupService(
+          repo: repo,
+          readSettings: () => settings,
+          applySettings: (_) async {},
+          safetyDir: () async => safety,
+          now: () => local,
+          appVersion: () async => '2.0.0',
+        );
+        expect(
+          (await s.export()).fileName,
+          'daily-tracker-backup-2026-10-12.json',
+        );
+        expect(
+          (await s.exportCsv()).fileName,
+          'daily-tracker-entries-2026-10-12.csv',
+        );
+      }
+    },
+  );
+
+  group('photos', () {
+    late Directory media;
+    late HabitActions actions;
+    late BackupService sweeping;
+
+    setUp(() async {
+      media = await Directory.systemTemp.createTemp('dt_media_');
+      addTearDown(() => media.delete(recursive: true));
+      late final BackupService s;
+      actions = HabitActions(
+        repo: repo,
+        photos: DiskPhotoStore(media),
+        now: () => now,
+        newId: () => 'x',
+        keptBySafetyCopies: () => s.photosInSafetyCopies(),
+      );
+      s = BackupService(
+        repo: repo,
+        readSettings: () => settings,
+        applySettings: (_) async {},
+        safetyDir: () async => safety,
+        now: () => now,
+        appVersion: () async => '2.0.0',
+        sweepPhotos: actions.sweepOrphanPhotos,
+      );
+      sweeping = s;
+    });
+
+    File photo(String name, {Duration age = const Duration(days: 1)}) =>
+        File(p.join(media.path, name))
+          ..writeAsBytesSync([1])
+          ..setLastModifiedSync(now.subtract(age));
+
+    Future<void> withPhoto(String name) async {
+      await repo.addHabit(habit('p', logType: LogType.photo));
+      await repo.setEntry(entry('p', mon).copyWith(photoPath: () => name));
+    }
+
+    String backupOf(List<Entry> entries) => encodeBackup(
+      Snapshot(
+        habits: [habit('p', logType: LogType.photo)],
+        entries: entries,
+        seenDays: const {},
+      ),
+      now: now,
+      appVersion: '2.0.0',
+    );
+
+    test('the safety copies name the photos they refer to; a damaged copy makes that unknown', () async {
+      await withPhoto('mine.jpg');
+      await service.restore(backupOf(const []));
+      expect(await service.photosInSafetyCopies(), {'mine.jpg'});
+      File(p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'))
+          .writeAsStringSync('{"format": "daily-tracker-backup"');
+      expect(await service.photosInSafetyCopies(), isNull);
+    });
+
+    group('the photo names of each safety copy are kept between calls', () {
+      late File copy;
+      late String text;
+      late DateTime written;
+      setUp(() async {
+        await withPhoto('p1.jpg');
+        await service.restore(backupOf(const []));
+        copy = safety.listSync().whereType<File>().single;
+        text = copy.readAsStringSync();
+        written = copy.lastModifiedSync();
+        expect(await service.photosInSafetyCopies(), {'p1.jpg'});
+      });
+
+      test('so an unchanged copy is not read again', () async {
+        // Same length and time: only a fresh read would see this damage.
+        copy
+          ..writeAsStringSync('x' * text.length)
+          ..setLastModifiedSync(written);
+        expect(await service.photosInSafetyCopies(), {'p1.jpg'});
+      });
+
+      test('but a copy written at another time is read again', () async {
+        copy
+          ..writeAsStringSync(text.replaceAll('p1.jpg', 'p2.jpg'))
+          ..setLastModifiedSync(written.add(const Duration(seconds: 1)));
+        expect(await service.photosInSafetyCopies(), {'p2.jpg'});
+      });
+
+      test('and a copy of another length is read again', () async {
+        copy
+          ..writeAsStringSync(text.replaceAll('p1.jpg', 'p22.jpg'))
+          ..setLastModifiedSync(written);
+        expect(await service.photosInSafetyCopies(), {'p22.jpg'});
+      });
+
+      test(
+        'a new copy adds its photos and a removed one takes them away',
+        () async {
+          final other = File(
+            p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'),
+          )..writeAsStringSync(text.replaceAll('p1.jpg', 'p3.jpg'));
+          expect(await service.photosInSafetyCopies(), {'p1.jpg', 'p3.jpg'});
+          copy.deleteSync();
+          expect(await service.photosInSafetyCopies(), {'p3.jpg'});
+          other.writeAsStringSync('{"format": "daily-tracker-backup"');
+          expect(await service.photosInSafetyCopies(), isNull);
+        },
+      );
+    });
+
+    test('a restore removes stored photos that neither the restored data nor a safety copy refers to', () async {
+      await withPhoto('mine.jpg');
+      final mine = photo('mine.jpg');
+      final stray = photo('stray.jpg');
+      final fresh = photo('fresh.jpg', age: const Duration(minutes: 5));
+      final restored = photo('restored.jpg');
+      final text = backupOf([
+        entry('p', tue).copyWith(photoPath: () => 'restored.jpg'),
+      ]);
+
+      await sweeping.restore(text);
+      expect(stray.existsSync(), isFalse);
+      expect(
+        (mine.existsSync(), fresh.existsSync(), restored.existsSync()),
+        (true, true, true),
+        reason: 'Undo needs mine; fresh may be for an entry being saved',
+      );
+
+      // Three more restores push out the copy that still refers to mine.
+      for (var i = 0; i < 3; i++) {
+        await sweeping.restore(text);
+      }
+      expect(mine.existsSync(), isFalse);
+      expect(restored.existsSync(), isTrue);
+    });
+
+    test('a restore removes no photo while a safety copy is damaged', () async {
+      final stray = photo('stray.jpg');
+      File(p.join(safety.path, 'before-restore-2020-01-01T00-00-00-000Z.json'))
+          .writeAsStringSync('not json');
+      await sweeping.restore(backupOf(const []));
+      expect(stray.existsSync(), isTrue);
+    });
+
+    test('a photo replaced after a restore is still there when the restore is undone', () async {
+      await withPhoto('mine.jpg');
+      final mine = photo('mine.jpg');
+      // An older backup from this phone, with the same photo.
+      await sweeping.restore(
+        backupOf([entry('p', mon).copyWith(photoPath: () => 'mine.jpg')]),
+      );
+      final camera = await Directory.systemTemp.createTemp('dt_camera_');
+      addTearDown(() => camera.delete(recursive: true));
+      final taken = File(p.join(camera.path, 'taken.jpg'))
+        ..writeAsBytesSync([2]);
+      await actions.logPhoto((await repo.habits()).single, mon, taken.path);
+      expect(mine.existsSync(), isTrue, reason: 'replaced');
+      await actions.finishDelete(await actions.deleteHabit('p'));
+      expect(mine.existsSync(), isTrue, reason: 'deleted with its habit');
+
+      await sweeping.undoLastRestore();
+      expect((await repo.entries()).single.photoPath, 'mine.jpg');
+      expect(mine.existsSync(), isTrue);
     });
   });
 }

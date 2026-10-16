@@ -43,6 +43,7 @@ final class DaySummary {
     required this.planned,
     required this.done,
     required this.slips,
+    required this.notChecked,
     required this.status,
   });
 
@@ -54,12 +55,19 @@ final class DaySummary {
 
   /// Slips logged on stay-clear habits.
   final int slips;
+
+  /// Stay-clear habits with no slip on a day the app did not see and that has
+  /// no entry of their own: how that day went for them is not known.
+  final int notChecked;
   final DayStatus status;
 
   double? get fraction => planned == 0 ? null : done / planned;
 
-  /// Everything planned was done and nothing was slipped.
-  bool get perfect => planned > 0 && done == planned && slips == 0;
+  /// Everything planned was done and nothing was slipped. With no Do habit
+  /// planned, a good day is perfect: the stay-clear habits held on a day the
+  /// app was seen.
+  bool get perfect =>
+      planned > 0 ? done == planned && slips == 0 : status == DayStatus.good;
 }
 
 /// All habits, entries and seen days, indexed for the counting functions.
@@ -96,8 +104,10 @@ final class Ledger {
     return days.values.toList()..sort((a, b) => a.day.compareTo(b.day));
   }
 
-  /// The app was opened (or a check-in answered) that day, or something was logged.
-  bool wasSeen(DayKey day) => _seen.contains(day) || _entryDays.contains(day);
+  /// The app was opened (or a check-in answered) that day, or the habit has
+  /// an entry of its own then. Another habit's entry says nothing about it.
+  bool wasSeen(String habitId, DayKey day) =>
+      _seen.contains(day) || (_byHabit[habitId]?.containsKey(day) ?? false);
 
   /// The earliest day anything happened, or null when there are no habits.
   DayKey? get firstDay {
@@ -117,7 +127,24 @@ final class Ledger {
 
   /// The earliest day that was seen or has an entry, or null if none.
   DayKey? get _firstActiveDay => _activeDays.firstOrNull;
+
+  /// The earliest day any habit started, or null when there are no habits.
+  late final DayKey? _firstStart = habits.fold<DayKey?>(
+    null,
+    (first, h) => first == null || h.createdDay < first ? h.createdDay : first,
+  );
 }
+
+/// Whether a Do habit's day that is not done still counts as planned: the
+/// habit runs that day, or an amount short of the goal was logged. Any other
+/// partial entry only keeps what the day held when it was taken off (a note
+/// or a photo, or an amount on a habit that no longer counts one), so it plans
+/// nothing the schedule does not.
+bool plannedNotDone(Habit h, DayKey day, Entry? e) =>
+    h.isScheduledOn(day) ||
+    (e?.state == EntryState.partial &&
+        h.logType == LogType.number &&
+        e?.value != null);
 
 DaySummary summarizeDay(
   Ledger l,
@@ -128,20 +155,26 @@ DaySummary summarizeDay(
   var planned = 0;
   var done = 0;
   var slips = 0;
-  var tracking = 0;
+  var keptClear = 0;
+  var notChecked = 0;
   for (final h in l.habits) {
     if (!h.isActiveOn(day)) continue;
     final e = l.entryOf(h.id, day);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      tracking++;
-      if (e?.state == EntryState.slipped) slips++;
+      if (e?.state == EntryState.slipped) {
+        slips++;
+      } else if (l.wasSeen(h.id, day)) {
+        keptClear++;
+      } else {
+        notChecked++;
+      }
       continue;
     }
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(day) || e?.state == EntryState.partial) {
+    } else if (plannedNotDone(h, day, e)) {
       planned++;
     }
   }
@@ -152,7 +185,7 @@ DaySummary summarizeDay(
         : DayStatus.missed;
   } else if (slips > 0) {
     status = DayStatus.missed;
-  } else if (tracking > 0 && l.wasSeen(day)) {
+  } else if (keptClear > 0) {
     status = DayStatus.good;
   } else {
     status = DayStatus.neutral;
@@ -162,6 +195,7 @@ DaySummary summarizeDay(
     planned: planned,
     done: done,
     slips: slips,
+    notChecked: notChecked,
     status: status,
   );
 }
@@ -173,8 +207,11 @@ int currentStreak(
   DayKey today, {
   int threshold = defaultStreakThreshold,
 }) {
-  final first = l._firstActiveDay;
-  if (first == null) return 0;
+  final seen = l._firstActiveDay;
+  final started = l._firstStart;
+  if (seen == null || started == null) return 0;
+  // Before the first habit started every day is neutral.
+  final first = seen > started ? seen : started;
   var n = 0;
   for (var d = today; d >= first; d = d.addDays(-1)) {
     final s = summarizeDay(l, d, threshold: threshold);
@@ -186,6 +223,8 @@ int currentStreak(
       case DayStatus.missed:
         if (d != today || (s.planned == 0 && s.slips > 0)) return n;
     }
+    // addDays stops at 0001-01-01, so that day would repeat for ever.
+    if (d == first) break;
   }
   return n;
 }
@@ -219,6 +258,8 @@ int bestStreak(
       case DayStatus.missed:
         run = 0;
     }
+    // addDays stops at 9999-12-31, so that day would repeat for ever.
+    if (d == today) break;
     d = d.addDays(1);
   }
   return best;
@@ -250,7 +291,7 @@ Ratio rateOver(
   return Ratio(done, planned);
 }
 
-/// Days in [from]..[to] on which every planned "Do" habit was done.
+/// Days in [from]..[to] that were [DaySummary.perfect].
 int perfectDays(Ledger l, DayKey from, DayKey to) =>
     from.through(to).where((d) => summarizeDay(l, d).perfect).length;
 
@@ -271,13 +312,16 @@ final class HabitStreak {
   String toString() => 'HabitStreak(current: $current, best: $best)';
 }
 
-/// One habit's streaks as of [today].
+/// One habit's streaks as of [day], looked at on [today] (the real day; [day]
+/// when not given).
 ///
 /// Do habit: consecutive planned days done; skipped days are passed over and
-/// [today], while still open, does not break the run.
+/// [today], while still open, does not break the run. A [day] before [today]
+/// is over, so missing it does.
 /// Stay-clear habit: days since the last slip, counting only days the app saw.
-HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
-  final last = (h.endDay != null && h.endDay! < today) ? h.endDay! : today;
+HabitStreak habitStreak(Ledger l, Habit h, DayKey day, {DayKey? today}) {
+  final open = today ?? day;
+  final last = (h.endDay != null && h.endDay! < day) ? h.endDay! : day;
   final entries = l.entriesOf(h.id);
   final DayKey? earliest = h.tracksSlips
       ? l._firstActiveDay
@@ -295,7 +339,7 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
       if (e?.state == EntryState.skipped) continue;
       if (e?.state == EntryState.slipped) {
         run = 0;
-      } else if (l.wasSeen(d)) {
+      } else if (l.wasSeen(h.id, d)) {
         run++;
         if (run > best) best = run;
       }
@@ -316,10 +360,11 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
       if (e?.state == EntryState.done) {
         run++;
         if (run > best) best = run;
-      } else if (h.isScheduledOn(d) && (d != today || h.isArchived)) {
+      } else if (h.isScheduledOn(d) && (d != open || h.isArchived)) {
         run = 0;
       }
     }
+    if (d == last) break;
     d = d.addDays(1);
   }
   return HabitStreak(current: run, best: best);
@@ -330,12 +375,20 @@ HabitStreak habitStreak(Ledger l, Habit h, DayKey today) {
 Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
   var done = 0;
   var planned = 0;
-  for (final d in from.through(to)) {
+  // Days before the habit started, and (for a stay-clear habit) before the
+  // app was first seen, count for nothing: start the walk after them.
+  var start = from < h.createdDay ? h.createdDay : from;
+  if (h.tracksSlips) {
+    final seen = l._firstActiveDay;
+    if (seen == null) return const Ratio(0, 0);
+    if (start < seen) start = seen;
+  }
+  for (final d in start.through(to)) {
     if (!h.isActiveOn(d)) continue;
     final e = l.entryOf(h.id, d);
     if (e?.state == EntryState.skipped) continue;
     if (h.tracksSlips) {
-      if (!l.wasSeen(d)) continue;
+      if (!l.wasSeen(h.id, d)) continue;
       planned++;
       if (e?.state != EntryState.slipped) done++;
       continue;
@@ -343,7 +396,7 @@ Ratio habitRate(Ledger l, Habit h, DayKey from, DayKey to) {
     if (e?.state == EntryState.done) {
       planned++;
       done++;
-    } else if (h.isScheduledOn(d) || e?.state == EntryState.partial) {
+    } else if (plannedNotDone(h, d, e)) {
       planned++;
     }
   }

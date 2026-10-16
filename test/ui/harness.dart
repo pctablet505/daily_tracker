@@ -52,7 +52,13 @@ final class NoPhotos implements PhotoStore {
   }
 
   @override
+  bool exists(String name) => false;
+
+  @override
   Future<void> delete(String name) async {}
+
+  @override
+  Future<Map<String, DateTime>> listStored() async => {};
 }
 
 /// The screens under test never reach the database: ledgers are overridden.
@@ -137,6 +143,19 @@ Ledger sampleLedger() {
     seenDays: [mon, tue, wed, thu, fri, sat, sun],
   );
 }
+
+/// Serves [before] until the first write, then [after]. Like the real ledger it
+/// reloads on every bump of the revision, which is what a write does.
+Override ledgerByRevision(Ledger before, Ledger after) =>
+    ledgerProvider.overrideWith(
+      (ref) async => ref.watch(revisionProvider) == 0 ? before : after,
+    );
+
+/// Bumps the revision as a write to the database does.
+void bumpRevision(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(MaterialApp)))
+        .read(revisionProvider.notifier)
+        .bump();
 
 Future<List<Override>> baseOverrides({
   Ledger? ledger,

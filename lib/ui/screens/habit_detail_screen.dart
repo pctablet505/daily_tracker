@@ -8,6 +8,7 @@ import '../../logic/habit_detail.dart';
 import '../../services/photo_store.dart';
 import '../../state/providers.dart';
 import '../format.dart';
+import '../root_routes.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
@@ -20,7 +21,9 @@ class HabitDetailScreen extends ConsumerWidget {
     final ledger = ref.watch(ledgerProvider);
     final today = ref.watch(todayProvider);
     final use24h = MediaQuery.alwaysUse24HourFormatOf(context);
+    // A write reloads the ledger; keep the page as it was meanwhile.
     return ledger.when(
+      skipLoadingOnReload: true,
       loading: () => Scaffold(
         appBar: AppBar(),
         body: const Center(child: CircularProgressIndicator()),
@@ -43,7 +46,12 @@ class HabitDetailScreen extends ConsumerWidget {
             ),
           );
         }
-        final d = buildHabitDetail(l, h, today);
+        final d = buildHabitDetail(
+          l,
+          h,
+          today,
+          photoExists: ref.watch(photoStoreProvider).exists,
+        );
         return Scaffold(
           appBar: AppBar(
             title: Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -76,11 +84,10 @@ class HabitDetailScreen extends ConsumerWidget {
               _Grid(days: d.recentDays),
               if (d.photos.isNotEmpty) ...[
                 SectionHeader(
-                  'Photos, ${d.photos.length}',
-                  trailing: d.photos.length > 30 ? 'latest 30' : null,
+                  'Photos, ${d.photoCount}',
                   padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
                 ),
-                _Photos(entries: d.photos.take(30).toList()),
+                _Photos(entries: d.photos),
               ],
               if (d.recent.isNotEmpty) ...[
                 const SectionHeader(
@@ -113,7 +120,15 @@ class HabitDetailScreen extends ConsumerWidget {
                                       ? null
                                       : d.recent[i].day,
                                 );
-                            context.go('/');
+                            // Opened above an unsaved form (a reminder tap), going
+                            // to Today would drop the form: go back to it instead.
+                            if (RootRoutesScope.maybeOf(context)
+                                    ?.wouldLoseSomething ??
+                                false) {
+                              context.pop();
+                            } else {
+                              context.go('/');
+                            }
                           },
                         ),
                     ],
@@ -155,7 +170,7 @@ class _Facts extends StatelessWidget {
       if (habit.reminderMinutes != null)
         'Reminder ${formatMinutes(habit.reminderMinutes!, use24h: use24h)}',
       if (habit.area != null) habit.area!,
-      if (habit.isArchived) 'Archived ${shortDate(ended!)}',
+      if (habit.isArchived) 'Last day ${shortDate(ended!)}',
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,6 +287,8 @@ class _Trend extends StatelessWidget {
     minY -= pad;
     maxY += pad;
     final change = detail.change30;
+    // Rounded as shown; a change that rounds to nothing is left out.
+    final changeText = change == null ? '0' : formatAmount(change.abs());
     return SurfaceCard(
       padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
       child: Column(
@@ -304,13 +321,9 @@ class _Trend extends StatelessWidget {
                         ),
                       ],
                     ),
-                    if (change != null)
+                    if (changeText != '0')
                       Text(
-                        '${change > 0
-                                ? '+'
-                                : change < 0
-                                ? '−'
-                                : ''}${formatAmount(change.abs())} ${habit.unit ?? ''} in 30 days'
+                        '${change! > 0 ? '+' : '−'}$changeText ${habit.unit ?? ''} in 30 days'
                             .trim(),
                         style: AppType.small.copyWith(
                           color: c.muted,
@@ -480,9 +493,18 @@ class _Grid extends StatelessWidget {
   }
 }
 
-class _Photos extends ConsumerWidget {
+/// The newest photos first, a page at a time.
+class _Photos extends ConsumerStatefulWidget {
   const _Photos({required this.entries});
   final List<Entry> entries;
+
+  @override
+  ConsumerState<_Photos> createState() => _PhotosState();
+}
+
+class _PhotosState extends ConsumerState<_Photos> {
+  static const _page = 30;
+  int _shown = _page;
 
   void _open(BuildContext context, PhotoStore store, Entry e) {
     showDialog<void>(
@@ -530,17 +552,18 @@ class _Photos extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final c = context.colors;
     final store = ref.watch(photoStoreProvider);
-    return GridView.count(
+    final entries = widget.entries;
+    final grid = GridView.count(
       crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 6,
       crossAxisSpacing: 6,
       children: [
-        for (final e in entries)
+        for (final e in entries.take(_shown))
           Semantics(
             button: true,
             label: 'Photo from ${shortDate(e.day)}',
@@ -560,6 +583,16 @@ class _Photos extends ConsumerWidget {
               ),
             ),
           ),
+      ],
+    );
+    if (entries.length <= _shown) return grid;
+    return Column(
+      children: [
+        grid,
+        TextButton(
+          onPressed: () => setState(() => _shown += _page),
+          child: const Text('Show more'),
+        ),
       ],
     );
   }
@@ -625,7 +658,12 @@ class _EntryTile extends StatelessWidget {
       _ =>
         v != null
             ? formatAmountUnit(v, habit.unit)
-            : (entry.note ?? (entry.photoPath != null ? 'Photo' : 'Done')),
+            : (entry.note ??
+                  (entry.photoPath != null
+                      ? 'Photo'
+                      : habit.tracksSlips
+                      ? 'Stayed clear'
+                      : 'Done')),
     };
     return DecoratedBox(
       decoration: BoxDecoration(

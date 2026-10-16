@@ -24,6 +24,26 @@ void main() {
       expect(tickEntry(tick, mon, entry('t', mon), now), isNull);
     });
 
+    test('taps off a done day that holds a photo, a note or an amount, keeping them', () {
+      // A photo, number or note habit edited to Tick keeps its done entries.
+      final held = Entry(
+        habitId: 't',
+        day: mon,
+        state: EntryState.done,
+        value: 5,
+        note: 'sunrise',
+        photoPath: 'a.jpg',
+        loggedAt: now,
+      );
+      final off = tickEntry(tick, mon, held, now);
+      expect(
+        (off?.state, off?.photoPath, off?.note, off?.value),
+        (EntryState.partial, 'a.jpg', 'sunrise', 5.0),
+      );
+      final on = tickEntry(tick, mon, off, now);
+      expect((on?.state, on?.photoPath), (EntryState.done, 'a.jpg'));
+    });
+
     test('a skipped day becomes done', () {
       expect(
         tickEntry(tick, mon, entry('t', mon, EntryState.skipped), now)?.state,
@@ -58,6 +78,28 @@ void main() {
         if (e != null) expect(e.value, c.$2);
       });
     }
+
+    test('clearing an amount keeps a note or a photo', () {
+      final e = numberEntry(
+        water,
+        mon,
+        0,
+        now,
+        existing: Entry(
+          habitId: 'w',
+          day: mon,
+          state: EntryState.done,
+          value: 8,
+          note: 'n',
+          photoPath: 'a.jpg',
+          loggedAt: now,
+        ),
+      );
+      expect(
+        (e?.state, e?.value, e?.note, e?.photoPath),
+        (EntryState.partial, null, 'n', 'a.jpg'),
+      );
+    });
   });
 
   group('logging a note', () {
@@ -75,6 +117,28 @@ void main() {
       expect(
         noteEntry(habit('j', logType: LogType.note), mon, '  \n', now),
         isNull,
+      );
+    });
+
+    test('blank text clears the note but keeps a photo or an amount', () {
+      final e = noteEntry(
+        habit('j', logType: LogType.note),
+        mon,
+        ' ',
+        now,
+        existing: Entry(
+          habitId: 'j',
+          day: mon,
+          state: EntryState.done,
+          value: 2,
+          note: 'old',
+          photoPath: 'a.jpg',
+          loggedAt: now,
+        ),
+      );
+      expect(
+        (e?.state, e?.note, e?.photoPath, e?.value),
+        (EntryState.partial, null, 'a.jpg', 2.0),
       );
     });
   });
@@ -98,12 +162,50 @@ void main() {
       expect(slipEntry(s, mon, e, now), isNull);
     });
 
+    test('"I stayed clear" logs that habit on track, and keeps a day already logged', () {
+      final clear = stayedClearEntry(s, mon, null, now);
+      expect(
+        (clear.habitId, clear.day, clear.state),
+        ('s', mon, EntryState.done),
+      );
+      final slipped = slipEntry(s, mon, null, now, note: 'after dinner')!;
+      expect(stayedClearEntry(s, mon, slipped, now), same(slipped));
+    });
+
     test('a slip keeps a note about what happened', () {
       expect(
         slipEntry(s, mon, null, now, note: ' after dinner ')?.note,
         'after dinner',
       );
       expect(slipEntry(s, mon, null, now, note: '  ')?.note, isNull);
+    });
+
+    test('taking back a slip on a day that holds a photo, a note or an amount keeps them on track', () {
+      // A photo, number or note habit edited to stay-clear keeps its entries.
+      final held = Entry(
+        habitId: 's',
+        day: mon,
+        state: EntryState.done,
+        value: 5,
+        note: 'sunrise',
+        photoPath: 'a.jpg',
+        loggedAt: now,
+      );
+      final slipped = slipEntry(s, mon, held, now);
+      expect(slipped?.state, EntryState.slipped);
+      final back = slipEntry(s, mon, slipped, now);
+      expect(
+        (back?.state, back?.photoPath, back?.note, back?.value),
+        (EntryState.done, 'a.jpg', 'sunrise', 5),
+      );
+      for (final only in [
+        held.copyWith(note: () => null, value: () => null),
+        held.copyWith(photoPath: () => null, value: () => null),
+        held.copyWith(photoPath: () => null, note: () => null),
+      ]) {
+        final undone = slipEntry(s, mon, slipEntry(s, mon, only, now), now);
+        expect(undone?.state, EntryState.done);
+      }
     });
   });
 
@@ -163,6 +265,32 @@ void main() {
       )!;
       expect(skipEntry(tick, mon, note, now)?.note, 'x');
     });
+
+    test(
+      'a day already logged cannot be set aside, so its tick is never lost',
+      () {
+        // The reproduction: tick, Skip this day, Count this day again.
+        final done = tickEntry(tick, mon, null, now)!;
+        expect(canSkipDay(tick, done), isFalse);
+        expect(
+          canSkipDay(water, entry('w', mon, EntryState.partial, 3)),
+          isFalse,
+        );
+        expect(canSkipDay(s, slipEntry(s, mon, null, now)), isFalse);
+      },
+    );
+
+    test('a day with nothing logged can be set aside and taken back', () {
+      expect(canSkipDay(tick, null), isTrue);
+      final skipped = skipEntry(tick, mon, null, now);
+      expect(canSkipDay(tick, skipped), isTrue);
+      expect(skipEntry(tick, mon, skipped, now), isNull);
+    });
+
+    test('a stay-clear day is only ever taken back, never set aside', () {
+      expect(canSkipDay(s, null), isFalse);
+      expect(canSkipDay(s, entry('s', mon, EntryState.skipped)), isTrue);
+    });
   });
 
   group('keeping what was already there', () {
@@ -189,21 +317,24 @@ void main() {
       );
     });
 
-    test('a photo keeps the note and value, and a note keeps the photo and value', () {
-      final before = Entry(
-        habitId: 'p',
-        day: mon,
-        state: EntryState.done,
-        value: 5,
-        note: 'sunrise',
-        photoPath: 'old.jpg',
-        loggedAt: now,
-      );
-      final p = habit('p', logType: LogType.photo);
-      final withPhoto = photoEntry(p, mon, 'new.jpg', now, existing: before);
-      expect((withPhoto.note, withPhoto.value), ('sunrise', 5.0));
-      final withNote = noteEntry(p, mon, 'cloudy', now, existing: before);
-      expect((withNote?.photoPath, withNote?.value), ('old.jpg', 5.0));
-    });
+    test(
+      'a photo keeps the note and value, and a note keeps the photo and value',
+      () {
+        final before = Entry(
+          habitId: 'p',
+          day: mon,
+          state: EntryState.done,
+          value: 5,
+          note: 'sunrise',
+          photoPath: 'old.jpg',
+          loggedAt: now,
+        );
+        final p = habit('p', logType: LogType.photo);
+        final withPhoto = photoEntry(p, mon, 'new.jpg', now, existing: before);
+        expect((withPhoto.note, withPhoto.value), ('sunrise', 5.0));
+        final withNote = noteEntry(p, mon, 'cloudy', now, existing: before);
+        expect((withNote?.photoPath, withNote?.value), ('old.jpg', 5.0));
+      },
+    );
   });
 }

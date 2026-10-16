@@ -24,6 +24,7 @@ void main() {
       planned: planned,
       done: done,
       slips: slips,
+      notChecked: 0,
       status: status,
     );
 
@@ -66,6 +67,18 @@ void main() {
 
     test('a future day is future whatever it holds', () {
       expect(heatLevel(day(4, 4), isFuture: true), HeatLevel.future);
+    });
+
+    test('today with nothing done and no slip is none, not missed', () {
+      HeatLevel today(DaySummary s) =>
+          heatLevel(s, isFuture: false, isToday: true);
+      expect(today(day(4, 0, status: DayStatus.missed)), HeatLevel.none);
+      expect(
+        today(day(4, 0, slips: 1, status: DayStatus.missed)),
+        HeatLevel.missed,
+      );
+      expect(today(day(4, 1, status: DayStatus.missed)), HeatLevel.low);
+      expect(today(day(0, 0)), HeatLevel.full, reason: 'stay-clear, held');
     });
   });
 
@@ -123,8 +136,30 @@ void main() {
       DayHeat at(int d) => cells.firstWhere((c) => c.day?.day == d);
       expect(at(5).level, HeatLevel.full);
       expect(at(6).level, HeatLevel.missed);
-      expect(at(11).level, HeatLevel.missed, reason: 'today, nothing done yet');
+      expect(at(11).level, HeatLevel.none, reason: 'today, nothing done yet');
       expect(at(12).level, HeatLevel.future);
+    });
+
+    test('today is drawn as missed only once something on it went wrong', () {
+      final hs = [habit('a'), habit('b'), stayClear('s')];
+      DayHeat today(List<Entry> entries) => monthGrid(
+        ledger(hs, entries, [sun]),
+        2026,
+        10,
+        today: sun,
+      ).firstWhere((c) => c.day == sun);
+      expect(today([]).level, HeatLevel.none);
+      expect(today([entry('a', sun)]).level, HeatLevel.mid);
+      expect(today([slip('s', sun)]).level, HeatLevel.missed);
+      expect(
+        monthGrid(
+          ledger(hs),
+          2026,
+          10,
+          today: mon,
+        ).firstWhere((c) => c.day == sun).level,
+        HeatLevel.future,
+      );
     });
 
     test('days before anything existed are none', () {
@@ -167,19 +202,85 @@ void main() {
       expect(needsAttention(l, mon, sun), isEmpty);
     });
 
-    test('respects the limit and leaves out stay-clear and archived habits', () {
-      final l = ledger([
-        habit('a'),
-        habit('b'),
-        habit('c'),
-        habit('d'),
-        habit('archived', end: sat),
-        stayClear('s'),
-      ]);
-      expect(needsAttention(l, mon, sun, limit: 2).length, 2);
-      final all = needsAttention(l, mon, sun, limit: 9).map((i) => i.habit.id);
-      expect(all, isNot(contains('s')));
-      expect(all, isNot(contains('archived')));
+    test(
+      'respects the limit and leaves out stay-clear and archived habits',
+      () {
+        final l = ledger([
+          habit('a'),
+          habit('b'),
+          habit('c'),
+          habit('d'),
+          habit(
+            'archived',
+            created: const DayKey(2026, 9, 1),
+            end: const DayKey(2026, 10, 4),
+          ),
+          stayClear('s'),
+        ]);
+        expect(needsAttention(l, mon, sun, limit: 2).length, 2);
+        final all = needsAttention(
+          l,
+          mon,
+          sun,
+          limit: 9,
+        ).map((i) => i.habit.id);
+        expect(all, isNot(contains('s')));
+        expect(all, isNot(contains('archived')));
+      },
+    );
+
+    test(
+      'a habit archived since is still judged on the month it was active',
+      () {
+        const sep1 = DayKey(2026, 9, 1);
+        const sep30 = DayKey(2026, 9, 30);
+        final a = habit('a', created: sep1, end: const DayKey(2026, 10, 4));
+        final l = ledger([a], [entry('a', sep1)]);
+        expect(
+          needsAttention(l, sep1, sep30).map((i) => (i.habit.id, i.ratio)),
+          [('a', const Ratio(1, 30))],
+        );
+      },
+    );
+
+    test(
+      'a habit archived inside the month is judged on the days it was active',
+      () {
+        const sep1 = DayKey(2026, 9, 1);
+        final a = habit('a', created: sep1, end: const DayKey(2026, 9, 20));
+        final l = ledger([a], [entry('a', sep1)]);
+        expect(
+          needsAttention(
+            l,
+            sep1,
+            const DayKey(2026, 9, 30),
+          ).map((i) => (i.habit.id, i.ratio)),
+          [('a', const Ratio(1, 20))],
+        );
+      },
+    );
+
+    test('today, still open and not done, is not held against a habit', () {
+      final a = habit('a'); // done Mon and Tue; Wednesday is today
+      final l = ledger([a], [entry('a', mon), entry('a', tue)]);
+      expect(needsAttention(l, mon, wed, today: wed), isEmpty);
+      final b = habit('b'); // done Mon and Wed, missed Tue; Thursday is today
+      final m = ledger([b], [entry('b', mon), entry('b', wed)]);
+      expect(
+        needsAttention(m, mon, thu, today: thu).single.ratio,
+        const Ratio(2, 3),
+      );
+      final done = ledger([b], [entry('b', mon), entry('b', thu)]);
+      expect(
+        needsAttention(done, mon, thu, today: thu).single.ratio,
+        const Ratio(2, 4),
+        reason: 'today counts once it is done',
+      );
+      expect(
+        needsAttention(m, mon, thu).single.ratio,
+        const Ratio(2, 4),
+        reason: 'without a today every day counts, as before',
+      );
     });
 
     test('a stay-clear habit with slips is not listed here', () {
@@ -221,10 +322,7 @@ void main() {
     });
 
     test('breaks ties alphabetically by area name', () {
-      final l = ledger([
-        habit('a', area: 'Work'),
-        habit('b', area: 'Body'),
-      ]);
+      final l = ledger([habit('a', area: 'Work'), habit('b', area: 'Body')]);
       expect(areaRates(l, mon, tue).map((x) => x.area), ['Body', 'Work']);
     });
 
@@ -234,6 +332,26 @@ void main() {
         stayClear('s').copyWith(area: () => 'Mind'),
       ]);
       expect(areaRates(l, mon, sat), isEmpty);
+    });
+
+    test('today, still open and not done, is not held against an area', () {
+      final l = ledger(
+        [habit('a', area: 'Health'), habit('b', area: 'Health')],
+        [entry('a', mon), entry('a', tue), entry('b', mon), entry('b', wed)],
+      );
+      // Wednesday morning: b is done, a is not yet.
+      expect(
+        areaRates(l, mon, wed, today: wed).single.ratio,
+        const Ratio(4, 5),
+      );
+      // The first morning, nothing done yet: no bar rather than 0%.
+      final first = ledger([habit('a', area: 'Health')]);
+      expect(areaRates(first, mon, mon, today: mon), isEmpty);
+      expect(
+        areaRates(l, mon, wed).single.ratio,
+        const Ratio(4, 6),
+        reason: 'without a today every day counts, as before',
+      );
     });
   });
 

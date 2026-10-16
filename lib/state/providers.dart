@@ -9,9 +9,11 @@ import '../core/day_key.dart';
 import '../data/repository.dart';
 import '../data/stats.dart';
 import '../logic/today_view.dart';
+import '../services/lock.dart';
 import '../services/notifications.dart';
 import '../services/photo_store.dart';
 import 'actions.dart';
+import 'services.dart';
 import 'settings.dart';
 
 /// Set in `main` (and in tests) before anything reads them.
@@ -28,6 +30,11 @@ final photoStoreProvider = Provider<PhotoStore>(
 
 /// The current time. Tests replace it.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// Time since the phone started, which the user cannot set; null when unknown.
+final elapsedRealtimeProvider = Provider<Future<Duration?> Function()>(
+  (ref) => elapsedRealtime,
+);
 
 /// Counts writes. Anything that reads stored data watches it, so no screen goes stale.
 class RevisionNotifier extends Notifier<int> {
@@ -98,9 +105,8 @@ class SettingsNotifier extends Notifier<Settings> {
     final prefs = ref.read(sharedPrefsProvider);
     final prev = _writing ?? Future<void>.value();
     final run = prev.then((_) => next.write(prefs));
-    _writing = run.whenComplete(() {
-      if (identical(_writing, run)) _writing = null;
-    });
+    // Only this call's caller gets a failure; the next write still runs.
+    _writing = run.then<void>((_) {}, onError: (Object _) {});
     return run;
   }
 }
@@ -150,23 +156,39 @@ final searchQueryProvider = NotifierProvider<SearchQueryNotifier, String>(
 
 final todayViewProvider = Provider<AsyncValue<TodayView>>((ref) {
   final day = ref.watch(shownDayProvider);
+  final today = ref.watch(todayProvider);
   final query = ref.watch(searchQueryProvider);
   final threshold = ref.watch(
     settingsProvider.select((s) => s.streakThreshold),
   );
-  return ref
-      .watch(ledgerProvider)
-      .whenData(
-        (l) => buildTodayView(l, day, query: query, threshold: threshold),
-      );
+  final photos = ref.watch(photoStoreProvider);
+  var ledger = ref.watch(ledgerProvider);
+  // Every write reloads the ledger. Keep the last one meanwhile, so the screens
+  // do not drop to a spinner and the celebration can compare before and after.
+  if (ledger.isReloading && ledger.hasValue) {
+    ledger = AsyncData(ledger.requireValue);
+  }
+  return ledger.whenData(
+    (l) => buildTodayView(
+      l,
+      day,
+      today: today,
+      query: query,
+      threshold: threshold,
+      photoExists: photos.exists,
+    ),
+  );
 });
 
-final actionsProvider = Provider<HabitActions>((ref) {
+// Typed by hand: it and backupServiceProvider refer to each other.
+final Provider<HabitActions> actionsProvider = Provider((ref) {
   return HabitActions(
     repo: ref.watch(repositoryProvider),
     photos: ref.watch(photoStoreProvider),
     now: ref.watch(clockProvider),
     newId: () => const Uuid().v4(),
+    keptBySafetyCopies: () =>
+        ref.read(backupServiceProvider).photosInSafetyCopies(),
   );
 });
 

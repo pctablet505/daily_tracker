@@ -3,7 +3,36 @@
 /// Every "which day is this" question in the app goes through this type, so a
 /// day can never be confused with a timestamp and DST cannot shift it.
 final class DayKey implements Comparable<DayKey> {
-  const DayKey(this.year, this.month, this.day);
+  /// Parts outside 0001-01-01 ... 9999-12-31 give that range's nearest end, and
+  /// a month or day past its end is held to it, so every key prints as text
+  /// that [parse] reads back to the same key.
+  const DayKey(int year, int month, int day)
+    : this._inYear(
+        year < 1 ? 1 : (year > 9999 ? 9999 : year),
+        year < 1
+            ? 1
+            : (year > 9999 ? 12 : (month < 1 ? 1 : (month > 12 ? 12 : month))),
+        year < 1 ? 1 : (year > 9999 ? 31 : day),
+      );
+
+  const DayKey._inYear(int year, int month, int day)
+    : this._inMonth(
+        year,
+        month,
+        day,
+        month == 2
+            ? (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) ? 29 : 28)
+            : (month == 4 || month == 6 || month == 9 || month == 11 ? 30 : 31),
+      );
+
+  const DayKey._inMonth(this.year, this.month, int day, int lastDay)
+    : day = day < 1 ? 1 : (day > lastDay ? lastDay : day);
+
+  /// More days, and months, than lie between 0001-01-01 and 9999-12-31: a
+  /// step this long already reaches an end, and a longer one would leave the
+  /// range [DateTime] can hold.
+  static const _maxDays = 4000000;
+  static const _maxMonths = 130000;
 
   /// The local calendar day of [date].
   factory DayKey.fromDate(DateTime date) =>
@@ -36,20 +65,21 @@ final class DayKey implements Comparable<DayKey> {
   /// 1 = Monday ... 7 = Sunday, as in [DateTime.weekday].
   int get weekday => DateTime.utc(year, month, day).weekday;
 
-  /// The day [n] calendar days later (earlier when negative). DST-safe.
+  /// The day [n] calendar days later (earlier when negative). DST-safe. Stops
+  /// at 0001-01-01 and 9999-12-31.
   DayKey addDays(int n) {
-    final d = DateTime.utc(year, month, day + n);
+    final d = DateTime.utc(year, month, day + n.clamp(-_maxDays, _maxDays));
     return DayKey(d.year, d.month, d.day);
   }
 
   /// The first day of the month [n] months after this day's month (before, when negative).
   DayKey monthStartPlus(int n) {
-    final d = DateTime.utc(year, month + n, 1);
+    final d = DateTime.utc(year, month + n.clamp(-_maxMonths, _maxMonths), 1);
     return DayKey(d.year, d.month, 1);
   }
 
   /// The last day of this day's month.
-  DayKey get monthEnd => monthStartPlus(1).addDays(-1);
+  DayKey get monthEnd => DayKey(year, month, 31);
 
   /// Whole calendar days from this day to [other] (negative when [other] is earlier).
   int daysUntil(DayKey other) => DateTime.utc(
@@ -62,6 +92,8 @@ final class DayKey implements Comparable<DayKey> {
   Iterable<DayKey> through(DayKey last) sync* {
     for (var d = this; d <= last; d = d.addDays(1)) {
       yield d;
+      // addDays stops at 9999-12-31, so that day would repeat for ever.
+      if (d == last) return;
     }
   }
 

@@ -5,8 +5,17 @@ import '../data/stats.dart';
 /// How a day is drawn on the calendar heat map.
 enum HeatLevel { none, missed, low, mid, full, future }
 
-HeatLevel heatLevel(DaySummary s, {required bool isFuture}) {
+/// [isToday]: the day is still open, so with nothing done and no slip yet it
+/// is not drawn as missed.
+HeatLevel heatLevel(
+  DaySummary s, {
+  required bool isFuture,
+  bool isToday = false,
+}) {
   if (isFuture) return HeatLevel.future;
+  if (isToday && s.planned > 0 && s.done == 0 && s.slips == 0) {
+    return HeatLevel.none;
+  }
   if (s.planned == 0) {
     return switch (s.status) {
       DayStatus.good => HeatLevel.full,
@@ -50,7 +59,7 @@ List<DayHeat> monthGrid(
     cells.add(
       DayHeat(
         day: d,
-        level: heatLevel(s, isFuture: d > today),
+        level: heatLevel(s, isFuture: d > today, isToday: d == today),
         summary: s,
       ),
     );
@@ -66,19 +75,31 @@ final class AttentionItem {
 
 /// The Do habits with the lowest done-rate over [from]..[to]. Habits planned
 /// fewer than [minPlanned] times are left out (too little to judge), as are
-/// those with a perfect record.
+/// those with a perfect record and those that ended before [from]. [today],
+/// while not done, is still open and is not counted against a habit.
 List<AttentionItem> needsAttention(
   Ledger l,
   DayKey from,
   DayKey to, {
   int limit = 3,
   int minPlanned = 3,
+  DayKey? today,
 }) {
+  Ratio rate(Habit h) {
+    final r = habitRate(l, h, from, to);
+    if (today == null || today < from || today > to) return r;
+    final open = habitRate(l, h, today, today);
+    return open.done < open.planned
+        ? Ratio(r.done, r.planned - open.planned)
+        : r;
+  }
+
   final items =
       <AttentionItem>[
             for (final h in l.habits)
-              if (!h.tracksSlips && !h.isArchived)
-                AttentionItem(h, habitRate(l, h, from, to)),
+              if (!h.tracksSlips &&
+                  (h.isActiveOn(to) || (h.endDay != null && h.endDay! >= from)))
+                AttentionItem(h, rate(h)),
           ]
           .where(
             (i) =>
@@ -99,12 +120,18 @@ final class AreaRate {
 }
 
 /// Done-out-of-planned per area over [from]..[to], best first. Habits with no area are "Other".
-List<AreaRate> areaRates(Ledger l, DayKey from, DayKey to) {
+/// [today], while not done, is still open and is not counted, as in [needsAttention].
+List<AreaRate> areaRates(Ledger l, DayKey from, DayKey to, {DayKey? today}) {
   final done = <String, int>{};
   final planned = <String, int>{};
+  final open = today != null && today >= from && today <= to;
   for (final h in l.habits) {
     if (h.tracksSlips) continue;
-    final r = habitRate(l, h, from, to);
+    var r = habitRate(l, h, from, to);
+    if (open) {
+      final t = habitRate(l, h, today, today);
+      if (t.done < t.planned) r = Ratio(r.done, r.planned - t.planned);
+    }
     final key = h.area ?? 'Other';
     done[key] = (done[key] ?? 0) + r.done;
     planned[key] = (planned[key] ?? 0) + r.planned;

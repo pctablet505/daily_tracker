@@ -123,7 +123,7 @@ void main() {
       await n.unlockWithPin('1234');
 
       // Fire-and-forget intent returns before Android pauses the activity.
-      await n.runExternal(() async => true);
+      await n.runExternal(() async => true, opensActivity: true);
       now = now.add(const Duration(milliseconds: 100));
       n.paused();
       now = now.add(const Duration(seconds: 30));
@@ -215,8 +215,8 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => Habit.fromMap({...validHabit, 'endDay': '1999-01-01'}),
-        throwsFormatException,
+        Habit.fromMap({...validHabit, 'endDay': '1999-01-01'}).endDay,
+        mon.addDays(-1),
       );
       expect(
         Habit.fromMap({...validHabit, 'reminderMinutes': 1440}).reminderMinutes,
@@ -435,7 +435,7 @@ void main() {
       expect(await repo.entries(), isEmpty);
     });
 
-    test('BackupService.exportCsv sanitizes newline formula injection and BackupService.undoLastRestore skips corrupt files', () async {
+    test('BackupService.exportCsv sanitizes newline formula injection and BackupService.undoLastRestore refuses a corrupt newest copy', () async {
       final db = await openAppDatabase(databaseFactoryFfi, inMemoryDatabasePath);
       addTearDown(db.close);
       final repo = HabitRepository(db);
@@ -473,8 +473,8 @@ void main() {
 
       await repo.deleteHabit('h1');
       expect(await repo.habits(), isEmpty);
-      await svc.undoLastRestore();
-      expect(await repo.habits(), hasLength(1));
+      await expectLater(svc.undoLastRestore(), throwsFormatException);
+      expect(await repo.habits(), isEmpty);
     });
 
     test('parseRelease refuses non-HTTPS apkUrl and strips non-HTTPS sha256Url', () {

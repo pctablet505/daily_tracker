@@ -1,8 +1,12 @@
 import 'dart:io';
 
+import 'package:daily_tracker/core/day_key.dart';
+import 'package:daily_tracker/data/backup_codec.dart';
 import 'package:daily_tracker/data/database.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/repository.dart';
+import 'package:daily_tracker/services/backup_service.dart';
+import 'package:daily_tracker/state/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -13,11 +17,12 @@ void main() {
   sqfliteFfiInit();
   final factory = databaseFactoryFfi;
 
+  late Database db;
   late HabitRepository repo;
   late int changes;
 
   setUp(() async {
-    final db = await openAppDatabase(factory, inMemoryDatabasePath);
+    db = await openAppDatabase(factory, inMemoryDatabasePath);
     changes = 0;
     repo = HabitRepository(db, onChanged: () => changes++);
     addTearDown(db.close);
@@ -39,48 +44,168 @@ void main() {
       },
     );
 
+    test('update changes the stored habit and reconciles entry states when goal or logType changes', () async {
+      final a = await repo.addHabit(
+        habit('a', logType: LogType.number, goal: 8),
+      );
+      await repo.setEntry(entry('a', mon, EntryState.partial, 4));
+      await repo.setEntry(entry('a', tue, EntryState.done, 8));
+      await repo.updateHabit(
+        a.copyWith(name: 'Renamed', reminderMinutes: () => 480, goal: () => 4),
+      );
+      final back = (await repo.habits()).single;
+      expect((back.name, back.reminderMinutes), ('Renamed', 480));
+      expect(
+        (await repo.entries(habitId: 'a', from: mon, to: mon)).single.state,
+        EntryState.done,
+      );
+      await repo.updateHabit(back.copyWith(goal: () => 10));
+      expect(
+        (await repo.entries(habitId: 'a', from: tue, to: tue)).single.state,
+        EntryState.partial,
+      );
+      expect(() => repo.updateHabit(habit('nope')), throwsStateError);
+    });
+
     test(
-      'update changes the stored habit and reconciles entry states when goal or logType changes',
+      'an edit that leaves the grading alone keeps an un-ticked day partial',
       () async {
-        final a = await repo.addHabit(
-          habit('a', logType: LogType.number, goal: 8),
-        );
-        await repo.setEntry(entry('a', mon, EntryState.partial, 4));
-        await repo.setEntry(entry('a', tue, EntryState.done, 8));
+        final a = await repo.addHabit(habit('a', logType: LogType.photo));
+        // Un-ticking a done day keeps its photo on a partial entry.
+        final unticked = entry(
+          'a',
+          mon,
+          EntryState.partial,
+        ).copyWith(photoPath: () => 'a.jpg');
+        await repo.setEntry(unticked);
         await repo.updateHabit(
           a.copyWith(
             name: 'Renamed',
+            description: () => 'why',
+            daysMask: Habit.weekdaysOnly,
+            dayPart: DayPart.morning,
             reminderMinutes: () => 480,
-            goal: () => 4,
+            area: () => 'Health',
           ),
         );
-        final back = (await repo.habits()).single;
-        expect((back.name, back.reminderMinutes), ('Renamed', 480));
-        expect(
-          (await repo.entries(habitId: 'a', from: mon, to: mon)).single.state,
-          EntryState.done,
-        );
-        await repo.updateHabit(back.copyWith(goal: () => 10));
-        expect(
-          (await repo.entries(habitId: 'a', from: tue, to: tue)).single.state,
-          EntryState.partial,
-        );
-        expect(() => repo.updateHabit(habit('nope')), throwsStateError);
+        expect((await repo.habits()).single.name, 'Renamed');
+        expect(await repo.entries(), [unticked]);
       },
     );
 
+    // A number habit with 4 of its goal of 8 logged, edited three ways that
+    // each stop the goal from grading it.
+    final number = habit('a', logType: LogType.number, goal: 8);
+    for (final c in [
+      ('log type', number, number.copyWith(logType: LogType.tick)),
+      ('kind', number, number.copyWith(kind: HabitKind.avoid)),
+      (
+        'avoid mode',
+        number.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.confirm),
+        number.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.track),
+      ),
+    ]) {
+      test('a change of ${c.$1} grades the entries again', () async {
+        await repo.addHabit(c.$2);
+        await repo.setEntry(entry('a', mon, EntryState.partial, 4));
+        await repo.updateHabit(c.$3);
+        expect((await repo.entries()).single.state, EntryState.done);
+      });
+    }
+
     test(
-      'reorder renumbers by the given order and keeps any omitted habits after without colliding',
+      'a change of kind or log type keeps an un-ticked day partial',
       () async {
-        for (final id in ['a', 'b', 'c']) {
-          await repo.addHabit(habit(id));
+        // Ticks taken off days that still hold an amount and a photo: no goal
+        // graded them, so no edit makes them done again.
+        final t = await repo.addHabit(habit('t'));
+        final p = await repo.addHabit(habit('p', logType: LogType.photo));
+        final kept = [
+          entry('t', mon, EntryState.partial, 5),
+          entry(
+            'p',
+            mon,
+            EntryState.partial,
+          ).copyWith(photoPath: () => 'a.jpg'),
+        ];
+        for (final e in kept) {
+          await repo.setEntry(e);
         }
-        await repo.reorder(['c', 'a']);
-        final all = await repo.habits();
-        expect(all.map((h) => h.id), ['c', 'a', 'b']);
-        expect(all.map((h) => h.sortOrder), [0, 1, 2]);
+        await repo.updateHabit(
+          t.copyWith(kind: HabitKind.avoid, avoidMode: AvoidMode.confirm),
+        );
+        await repo.updateHabit(p.copyWith(logType: LogType.note));
+        expect(await repo.entries(), unorderedEquals(kept));
       },
     );
+
+    test('a stay-clear habit still marked as a number counts its kept days as done', () async {
+      // A backup can hold this mix; the form never makes it.
+      final s = await repo.addHabit(
+        stayClear('s').copyWith(logType: LogType.number, goal: () => 10),
+      );
+      await repo.setEntry(entry('s', mon, EntryState.partial, 3));
+      await repo.setEntry(entry('s', tue, EntryState.done, 3));
+      await repo.updateHabit(s.copyWith(goal: () => 12));
+      expect(
+        [for (final e in await repo.entries()) e.state],
+        [EntryState.done, EntryState.done],
+      );
+    });
+
+    test('a new habit still goes last when the highest sort position is at the limit', () async {
+      await db.insert('habits', {
+        ...habit('top').toMap(),
+        'sortOrder': 9223372036854775807,
+      });
+      await repo.addHabit(habit('new', created: tue));
+      expect((await repo.habits()).map((h) => h.id), ['top', 'new']);
+    });
+
+    test('a batch of habits goes after the ones there, in its order, as one change', () async {
+      await repo.addHabit(habit('a'));
+      changes = 0;
+      final added = await repo.addHabits([habit('b'), habit('c')]);
+      expect(added.map((h) => h.sortOrder), [1, 2]);
+      expect((await repo.habits()).map((h) => h.id), ['a', 'b', 'c']);
+      expect(changes, 1);
+    });
+
+    test('a batch that fails part way stores none of it', () async {
+      await repo.addHabit(habit('a'));
+      changes = 0;
+      await expectLater(
+        repo.addHabits([habit('b'), habit('a')]),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await repo.habits()).map((h) => h.id), ['a']);
+      expect(changes, 0);
+    });
+
+    test(
+      'a batch still goes last when the highest sort position is at the limit',
+      () async {
+        await db.insert('habits', {
+          ...habit('top').toMap(),
+          'sortOrder': 9223372036854775807,
+        });
+        await repo.addHabits([
+          habit('new', created: tue),
+          habit('newer', created: wed),
+        ]);
+        expect((await repo.habits()).map((h) => h.id), ['top', 'new', 'newer']);
+      },
+    );
+
+    test('reorder renumbers by the given order and keeps any omitted habits after without colliding', () async {
+      for (final id in ['a', 'b', 'c']) {
+        await repo.addHabit(habit(id));
+      }
+      await repo.reorder(['c', 'a']);
+      final all = await repo.habits();
+      expect(all.map((h) => h.id), ['c', 'a', 'b']);
+      expect(all.map((h) => h.sortOrder), [0, 1, 2]);
+    });
 
     test(
       'archive ends the habit on the given day and keeps its entries',
@@ -317,6 +442,228 @@ void main() {
           ),
         );
       });
+    });
+  });
+
+  group('a database an older version wrote', () {
+    // 2.0.2 stored these values from backups it accepted; 2.0.3 refuses them in
+    // a backup, but a phone that updated still holds them.
+    Future<void> seedOld() async {
+      Future<void> add(Habit h, Map<String, Object?> odd) =>
+          db.insert('habits', {...h.toMap(), ...odd});
+      await add(habit('top'), {'sortOrder': 9223372036854775807});
+      await add(habit('bottom'), {'sortOrder': -9223372036854775807});
+      await add(habit('zero', logType: LogType.number), {'goal': 0});
+      await add(habit('below', logType: LogType.number), {'goal': -2.5});
+      await add(habit('none'), {'daysMask': 0});
+      await add(habit('wide'), {'daysMask': 200});
+      await add(habit('early', created: fri), {'endDay': mon.toString()});
+      await add(habit('late'), {'reminderMinutes': 9223372036854775807});
+      await add(habit('negative'), {'reminderMinutes': -5});
+      Future<void> log(Entry e, Map<String, Object?> odd) =>
+          db.insert('entries', {...e.toMap(), ...odd});
+      await log(entry('zero', mon), {'value': -4});
+      await log(entry('top', mon), {'photoPath': 'a:b.jpg'});
+      await log(entry('top', tue), {'photoPath': ' p.jpg'});
+      await log(entry('top', wed), {'loggedAt': 'yesterday'});
+    }
+
+    setUp(seedOld);
+
+    test('loads, with each odd value mended', () async {
+      final h = {for (final x in await repo.habits()) x.id: x};
+      expect(h, hasLength(9));
+      expect(h['top']!.sortOrder, 0x1fffffffffffff);
+      expect(h['bottom']!.sortOrder, -0x1fffffffffffff);
+      expect((h['zero']!.goal, h['below']!.goal), (null, null));
+      expect((h['none']!.daysMask, h['wide']!.daysMask), (127, 200 & 127));
+      expect(h['early']!.endDay, thu);
+      expect(h['late']!.reminderMinutes, isNull);
+      expect(h['negative']!.reminderMinutes, isNull);
+
+      final e = {for (final x in await repo.entries()) (x.habitId, x.day): x};
+      expect(e, hasLength(4));
+      expect(e[('zero', mon)]!.value, isNull);
+      expect(e[('zero', mon)]!.state, EntryState.done);
+      expect(e[('top', mon)]!.photoPath, isNull);
+      expect(e[('top', tue)]!.photoPath, isNull);
+      expect(e[('top', wed)]!.loggedAt, DateTime.utc(2026, 10, 7));
+    });
+
+    test(
+      'a snapshot reads and makes a backup this version takes back',
+      () async {
+        final snap = await repo.snapshot();
+        expect((snap.habits.length, snap.entries.length), (9, 4));
+        final again = decodeBackup(
+          encodeBackup(snap, now: DateTime.utc(2026, 10, 11), appVersion: 'x'),
+        ).snapshot;
+        expect(again.habits, snap.habits);
+        expect(again.entries, snap.entries);
+      },
+    );
+
+    test(
+      'text longer than the form now allows survives a backup and its restore',
+      () async {
+        // 2.0.2's form had no limit on these; the phone keeps them whole.
+        await db.insert('habits', {
+          ...habit('long', logType: LogType.number).toMap(),
+          'name': '  ${'n' * 70}  ',
+          'description': List.generate(30, (i) => 'Reason $i.').join(' '),
+          'area': 'a' * 60,
+          'unit': ' ${'u' * 30}',
+          'goal': 1.234,
+        });
+        await db.insert('habits', {
+          ...habit('blank', logType: LogType.number).toMap(),
+          'area': '',
+          'unit': ' ',
+          'description': '',
+          'goal': 12345678901.5,
+        });
+        final snap = await repo.snapshot();
+        final again = decodeBackup(
+          encodeBackup(snap, now: DateTime.utc(2026, 10, 11), appVersion: 'x'),
+        ).snapshot;
+        expect(again.habits, snap.habits);
+        expect(again.entries, snap.entries);
+        final long = again.habits.firstWhere((h) => h.id == 'long');
+        expect(long.description!.length, greaterThan(300));
+      },
+    );
+
+    test('every write that reads a row first still works', () async {
+      await repo.updateHabit((await repo.habits()).first);
+      expect(await repo.setEntry(entry('zero', mon)), isNotNull);
+      expect(await repo.clearEntry('top', mon), isNotNull);
+      final gone = await repo.deleteHabit('early');
+      expect(gone.habit.endDay, thu);
+    });
+
+    test('a clean backup can be restored over it', () async {
+      final safety = await Directory.systemTemp.createTemp('dt_safe_');
+      addTearDown(() => safety.delete(recursive: true));
+      final service = BackupService(
+        repo: repo,
+        readSettings: () => const Settings(),
+        applySettings: (_) async {},
+        safetyDir: () async => safety,
+        now: () => DateTime.utc(2026, 10, 11, 12),
+        appVersion: () async => '2.0.3',
+      );
+      final clean = encodeBackup(
+        Snapshot(habits: [habit('fresh')], entries: const [], seenDays: {mon}),
+        now: DateTime.utc(2026, 10, 11),
+        appVersion: '2.0.3',
+      );
+      await service.restore(clean);
+      expect((await repo.habits()).map((h) => h.id), ['fresh']);
+      await service.undoLastRestore();
+      expect(await repo.habits(), hasLength(9));
+    });
+  });
+
+  group('a database holding days before 1970', () {
+    // 2.0.2 and 2.0.3 took such days in from a crafted backup. This version
+    // refuses them in a backup, so they must not reach one.
+    const first = DayKey(1970, 1, 1);
+    final old = habit(
+      'old',
+      created: const DayKey(1960, 3, 1),
+      logType: LogType.number,
+      goal: 8,
+    );
+
+    setUp(() async {
+      await db.insert('habits', old.toMap());
+      await db.insert(
+        'habits',
+        habit(
+          'gone',
+          created: const DayKey(1950, 1, 1),
+          end: const DayKey(1955, 1, 1),
+        ).toMap(),
+      );
+      for (final e in [
+        entry('old', const DayKey(1960, 3, 1), EntryState.partial, 4),
+        entry('old', const DayKey(1969, 12, 31), EntryState.partial, 5),
+        entry('gone', const DayKey(1950, 6, 1)),
+      ]) {
+        await db.insert('entries', e.toMap());
+      }
+      for (final d in ['1960-03-01', '1969-12-31', '1970-01-01']) {
+        await db.insert('seen_days', {'day': d});
+      }
+    });
+
+    test('reads them as 1970-01-01, keeping the later of two entries that meet there', () async {
+      final h = {for (final x in await repo.habits()) x.id: x};
+      expect((h['old']!.createdDay, h['old']!.endDay), (first, null));
+      // Ended before 1970: it stays ended, the day before its start.
+      expect(
+        (h['gone']!.createdDay, h['gone']!.endDay),
+        (first, first.addDays(-1)),
+      );
+      final entries = [
+        entry('gone', first),
+        entry('old', first, EntryState.partial, 5),
+      ];
+      expect(await repo.entries(), entries);
+      expect(await repo.seenDays(), {first});
+      final snap = await repo.snapshot();
+      expect(snap.habits, await repo.habits());
+      expect(snap.entries, entries);
+      expect(snap.seenDays, {first});
+    });
+
+    test('a backup made from it is taken back', () async {
+      final snap = await repo.snapshot();
+      final again = decodeBackup(
+        encodeBackup(snap, now: DateTime.utc(2026, 10, 11), appVersion: 'x'),
+      ).snapshot;
+      expect(again.habits, snap.habits);
+      expect(again.entries, snap.entries);
+      expect(again.seenDays, snap.seenDays);
+    });
+
+    test('a restore over it can be undone', () async {
+      final safety = await Directory.systemTemp.createTemp('dt_safe_');
+      addTearDown(() => safety.delete(recursive: true));
+      final service = BackupService(
+        repo: repo,
+        readSettings: () => const Settings(),
+        applySettings: (_) async {},
+        safetyDir: () async => safety,
+        now: () => DateTime.utc(2026, 10, 11, 12),
+        appVersion: () async => '2.0.3',
+      );
+      final before = await repo.snapshot();
+      await service.restore(
+        encodeBackup(
+          Snapshot(
+            habits: [habit('fresh')],
+            entries: const [],
+            seenDays: {mon},
+          ),
+          now: DateTime.utc(2026, 10, 11),
+          appVersion: '2.0.3',
+        ),
+      );
+      await service.undoLastRestore();
+      final after = await repo.snapshot();
+      expect(after.habits, before.habits);
+      expect(after.entries, before.entries);
+    });
+
+    test('a change of goal grades the entries stored before 1970', () async {
+      await repo.updateHabit(
+        (await repo.habits())
+            .firstWhere((h) => h.id == 'old')
+            .copyWith(goal: () => 5),
+      );
+      final kept = (await repo.entries(habitId: 'old')).single;
+      expect((kept.day, kept.state), (first, EntryState.done));
     });
   });
 

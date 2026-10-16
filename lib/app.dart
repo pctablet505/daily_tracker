@@ -24,6 +24,7 @@ import 'ui/screens/packs_screen.dart';
 import 'ui/screens/progress_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/screens/today_screen.dart';
+import 'ui/root_routes.dart';
 import 'ui/shell.dart';
 import 'ui/sheets/update_sheet.dart';
 import 'ui/theme/theme.dart';
@@ -35,10 +36,12 @@ GoRouter buildRouter({
   required bool Function() onboardingDone,
   String initialLocation = '/',
   GlobalKey<NavigatorState>? navigatorKey,
+  List<NavigatorObserver>? observers,
 }) {
   final rootKey = navigatorKey ?? GlobalKey<NavigatorState>(debugLabel: 'root');
   return GoRouter(
     navigatorKey: rootKey,
+    observers: observers,
     initialLocation: initialLocation,
     redirect: (context, state) {
       if (!onboardingDone() && state.matchedLocation != '/onboarding')
@@ -123,15 +126,22 @@ class DailyTrackerApp extends ConsumerStatefulWidget {
 class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     with WidgetsBindingObserver {
   final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _rootRoutes = RootRoutes();
   late final GoRouter _router = buildRouter(
     onboardingDone: () => ref.read(settingsProvider).onboardingDone,
     navigatorKey: _rootKey,
+    observers: [_rootRoutes],
   );
   StreamSubscription<String>? _taps;
   Timer? _updateTimer;
   bool _offeringUpdate = false;
   bool _inForeground = true;
   String? _pendingPayload;
+
+  /// Set from "resumed" until the lock has decided whether to lock (it asks the
+  /// phone for the time since boot): the app stays covered and taps wait.
+  Future<void>? _lockCheck;
   late final UpdatePrompter _prompter = UpdatePrompter(
     prefs: ref.read(sharedPrefsProvider),
     now: ref.read(clockProvider),
@@ -183,6 +193,8 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       if (now) {
         _updateTimer?.cancel();
         FocusManager.instance.primaryFocus?.unfocus();
+        // A snackbar can name a habit, and its Undo must not work while locked.
+        _messengerKey.currentState?.clearSnackBars();
       } else if (was == true) {
         if (ref.read(settingsProvider).onboardingDone) {
           if (_inForeground) {
@@ -192,22 +204,18 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
           }
           unawaited(ref.read(cloudBackupProvider).autoBackupIfDue());
         }
-        final pending = _pendingPayload;
-        _pendingPayload = null;
-        if (pending != null) _openPayload(pending);
+        _openPendingPayload();
         if (_inForeground) _scheduleUpdateOffer(const Duration(seconds: 2));
       }
     });
-    ref.listenManual(
-      settingsProvider.select((s) => s.onboardingDone),
-      (was, now) {
-        if (was == false && now && _inForeground && !ref.read(lockedProvider)) {
-          unawaited(
-            ref.read(actionsProvider).markSeen(ref.read(todayProvider)),
-          );
-        }
-      },
-    );
+    ref.listenManual(settingsProvider.select((s) => s.onboardingDone), (
+      was,
+      now,
+    ) {
+      if (was == false && now && _inForeground && !ref.read(lockedProvider)) {
+        unawaited(ref.read(actionsProvider).markSeen(ref.read(todayProvider)));
+      }
+    });
     ref.listenManual(todayProvider, (was, now) {
       if (was != null && was != now) {
         if (_inForeground &&
@@ -235,22 +243,65 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
 
   void _openPayload(String payload) {
     if (!ref.read(settingsProvider).onboardingDone) return;
-    if (ref.read(lockedProvider)) {
+    // A tap brings the app back before "resumed" has run the lock check.
+    if (!_inForeground || _lockCheck != null || ref.read(lockedProvider)) {
       _pendingPayload = payload;
       return;
     }
+    // The midnight timer runs late after deep sleep.
+    ref.read(todayProvider.notifier).refresh();
     final habit = parseHabitPayload(payload);
+    final keepPages = _wouldLoseSomething();
     if (habit != null) {
       final today = ref.read(todayProvider);
       ref
           .read(selectedDayProvider.notifier)
           .select(habit.day == null || habit.day == today ? null : habit.day);
-      _router.go('/');
+      if (!keepPages) {
+        _router.go('/');
+      } else if (_showsHabit(habit.habitId)) {
+        return;
+      }
       unawaited(_router.push('/habit/${Uri.encodeComponent(habit.habitId)}'));
     } else {
       ref.read(selectedDayProvider.notifier).select(null);
-      _router.go('/');
+      if (!keepPages) _router.go('/');
     }
+  }
+
+  void _openPendingPayload() {
+    final pending = _pendingPayload;
+    _pendingPayload = null;
+    if (pending != null) _openPayload(pending);
+  }
+
+  /// Whether replacing the pages would drop a dialog, a sheet or a page that
+  /// refuses Back (an unsaved form). An earlier tap can have opened a habit
+  /// above the form, so every route counts, not only the top one; a tap then
+  /// opens its page on top instead.
+  bool _wouldLoseSomething() => _rootRoutes.wouldLoseSomething;
+
+  /// Whether the top page is this habit's page; a second one would only stack up.
+  bool _showsHabit(String id) {
+    final top = _router.state;
+    return top.fullPath == '/habit/:id' && top.pathParameters['id'] == id;
+  }
+
+  void _waitForLockCheck() {
+    final check = ref.read(lockedProvider.notifier).settled;
+    setState(() {
+      _lockCheck = check;
+    });
+    unawaited(
+      check.whenComplete(() {
+        if (!mounted || !identical(_lockCheck, check)) return;
+        setState(() => _lockCheck = null);
+        // Locked: unlocking opens the tap and offers the update instead.
+        if (!_inForeground || ref.read(lockedProvider)) return;
+        _openPendingPayload();
+        _scheduleUpdateOffer(const Duration(seconds: 2));
+      }),
+    );
   }
 
   void _onForeground() {
@@ -318,6 +369,7 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
       case AppLifecycleState.resumed:
         _inForeground = true;
         lock.resumed();
+        _waitForLockCheck();
         _onForeground();
       case AppLifecycleState.hidden || AppLifecycleState.detached:
         _inForeground = false;
@@ -334,31 +386,36 @@ class _DailyTrackerAppState extends ConsumerState<DailyTrackerApp>
     final choice = ref.watch(settingsProvider.select((s) => s.theme));
     final locked = ref.watch(lockedProvider);
     final lockOn = ref.watch(settingsProvider.select((s) => s.lockOn));
-    return MaterialApp.router(
-      title: 'Daily Tracker',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      themeMode: switch (choice) {
-        ThemeChoice.system => ThemeMode.system,
-        ThemeChoice.light => ThemeMode.light,
-        ThemeChoice.dark => ThemeMode.dark,
-      },
-      routerConfig: _router,
-      builder: (context, child) => PrivacyCover(
-        enabled: lockOn,
-        child: Stack(
-          children: [
-            // While locked the app underneath is kept out of the accessibility tree and out of reach.
-            ExcludeFocus(
-              excluding: locked,
-              child: ExcludeSemantics(
+    return RootRoutesScope(
+      routes: _rootRoutes,
+      child: MaterialApp.router(
+        title: 'Daily Tracker',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        themeMode: switch (choice) {
+          ThemeChoice.system => ThemeMode.system,
+          ThemeChoice.light => ThemeMode.light,
+          ThemeChoice.dark => ThemeMode.dark,
+        },
+        routerConfig: _router,
+        scaffoldMessengerKey: _messengerKey,
+        builder: (context, child) => PrivacyCover(
+          enabled: lockOn,
+          stayCovered: _lockCheck != null,
+          child: Stack(
+            children: [
+              // While locked the app underneath is kept out of the accessibility tree and out of reach.
+              ExcludeFocus(
                 excluding: locked,
-                child: IgnorePointer(ignoring: locked, child: child),
+                child: ExcludeSemantics(
+                  excluding: locked,
+                  child: IgnorePointer(ignoring: locked, child: child),
+                ),
               ),
-            ),
-            if (locked) const Positioned.fill(child: LockScreen()),
-          ],
+              if (locked) const Positioned.fill(child: LockScreen()),
+            ],
+          ),
         ),
       ),
     );

@@ -34,6 +34,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   bool _checkingUpdate = false;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -73,7 +74,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     if (!mounted) return;
     ref.invalidate(notificationsAllowedProvider);
     if (!ok) {
-      await ref.read(lockedProvider.notifier).runExternal(openAppSettings);
+      await ref
+          .read(lockedProvider.notifier)
+          .runExternal(openAppSettings, opensActivity: true);
       if (!mounted) return;
       ref.invalidate(notificationsAllowedProvider);
     }
@@ -139,6 +142,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   Future<void> _exportCsv() async {
+    setState(() => _exporting = true);
     try {
       final f = await ref.read(backupServiceProvider).exportCsv();
       if (!mounted) return;
@@ -159,12 +163,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not create the file.')),
         );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
   Future<void> _checkUpdate() async {
     setState(() => _checkingUpdate = true);
-    final r = await ref.read(updateServiceProvider).check();
+    UpdateCheck r;
+    try {
+      r = await ref.read(updateServiceProvider).check();
+    } catch (_) {
+      // check() reports its own failures; anything thrown is a bug that must not leave the row spinning.
+      r = const UpdateCheckFailed('Could not check for updates.');
+    }
     if (!mounted) return;
     setState(() => _checkingUpdate = false);
     switch (r) {
@@ -268,9 +280,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             _SwitchRow(
               icon: Icons.bedtime_outlined,
               title: 'Quiet hours',
-              subtitle: s.quietHoursOn
-                  ? 'No reminders from ${t(s.quietStartMinutes)} to ${t(s.quietEndMinutes)}'
-                  : 'Hold reminders back at night.',
+              subtitle: !s.quietHoursOn
+                  ? 'Hold reminders back at night.'
+                  // The planner ignores a window that ends where it starts.
+                  : s.quietStartMinutes == s.quietEndMinutes
+                  ? 'Quiet hours are off (start and end are the same)'
+                  : 'No reminders from ${t(s.quietStartMinutes)} to ${t(s.quietEndMinutes)}',
               value: s.quietHoursOn,
               onChanged: (v) => _set((x) => x.copyWith(quietHoursOn: v)),
             ),
@@ -319,6 +334,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               subtitle: 'Ask for a PIN when the app opens.',
               value: s.lockOn,
               onChanged: _toggleLock,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(54, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'If you forget the PIN and have no phone screen lock, the only way back is clearing the app\'s data.',
+                    style: AppType.small.copyWith(color: c.muted),
+                  ),
+                  Text(
+                    'On Android 10 and older with "Use fingerprint" off, the phone lock is not offered either, so a forgotten PIN means clearing the app\'s data.',
+                    style: AppType.small.copyWith(color: c.muted),
+                  ),
+                ],
+              ),
             ),
             if (s.lockOn) ...[
               _SwitchRow(
@@ -380,7 +411,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               icon: Icons.table_chart_outlined,
               title: 'Export entries as a spreadsheet',
               subtitle: 'A CSV file of every entry.',
-              onTap: _exportCsv,
+              trailing: _exporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : null,
+              onTap: _exporting ? null : _exportCsv,
             ),
           ]),
           const _Group('App'),
@@ -416,6 +454,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                       Uri.parse(sourceUrl),
                       mode: LaunchMode.externalApplication,
                     ),
+                    opensActivity: true,
                   ),
             ),
             _Row(
@@ -634,9 +673,14 @@ Future<String?> showPinEntry(BuildContext context, {required String title}) {
               const SizedBox(height: 12),
               PinPad(onSubmit: (p) => Navigator.pop(ctx, p)),
               const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, _phoneLockToken),
-                child: const Text('Forgot PIN? Use phone lock'),
+              Consumer(
+                builder: (_, ref, _) =>
+                    ref.watch(phoneLockAllowedProvider).value ?? false
+                    ? TextButton(
+                        onPressed: () => Navigator.pop(ctx, _phoneLockToken),
+                        child: const Text('Forgot PIN? Use phone lock'),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -688,10 +732,14 @@ class _PinSetupState extends State<_PinSetup> {
                 style: AppType.title,
               ),
               const SizedBox(height: 4),
-              Text(
-                '4 to 6 digits. If you forget it, your phone lock can unlock the app.',
-                textAlign: TextAlign.center,
-                style: AppType.small.copyWith(color: c.muted),
+              Consumer(
+                builder: (_, ref, _) => Text(
+                  ref.watch(phoneLockAllowedProvider).value ?? false
+                      ? '4 to 6 digits. If you forget it, your phone lock can unlock the app.'
+                      : '4 to 6 digits. If you forget it, the only way back is clearing the app\'s data.',
+                  textAlign: TextAlign.center,
+                  style: AppType.small.copyWith(color: c.muted),
+                ),
               ),
               const SizedBox(height: 12),
               PinPad(

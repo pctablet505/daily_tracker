@@ -54,8 +54,7 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
       if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
-        _error =
-            'Connect to Wi-Fi to download, or turn off "Update over Wi-Fi only" in Settings.';
+        _error = 'Connect to Wi-Fi to download, or turn off "Update over Wi-Fi only" in Settings.';
       });
       return;
     }
@@ -104,26 +103,53 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
     }
   }
 
+  /// Hands the downloaded file to Android. A failure here is the installer's,
+  /// not the download's, and says so.
   Future<void> _install() async {
+    try {
+      await _openInstaller();
+    } catch (e) {
+      debugPrint('Opening the installer failed: $e');
+      if (mounted) {
+        setState(() {
+          _phase = _Phase.error;
+          _error = 'Could not open the installer.';
+        });
+      }
+    }
+  }
+
+  Future<void> _openInstaller() async {
     final f = _file;
     if (f == null) return;
     final problem = await ref
         .read(lockedProvider.notifier)
-        .runExternal(() => ref.read(updateServiceProvider).install(f));
-    if (problem != null && mounted) {
-      setState(() {
-        _phase = _Phase.error;
-        _error = problem;
-      });
-    }
+        .runExternal(
+          () => ref.read(updateServiceProvider).install(f),
+          opensActivity: true,
+        );
+    if (!mounted) return;
+    setState(() {
+      _phase = problem == null ? _Phase.ready : _Phase.error;
+      _error = problem;
+    });
+  }
+
+  /// Android may clear its cache between tries: a file that is gone is
+  /// downloaded again rather than handed to the installer once more.
+  Future<void> _installAgain() async {
+    if (_file?.existsSync() ?? false) return _install();
+    _file = null;
+    return _download();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final r = widget.release;
+    // At large text sizes even the buttons may not fit: the whole sheet scrolls.
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -147,14 +173,7 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
               style: AppType.overline.copyWith(color: c.muted),
             ),
             const SizedBox(height: 6),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Text(
-                  r.notes,
-                  style: AppType.bodyLight.copyWith(height: 1.4),
-                ),
-              ),
-            ),
+            Text(r.notes, style: AppType.bodyLight.copyWith(height: 1.4)),
             if (r.apkSize != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -208,7 +227,7 @@ class _UpdateSheetState extends ConsumerState<_UpdateSheet> {
                 onPressed:
                     _phase == _Phase.ready ||
                         (_phase == _Phase.error && _file != null)
-                    ? _install
+                    ? _installAgain
                     : _download,
                 child: Text(switch (_phase) {
                   _Phase.ready => 'Install',

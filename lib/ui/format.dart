@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 
 import '../core/day_key.dart';
 import '../data/models.dart';
+import '../data/stats.dart';
 
 final _long = DateFormat('d MMMM');
 final _short = DateFormat('EEE d MMM');
@@ -76,6 +77,23 @@ String scheduleSummary(int mask) {
 String plural(int n, String one, [String? many]) =>
     n == 1 ? '$n $one' : '$n ${many ?? '${one}s'}';
 
+/// How a day reads in short, for the calendar cell, the bars and the week
+/// strip: what was planned and done, slips, or else on track, not checked.
+/// Stay-clear habits not yet answered are named whenever the day says more.
+String dayDetail(DaySummary s) {
+  final said = [
+    if (s.planned > 0) '${s.done} of ${s.planned} done',
+    if (s.slips > 0) plural(s.slips, 'slip'),
+  ];
+  if (said.isEmpty) {
+    if (s.status == DayStatus.good) said.add('on track');
+    if (s.notChecked > 0 && said.isEmpty) return 'not checked';
+    if (said.isEmpty) return 'nothing planned';
+  }
+  if (s.notChecked > 0) said.add('${s.notChecked} not checked');
+  return said.join(', ');
+}
+
 /// The grey line under a to-do title.
 String habitMeta(
   Habit h, {
@@ -89,6 +107,8 @@ String habitMeta(
       final v = entry?.value;
       if (v != null && h.goal != null) {
         parts.add('${formatAmount(v)} of ${formatAmountUnit(h.goal!, h.unit)}');
+      } else if (v != null) {
+        parts.add(formatAmountUnit(v, h.unit));
       } else if (lastValue != null) {
         parts.add('last ${formatAmountUnit(lastValue, h.unit)}');
       } else if (h.goal != null) {

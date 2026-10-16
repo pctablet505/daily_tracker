@@ -31,6 +31,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     return SafeArea(
       bottom: false,
       child: ledger.when(
+        skipLoadingOnReload: true,
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => EmptyState(
           icon: Icons.error_outline_rounded,
@@ -50,8 +51,7 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
                   child: EmptyState(
                     icon: Icons.bar_chart_rounded,
                     title: 'Nothing to show yet',
-                    message:
-                        'Once you have a habit and log a few days, your streaks and progress show up here.',
+                    message: 'Once you have a habit and log a few days, your streaks and progress show up here.',
                   ),
                 ),
               ],
@@ -70,10 +70,10 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
           final to = shown.monthEnd > today ? today : shown.monthEnd;
           final attention = to < shown
               ? const <AttentionItem>[]
-              : needsAttention(l, shown, to);
+              : needsAttention(l, shown, to, today: today);
           final areas = to < shown
               ? const <AreaRate>[]
-              : areaRates(l, shown, to);
+              : areaRates(l, shown, to, today: today);
           final canGoBack = shown > firstMonth;
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
@@ -160,11 +160,19 @@ class _ProgressScreenState extends ConsumerState<ProgressScreen> {
     if (day == null || cell.level == HeatLevel.future) return;
     final s = cell.summary!;
     final c = context.colors;
-    final summaryText = s.planned == 0
+    final said = s.planned == 0
         ? (s.slips > 0
-              ? '${plural(s.slips, 'slip')} logged.'
-              : 'Nothing was planned.')
-        : '${s.done} of ${s.planned} done${s.slips > 0 ? ', ${plural(s.slips, 'slip')}' : ', no slips'}.';
+              ? '${plural(s.slips, 'slip')} logged'
+              : s.status == DayStatus.good
+              ? 'On track, no slips'
+              : s.notChecked > 0
+              ? 'Not checked'
+              : 'Nothing was planned')
+        : '${s.done} of ${s.planned} done${s.slips > 0 ? ', ${plural(s.slips, 'slip')}' : ', no slips'}';
+    // A day that says more than "Not checked" still names what is unanswered.
+    final summaryText = s.notChecked > 0 && said != 'Not checked'
+        ? '$said, ${s.notChecked} not checked.'
+        : '$said.';
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -350,14 +358,8 @@ class _Cell extends StatelessWidget {
     final c = context.colors;
     final style = heatStyle(c, cell.level);
     final s = cell.summary!;
-    final detail = switch (cell.level) {
-      HeatLevel.future => 'not yet',
-      HeatLevel.none => 'nothing planned',
-      _ =>
-        s.planned == 0
-            ? (s.slips > 0 ? plural(s.slips, 'slip') : 'on track')
-            : '${s.done} of ${s.planned} done',
-    };
+    // Says what the day sheet says; a blank cell may be today, still open.
+    final detail = cell.level == HeatLevel.future ? 'not yet' : dayDetail(s);
     return Semantics(
       button: cell.level != HeatLevel.future,
       label: '${isToday ? 'Today, ' : ''}${longDate(cell.day!)}, $detail',
@@ -609,8 +611,7 @@ class _WeekBars extends StatelessWidget {
             for (final d in days)
               Expanded(
                 child: Semantics(
-                  label:
-                      '${longDate(d.day)}, ${d.planned == 0 ? 'nothing planned' : '${d.done} of ${d.planned} done'}',
+                  label: '${longDate(d.day)}, ${dayDetail(d)}',
                   excludeSemantics: true,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,

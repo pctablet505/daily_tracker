@@ -186,11 +186,13 @@ class StreakChip extends StatelessWidget {
               color: c.amberInk,
             ),
             const SizedBox(width: 3),
-            Text(
-              label,
-              style: AppType.caption.copyWith(
-                color: c.amberInk,
-                fontWeight: FontWeight.w700,
+            Flexible(
+              child: Text(
+                label,
+                style: AppType.caption.copyWith(
+                  color: c.amberInk,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -209,6 +211,7 @@ class PillButton extends StatelessWidget {
     this.icon,
     this.outlined = false,
     this.semanticLabel,
+    this.maxWidth = 160,
   });
 
   final String label;
@@ -216,6 +219,10 @@ class PillButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool outlined;
   final String? semanticLabel;
+
+  /// Past this the label is cut short; a button that sits on a line of its own
+  /// can take the whole line, so large text does not cut its words.
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -236,10 +243,10 @@ class PillButton extends StatelessWidget {
           customBorder: const StadiumBorder(),
           onTap: onPressed,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
+            constraints: BoxConstraints(
               minHeight: 40,
               minWidth: 48,
-              maxWidth: 160,
+              maxWidth: maxWidth,
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),

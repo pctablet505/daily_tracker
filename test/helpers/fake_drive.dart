@@ -11,10 +11,14 @@ final class FakeAuth implements DriveAuth {
   final bool configured;
   String? email = 'me@example.com';
 
+  /// Thrown by [signIn], as when the user declines Google's Drive permission.
+  DriveException? signInError;
+
   @override
   Future<String?> restoreSession() async => signedIn ? email : null;
   @override
   Future<String> signIn() async {
+    if (signInError case final e?) throw e;
     signedIn = true;
     return email!;
   }
@@ -38,6 +42,30 @@ final class FakeDrive {
   int failWith = 0;
   DateTime now = DateTime.utc(2026, 10, 11, 12);
 
+  /// How long creating a file takes, so that two uploads can overlap.
+  Duration createDelay = Duration.zero;
+
+  /// How long a file created here stays out of the list, by [now]: Drive's
+  /// list catches up with a create some time after it.
+  Duration listLag = Duration.zero;
+  final _created = <String, DateTime>{};
+
+  /// A file as Drive describes it in a reply: only the `fields` asked for,
+  /// or Drive's few defaults when none were.
+  Map<String, Object?> _reply(String id, String? fields) {
+    final f = files[id]!;
+    final all = {
+      'kind': 'drive#file',
+      'id': id,
+      'name': f.name,
+      'mimeType': 'application/json',
+      'modifiedTime': f.modified.toIso8601String(),
+      'size': '${utf8.encode(f.content).length}',
+    };
+    final wanted = fields?.split(',') ?? ['kind', 'id', 'name', 'mimeType'];
+    return {for (final k in wanted) k: all[k]};
+  }
+
   Future<http.Response> handle(http.Request r) async {
     requests.add(
       '${r.method} ${r.url.path}${r.url.query.isEmpty ? '' : '?${r.url.query}'}',
@@ -56,7 +84,8 @@ final class FakeDrive {
               .where(
                 (e) =>
                     q.contains("name='${e.value.name}'") &&
-                    !(q.contains('trashed=false') && trashed.contains(e.key)),
+                    !(q.contains('trashed=false') && trashed.contains(e.key)) &&
+                    !(_created[e.key]?.add(listLag).isAfter(now) ?? false),
               )
               .toList()
             ..sort(
@@ -80,11 +109,16 @@ final class FakeDrive {
       );
     }
     if (r.method == 'POST' && path == '/drive/v3/files') {
+      await Future<void>.delayed(createDelay);
       final m = jsonDecode(r.body) as Map<String, Object?>;
       expect(m['parents'], ['appDataFolder']);
       final id = 'file${_n++}';
       files[id] = (name: m['name']! as String, content: '', modified: now);
-      return http.Response(jsonEncode({'id': id}), 200);
+      _created[id] = now;
+      return http.Response(
+        jsonEncode(_reply(id, r.url.queryParameters['fields'])),
+        200,
+      );
     }
     final upload = RegExp(r'^/upload/drive/v3/files/(.+)$').firstMatch(path);
     if (r.method == 'PATCH' && upload != null) {
@@ -96,7 +130,10 @@ final class FakeDrive {
         content: utf8.decode(r.bodyBytes),
         modified: now,
       );
-      return http.Response(jsonEncode({'id': id}), 200);
+      return http.Response(
+        jsonEncode(_reply(id, r.url.queryParameters['fields'])),
+        200,
+      );
     }
     final get = RegExp(r'^/drive/v3/files/(.+)$').firstMatch(path);
     if (r.method == 'GET' &&

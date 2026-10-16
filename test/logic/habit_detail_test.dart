@@ -2,6 +2,7 @@ import 'package:daily_tracker/core/day_key.dart';
 import 'package:daily_tracker/data/models.dart';
 import 'package:daily_tracker/data/stats.dart';
 import 'package:daily_tracker/logic/habit_detail.dart';
+import 'package:daily_tracker/logic/today_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../data/fixtures.dart';
@@ -129,6 +130,25 @@ void main() {
     ]);
   });
 
+  test('photos whose file is not on this phone are drawn but not counted, as on Today', () {
+    // Restored on a new phone: the entries name three photos, one file came back.
+    final p = habit('p', logType: LogType.photo);
+    final l = ledger(
+      [p],
+      [
+        for (final (d, n) in [(mon, 'a.jpg'), (tue, 'b.jpg'), (wed, 'c.jpg')])
+          entry('p', d).copyWith(photoPath: () => n),
+      ],
+    );
+    bool exists(String name) => name == 'b.jpg';
+    final d = buildHabitDetail(l, p, sun, photoExists: exists);
+    expect(d.photos.length, 3);
+    expect(d.photoCount, 1);
+    final row = buildTodayView(l, sun, photoExists: exists).toDo.single;
+    expect(row.photoCount, d.photoCount);
+    expect(buildHabitDetail(l, p, sun).photoCount, 3);
+  });
+
   test('the last 12 weeks are shown as a grid of day states, oldest first', () {
     final a = habit('a', created: const DayKey(2026, 1, 1));
     final l = ledger(
@@ -162,5 +182,46 @@ void main() {
     expect(byDay[mon], DotState.done);
     expect(byDay[wed], DotState.missed);
     expect(byDay[fri], DotState.none, reason: 'not opened, nothing known');
+  });
+
+  test(
+    'a stay-clear habit started in year 1 counts its clear days quickly',
+    () {
+      final s = stayClear('s', created: const DayKey(1, 1, 1));
+      final l = ledger([s], [slip('s', sat)], [fri, sat, sun]);
+      final sw = Stopwatch()..start();
+      final d = buildHabitDetail(l, s, sun);
+      sw.stop();
+      expect((d.totalDone, d.totalSlips), (2, 1));
+      expect(sw.elapsedMilliseconds, lessThan(50));
+    },
+  );
+
+  test('a habit logged and archived on its first day keeps that entry', () {
+    // Archiving on the day a habit started stores an end the day before it.
+    final h = habit('a', created: sun, end: sat);
+    final d = buildHabitDetail(ledger([h], [entry('a', sun)]), h, sun);
+    expect((d.totalDone, d.recent.length), (1, 1));
+  });
+
+  test('a habit archived on its first day draws, counts and rates that day as it lists it', () {
+    final h = habit('a', created: wed, end: tue);
+    final d = buildHabitDetail(ledger([h], [entry('a', wed)]), h, sun);
+    final byDay = {for (final x in d.recentDays) x.day: x.state};
+    // The grid ends on its last day, the one it started on.
+    expect(d.recentDays.last.day, wed);
+    expect((byDay[tue], byDay[wed]), (DotState.none, DotState.done));
+    expect(d.streak, const HabitStreak(current: 1, best: 1));
+    expect(d.rate30, const Ratio(1, 1));
+    expect((d.totalDone, d.recent.single.day), (1, wed));
+
+    final s = stayClear('s', created: wed, end: tue);
+    final clear = buildHabitDetail(ledger([s], [], [wed, thu]), s, sun);
+    expect(
+      clear.recentDays.firstWhere((x) => x.day == wed).state,
+      DotState.done,
+    );
+    expect((clear.totalDone, clear.rate30), (1, const Ratio(1, 1)));
+    expect(clear.streak, const HabitStreak(current: 1, best: 1));
   });
 }
