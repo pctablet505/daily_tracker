@@ -464,6 +464,11 @@ void main() {
       final before = uploads();
       await cloud.autoBackupIfDue();
       expect(uploads(), before + 1);
+      // The backup that was due is done: the next return, an hour on, waits.
+      now = now.add(const Duration(hours: 1));
+      drive.now = drive.now.add(const Duration(hours: 1));
+      await cloud.autoBackupIfDue();
+      expect(uploads(), before + 1);
     });
 
     test('a restore asked for while the first backup is being written finds that backup', () async {

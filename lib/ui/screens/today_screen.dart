@@ -337,6 +337,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     fraction: s.fraction,
     isFuture: isFuture,
     detail: s.planned == 0 ? dayDetail(s) : null,
+    notChecked: s.notChecked,
   );
 
   List<Widget> _body(

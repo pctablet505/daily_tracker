@@ -78,21 +78,20 @@ String plural(int n, String one, [String? many]) =>
     n == 1 ? '$n $one' : '$n ${many ?? '${one}s'}';
 
 /// How a day reads in short, for the calendar cell, the bars and the week
-/// strip: what was planned and done, or else slips, on track, not checked.
+/// strip: what was planned and done, slips, or else on track, not checked.
 /// Stay-clear habits not yet answered are named whenever the day says more.
 String dayDetail(DaySummary s) {
-  final base = s.planned > 0
-      ? '${s.done} of ${s.planned} done'
-      : s.slips > 0
-      ? plural(s.slips, 'slip')
-      : s.status == DayStatus.good
-      ? 'on track'
-      : s.notChecked > 0
-      ? 'not checked'
-      : 'nothing planned';
-  return s.notChecked > 0 && base != 'not checked'
-      ? '$base, ${s.notChecked} not checked'
-      : base;
+  final said = [
+    if (s.planned > 0) '${s.done} of ${s.planned} done',
+    if (s.slips > 0) plural(s.slips, 'slip'),
+  ];
+  if (said.isEmpty) {
+    if (s.status == DayStatus.good) said.add('on track');
+    if (s.notChecked > 0 && said.isEmpty) return 'not checked';
+    if (said.isEmpty) return 'nothing planned';
+  }
+  if (s.notChecked > 0) said.add('${s.notChecked} not checked');
+  return said.join(', ');
 }
 
 /// The grey line under a to-do title.

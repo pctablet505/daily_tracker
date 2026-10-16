@@ -319,6 +319,29 @@ void main() {
       expect(find.byType(HabitDetailScreen), findsNothing);
     });
 
+    testWidgets(
+      'a recent entry on a habit page opened from Habits goes to Today '
+      'on that day',
+      (tester) async {
+        final app = _App(tester);
+        await app.pump();
+        await tester.tap(find.text('Habits').last);
+        await app.settle();
+        await tester.tap(find.text('Go for a run').first);
+        await app.settle();
+        expect(find.byType(HabitDetailScreen), findsOneWidget);
+        final rows = find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == '_EntryTile',
+        );
+        await tester.ensureVisible(rows.first);
+        await app.settle();
+        await tester.tap(rows.first);
+        await app.settle();
+        expect(find.byType(HabitDetailScreen), findsNothing);
+        expect(find.byType(TodayScreen), findsOneWidget);
+      },
+    );
+
     testWidgets('a dialog opened and closed on Settings does not hold the '
         'check-in tap', (tester) async {
       final app = _App(tester);

@@ -295,6 +295,27 @@ void main() {
     expect(label('8'), endsWith('8 October, on track'));
   });
 
+  testWidgets('the week strip names a stay-clear habit not answered on a day '
+      'with something done', (tester) async {
+    final l = Ledger(
+      habits: [habit('run'), stayClear('sugar')],
+      entries: [entry('run', wed)],
+      seenDays: [mon, tue, thu, fri, sat, sun],
+    );
+    await pumpScreen(
+      tester,
+      const Scaffold(body: TodayScreen()),
+      overrides: await baseOverrides(ledger: l),
+      size: const Size(400, 1600),
+    );
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel(RegExp('(^|, )7 October, ')))
+          .label,
+      endsWith('7 October, 100 percent done, 1 not checked'),
+    );
+  });
+
   testWidgets('the photo picker is told which habit and day it is for', (
     tester,
   ) async {
