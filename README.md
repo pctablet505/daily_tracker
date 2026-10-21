@@ -1,5 +1,3 @@
-<!-- The word "Google" in this file is only part of product names in the backup section; approved to stay as written. -->
-
 <a href="https://github.com/pctablet505/daily_tracker/releases/latest">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
