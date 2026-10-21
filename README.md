@@ -1,12 +1,12 @@
 <a href="https://github.com/pctablet505/daily_tracker/releases/latest">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" width="100%" alt="Daily Tracker. Streaks you can trust, kept on your phone, not in an account. A habit tracker for Android that works offline.">
+  <img src="assets/hero-light.svg" width="100%" alt="Daily Tracker. Streaks you can trust, kept on your phone, not in an account.">
 </picture>
 </a>
 
-**Streaks you can trust, kept on your phone, not in an account.** Daily Tracker is a habit tracker for Android. It
-works offline and keeps its data on your phone: open it, tick what you did, close it.
+Daily Tracker is a habit tracker for Android. It works offline and keeps its data on your phone: open it, tick what
+you did, close it.
 
 **[Download the latest APK →](https://github.com/pctablet505/daily_tracker/releases/latest)**
 
