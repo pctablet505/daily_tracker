@@ -1,8 +1,41 @@
-# Daily Tracker
+<!-- The word "Google" in this file is only part of product names in the backup section; approved to stay as written. -->
 
-A habit tracker for Android. It works offline, keeps its data on your phone, and stays out of your way: open it, tick what you did, close it.
+<a href="https://github.com/pctablet505/daily_tracker/releases/latest">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img src="assets/hero-light.svg" width="100%" alt="Daily Tracker. Streaks you can trust, kept on your phone, not in an account. A habit tracker for Android that works offline.">
+</picture>
+</a>
 
-## What it does
+**Streaks you can trust, kept on your phone, not in an account.** Daily Tracker is a habit tracker for Android. It
+works offline and keeps its data on your phone: open it, tick what you did, close it.
+
+**[Download the latest APK →](https://github.com/pctablet505/daily_tracker/releases/latest)**
+
+## What you get
+
+- **Today**: every habit planned for the day, and one tap to tick it.
+- **Streaks you can trust**: a day keeps the streak only when enough of its planned habits are done (60% by default),
+  and for a habit you stay clear of, a day you never opened the app does not count as clean.
+- **Updates you can check**: each release ships a `.sha256` file, and the app refuses an update that does not match it.
+
+Nothing in the app has to run at midnight. [Why a day is a record, not a job →](#how-it-is-built)
+
+## Is it for you?
+
+For anyone who wants a private, offline habit tracker on Android.
+
+What it is not, on purpose:
+
+- Task priority, one-off tasks with due dates and date-specific reminders: this is a habit tracker.
+- Swipe gestures, hero animations and loading shimmer.
+- A daily reset job and WorkManager background tasks (a day is a record; reminders are scheduled with the system alarm manager).
+- iOS, web and desktop builds.
+
+## Go deeper
+
+<details>
+<summary><b>Everything it does</b></summary>
 
 - **Today.** Every habit planned for the day, grouped as *To do*, *Staying clear* and *Done*, with a week strip to look back or fill in a missed day. Ticking, typing a number, adding a note or taking a photo takes one tap and one sheet.
 - **Four kinds of entry.** Tick, number (with a goal and a unit), note, photo.
@@ -16,7 +49,10 @@ A habit tracker for Android. It works offline, keeps its data on your phone, and
 - **Updates.** The app checks this repository's GitHub releases, verifies the download against the published `.sha256` file (and refuses to install it if they differ), and hands it to Android to install. A release published without a checksum is only checked for size, so always publish one; the workflow does.
 - Light and dark theme, large-text friendly, screen-reader labels, CSV export of every entry.
 
-## Build and run
+</details>
+
+<details>
+<summary><b>Build and run</b></summary>
 
 You need Flutter 3.47.7, JDK 17 and the Android SDK (platform 37).
 
@@ -37,7 +73,10 @@ flutter test integration_test/notification_action_test.dart -d <device id>
 
 `flutter test` removes the app when it finishes, so install the debug app and grant the permission first, as above.
 
-## Releases
+</details>
+
+<details>
+<summary><b>Releases</b></summary>
 
 Pushing a tag such as `v2.0.0` builds, tests and publishes a signed APK with a `.sha256` file; the tag must equal `version:` in `pubspec.yaml`. Updates only install over the existing app if every release is signed with the **same key**, so the workflow refuses to run without one.
 
@@ -53,7 +92,10 @@ Pushing a tag such as `v2.0.0` builds, tests and publishes a signed APK with a `
 
 3. For a local release build, put the same values in `android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; git ignores it). Without a key, `flutter build apk --release` falls back to the debug key, which is fine for trying it out and useless for updating.
 
-## Google Drive backup
+</details>
+
+<details>
+<summary><b>Google Drive backup</b></summary>
 
 Off until you give the build an OAuth client; the Backup screen says so while it is off. The backup file works without it.
 
@@ -62,6 +104,8 @@ Off until you give the build an OAuth client; the Backup screen says so while it
 3. Create an **Android** OAuth client with package `com.dailytracker.daily_tracker` and the SHA-1 of your release key (`keytool -list -v -keystore release.keystore`).
 4. Create a **Web application** OAuth client and copy its client id.
 5. Build with it: `flutter build apk --release --dart-define=GOOGLE_SERVER_CLIENT_ID=<web client id>`. In CI, add it as the `GOOGLE_SERVER_CLIENT_ID` secret.
+
+</details>
 
 ## How it is built
 
@@ -78,13 +122,7 @@ lib/ui         theme, shared widgets, sheets, screens
 
 Statistics and reminder planning are plain Dart with no Flutter or database in them, and carry most of the tests.
 
-## Left out on purpose
+---
 
-- Task priority, one-off tasks with due dates and date-specific reminders: this is a habit tracker.
-- Swipe gestures, hero animations and loading shimmer.
-- A daily reset job and WorkManager background tasks (a day is a record; reminders are scheduled with the system alarm manager).
-- iOS, web and desktop builds.
-
-## License
-
-MIT License
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/mark-dark.svg"><img src="assets/mark-light.svg" width="16" height="16" alt=""></picture>
+<sub>**Real numbers, failures left in.** Built by [pctablet505](https://github.com/pctablet505). MIT License.</sub>
