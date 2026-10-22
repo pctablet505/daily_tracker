@@ -20,7 +20,7 @@ what you did, close it.
   ask again in an hour.
 - **Your data, your copies.** Save a backup file anywhere and restore from it, or back up to your own
   Google Drive app folder in builds set up for it. Photos are in no backup.
-- **Updates you can check.** Each release ships a `.sha256` file, and the app refuses an update that does not match it.
+- **Updates you can check.** Every release from v2.0.0 on ships a `.sha256` file, and the app refuses an update that does not match it.
 
 ## Install
 
@@ -43,7 +43,7 @@ After that, the app checks this repository's releases itself and offers each upd
 
 - [The full guide](docs/details.md): every feature, building and testing it, the release and signing steps, and the
   backup set-up.
-- [Releases](https://github.com/pctablet505/daily_tracker/releases): every version, each with its checksum.
+- [Releases](https://github.com/pctablet505/daily_tracker/releases): every version; each one from v2.0.0 on has its checksum.
 
 MIT License, see [LICENSE](LICENSE).
 
